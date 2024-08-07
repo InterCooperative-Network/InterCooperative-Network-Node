@@ -20,7 +20,7 @@ members = [
     "crates/icn_incentives",
     "crates/icn_language",
     "crates/icn_demo"
-]
+, "crates/icn_federation"]
 
 resolver = "2"
 

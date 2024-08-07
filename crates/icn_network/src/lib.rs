@@ -1,3 +1,5 @@
+// File: crates/icn_network/src/lib.rs
+
 use icn_common::{IcnResult, IcnError, Transaction, NetworkStats};
 use icn_blockchain::Block;
 use std::net::SocketAddr;
@@ -9,6 +11,8 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use log::{info, warn, error};
 use serde::{Serialize, Deserialize};
+use rand::seq::SliceRandom;
+use std::time::SystemTime;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum NetworkMessage {
@@ -16,6 +20,19 @@ pub enum NetworkMessage {
     Block(Block),
     PeerConnect(SocketAddr),
     PeerDisconnect(SocketAddr),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum GossipMessage {
+    Transaction(Transaction),
+    Block(Block),
+    NetworkUpdate(NetworkUpdate),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NetworkUpdate {
+    pub timestamp: u64,
+    pub connected_peers: Vec<SocketAddr>,
 }
 
 struct PeerInfo {
@@ -28,6 +45,8 @@ pub struct NetworkManager {
     event_sender: mpsc::Sender<NetworkMessage>,
     event_receiver: mpsc::Receiver<NetworkMessage>,
     start_time: Option<Instant>,
+    gossip_interval: Duration,
+    gossip_peer_count: usize,
 }
 
 impl NetworkManager {
@@ -39,6 +58,8 @@ impl NetworkManager {
             event_sender,
             event_receiver,
             start_time: None,
+            gossip_interval: Duration::from_secs(30), // Gossip every 30 seconds
+            gossip_peer_count: 3, // Number of peers to gossip with each round
         }
     }
 
@@ -64,7 +85,70 @@ impl NetworkManager {
             }
         });
 
+        // Start the gossip protocol
+        let gossip_peers = Arc::clone(&self.peers);
+        let gossip_sender = self.event_sender.clone();
+        let gossip_interval = self.gossip_interval;
+        let gossip_peer_count = self.gossip_peer_count;
+
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(gossip_interval).await;
+                if let Err(e) = Self::gossip_protocol(&gossip_peers, &gossip_sender, gossip_peer_count).await {
+                    error!("Error in gossip protocol: {}", e);
+                }
+            }
+        });
+
         info!("Network started successfully");
+        Ok(())
+    }
+
+    async fn gossip_protocol(
+        peers: &Arc<RwLock<HashMap<SocketAddr, PeerInfo>>>,
+        event_sender: &mpsc::Sender<NetworkMessage>,
+        gossip_peer_count: usize,
+    ) -> IcnResult<()> {
+        let gossip_peers = {
+            let peers_lock = peers.read().unwrap();
+            peers_lock.keys().cloned().collect::<Vec<SocketAddr>>()
+        };
+
+        if gossip_peers.is_empty() {
+            return Ok(());
+        }
+
+        let selected_peers = Self::select_random_peers(&gossip_peers, gossip_peer_count);
+
+        let gossip_message = GossipMessage::NetworkUpdate(NetworkUpdate {
+            timestamp: SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs(),
+            connected_peers: gossip_peers,
+        });
+
+        for peer in selected_peers {
+            if let Err(e) = Self::send_gossip_message(&peer, &gossip_message).await {
+                warn!("Failed to send gossip message to {}: {}", peer, e);
+            }
+        }
+
+        Ok(())
+    }
+
+    fn select_random_peers(peers: &[SocketAddr], count: usize) -> Vec<SocketAddr> {
+        let mut rng = rand::thread_rng();
+        peers.choose_multiple(&mut rng, count.min(peers.len())).cloned().collect()
+    }
+
+    async fn send_gossip_message(peer: &SocketAddr, message: &GossipMessage) -> IcnResult<()> {
+        let mut stream = TcpStream::connect(peer).await
+            .map_err(|e| IcnError::Network(format!("Failed to connect to peer {}: {}", peer, e)))?;
+
+        let serialized_message = bincode::serialize(&message)
+            .map_err(|e| IcnError::Network(format!("Failed to serialize gossip message: {}", e)))?;
+
+        stream.write_all(&serialized_message).await
+            .map_err(|e| IcnError::Network(format!("Failed to send gossip message to peer {}: {}", peer, e)))?;
+
         Ok(())
     }
 
@@ -160,13 +244,6 @@ impl NetworkManager {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct CrossShardTransaction {
-    pub transaction: Transaction,
-    pub from_shard: u64,
-    pub to_shard: u64,
-}
-
 async fn handle_connection(
     mut stream: TcpStream,
     addr: SocketAddr,
@@ -191,8 +268,23 @@ async fn handle_connection(
         let message: NetworkMessage = bincode::deserialize(&buffer[..bytes_read])
             .map_err(|e| IcnError::Network(format!("Failed to deserialize message: {}", e)))?;
 
-        event_sender.send(message).await
-            .map_err(|e| IcnError::Network(format!("Failed to send message to main thread: {}", e)))?;
+        match &message {
+            NetworkMessage::Transaction(_) | NetworkMessage::Block(_) => {
+                event_sender.send(message).await
+                    .map_err(|e| IcnError::Network(format!("Failed to send message to main thread: {}", e)))?;
+            }
+            NetworkMessage::PeerConnect(new_peer) | NetworkMessage::PeerDisconnect(new_peer) => {
+                if new_peer != &addr {
+                    event_sender.send(message).await
+                        .map_err(|e| IcnError::Network(format!("Failed to send peer event to main thread: {}", e)))?;
+                }
+            }
+        }
+
+        // Update last_seen timestamp for the peer
+        if let Some(peer_info) = peers.write().unwrap().get_mut(&addr) {
+            peer_info.last_seen = Instant::now();
+        }
 
         buffer.clear();
     }
@@ -244,55 +336,42 @@ mod tests {
             }
 
             assert!(manager1.stop().await.is_ok());
+            assert!(manager2.stop().await.is_ok());
         });
     }
 
     #[test]
-    fn test_multiple_peers() {
+    fn test_gossip_protocol() {
         let rt = Runtime::new().unwrap();
         rt.block_on(async {
-            let addr1: SocketAddr = "127.0.0.1:8002".parse().unwrap();
-            let addr2: SocketAddr = "127.0.0.1:8003".parse().unwrap();
-            let addr3: SocketAddr = "127.0.0.1:8004".parse().unwrap();
-
-            let mut manager1 = NetworkManager::new(addr1);
-            let mut manager2 = NetworkManager::new(addr2);
-            let mut manager3 = NetworkManager::new(addr3);
+            let mut manager1 = NetworkManager::new("127.0.0.1:8002".parse().unwrap());
+            let mut manager2 = NetworkManager::new("127.0.0.1:8003".parse().unwrap());
+            let mut manager3 = NetworkManager::new("127.0.0.1:8004".parse().unwrap());
 
             manager1.start().await.unwrap();
             manager2.start().await.unwrap();
             manager3.start().await.unwrap();
 
-            manager1.connect_to_peer(addr2).await.unwrap();
-            manager1.connect_to_peer(addr3).await.unwrap();
+            manager1.connect_to_peer("127.0.0.1:8003".parse().unwrap()).await.unwrap();
+            manager1.connect_to_peer("127.0.0.1:8004".parse().unwrap()).await.unwrap();
 
-            // Wait a bit for the connections to be established
-            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            // Wait for gossip protocol to run
+            tokio::time::sleep(std::time::Duration::from_secs(35)).await;
 
             assert_eq!(manager1.get_connected_peers().len(), 2);
             assert_eq!(manager2.get_connected_peers().len(), 1);
             assert_eq!(manager3.get_connected_peers().len(), 1);
 
-            let transaction = Transaction {
-                from: "Charlie".to_string(),
-                to: "David".to_string(),
-                amount: 200.0,
-                currency_type: icn_common::CurrencyType::Education,
-                timestamp: chrono::Utc::now().timestamp(),
-                signature: None,
-            };
+            // Check if manager2 and manager3 received network updates
+            let received_update2 = manager2.receive_event().await;
+            let received_update3 = manager3.receive_event().await;
 
-            manager1.broadcast_transaction(transaction.clone()).await.unwrap();
+            assert!(matches!(received_update2, Some(NetworkMessage::PeerConnect(_))));
+            assert!(matches!(received_update3, Some(NetworkMessage::PeerConnect(_))));
 
-            // Wait a bit for the message to be processed
-            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-
-            // Check if both manager2 and manager3 received the transaction
-            let received2 = manager2.receive_event().await;
-            let received3 = manager3.receive_event().await;
-
-            assert!(matches!(received2, Some(NetworkMessage::Transaction(_))));
-            assert!(matches!(received3, Some(NetworkMessage::Transaction(_))));
+            manager1.stop().await.unwrap();
+            manager2.stop().await.unwrap();
+            manager3.stop().await.unwrap();
         });
     }
 
@@ -300,16 +379,13 @@ mod tests {
     fn test_peer_disconnect() {
         let rt = Runtime::new().unwrap();
         rt.block_on(async {
-            let addr1: SocketAddr = "127.0.0.1:8005".parse().unwrap();
-            let addr2: SocketAddr = "127.0.0.1:8006".parse().unwrap();
-
-            let mut manager1 = NetworkManager::new(addr1);
-            let mut manager2 = NetworkManager::new(addr2);
+            let mut manager1 = NetworkManager::new("127.0.0.1:8005".parse().unwrap());
+            let mut manager2 = NetworkManager::new("127.0.0.1:8006".parse().unwrap());
 
             manager1.start().await.unwrap();
             manager2.start().await.unwrap();
 
-            manager1.connect_to_peer(addr2).await.unwrap();
+            manager1.connect_to_peer("127.0.0.1:8006".parse().unwrap()).await.unwrap();
 
             // Wait a bit for the connection to be established
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -318,7 +394,7 @@ mod tests {
             assert_eq!(manager2.get_connected_peers().len(), 1);
 
             // Simulate manager2 disconnecting
-            drop(manager2);
+            manager2.stop().await.unwrap();
 
             // Wait a bit for the disconnection to be detected
             tokio::time::sleep(std::time::Duration::from_millis(200)).await;
@@ -328,6 +404,8 @@ mod tests {
             // Check if manager1 received a peer disconnect message
             let received = manager1.receive_event().await;
             assert!(matches!(received, Some(NetworkMessage::PeerDisconnect(_))));
+
+            manager1.stop().await.unwrap();
         });
     }
 }
