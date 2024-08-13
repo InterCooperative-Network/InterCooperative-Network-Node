@@ -2,7 +2,6 @@
 
 use thiserror::Error;
 
-/// Custom error type for the ICN project.
 #[derive(Error, Debug)]
 pub enum IcnError {
     #[error("Blockchain error: {0}")]
@@ -50,12 +49,48 @@ pub enum IcnError {
     #[error("Zero-Knowledge Proof error: {0}")]
     Zkp(String),
 
-    #[error("Validation error: {0}")]
-    Validation(String),
+    #[error("Smart Contract error: {0}")]
+    SmartContract(String),
+
+    #[error("Cross-shard communication error: {0}")]
+    CrossShardCommunication(String),
 
     #[error("Unknown error: {0}")]
     Unknown(String),
 }
 
-/// Result type for the ICN project.
 pub type IcnResult<T> = std::result::Result<T, IcnError>;
+
+/// Helper function to convert any error type to IcnError
+pub fn to_icn_error<E: std::error::Error>(error: E) -> IcnError {
+    IcnError::Unknown(error.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_icn_error_display() {
+        let error = IcnError::Blockchain("Invalid block".to_string());
+        assert_eq!(error.to_string(), "Blockchain error: Invalid block");
+    }
+
+    #[test]
+    fn test_icn_result() {
+        fn may_fail() -> IcnResult<i32> {
+            Err(IcnError::Currency("Insufficient funds".to_string()))
+        }
+
+        let result = may_fail();
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "Currency error: Insufficient funds");
+    }
+
+    #[test]
+    fn test_to_icn_error() {
+        let io_error = std::io::Error::new(std::io::ErrorKind::NotFound, "File not found");
+        let icn_error = to_icn_error(io_error);
+        assert_eq!(icn_error.to_string(), "Unknown error: File not found");
+    }
+}

@@ -2,7 +2,7 @@
 
 # Constants
 OUTPUT_FILE="PROJECT_STRUCTURE_AND_CODE_CONTENTS.txt"
-PROJECT_DIR="/home/matt/InterCooperative-Network"
+PROJECT_DIR="$HOME/InterCooperative-Network-Node"
 IGNORE_FILES="CHANGELOG.md cliff.toml"
 
 # Function to update changelog
@@ -35,9 +35,9 @@ process_files() {
     done
 }
 
-# Function to generate LLM file
-generate_llm_file() {
-    echo "Generating LLM file..."
+# Function to generate the project structure and contents file
+generate_structure_file() {
+    echo "Generating project structure and contents file..."
 
     # Clear the output file if it already exists
     > $OUTPUT_FILE
@@ -105,9 +105,9 @@ main() {
     # Prompt for commit message
     commit_message=$(get_commit_message)
 
-    echo "Generating LLM file..."
-    # Generate LLM file
-    generate_llm_file
+    echo "Generating project structure and contents file..."
+    # Generate project structure and contents file
+    generate_structure_file
 
     echo "Updating changelog..."
     # Update changelog
