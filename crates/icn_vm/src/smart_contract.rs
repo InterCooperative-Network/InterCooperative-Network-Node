@@ -1,8 +1,9 @@
-// File: icn_vm/src/smart_contract.rs
+// File: crates/icn_vm/src/smart_contract.rs
 
 use icn_common::{IcnResult, IcnError, Transaction, CurrencyType};
 use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
+use std::sync::{Arc, RwLock};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SmartContract {
@@ -22,19 +23,21 @@ pub enum Value {
 }
 
 pub struct SmartContractExecutor {
-    contracts: HashMap<String, SmartContract>,
+    contracts: Arc<RwLock<HashMap<String, SmartContract>>>,
 }
 
 impl SmartContractExecutor {
     pub fn new() -> Self {
         SmartContractExecutor {
-            contracts: HashMap::new(),
+            contracts: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
-    pub fn deploy_contract(&mut self, id: String, code: String) -> IcnResult<()> {
-        if self.contracts.contains_key(&id) {
-            return Err(IcnError::VM(format!("Contract with id {} already exists", id)));
+    pub fn deploy_contract(&self, id: String, code: String) -> IcnResult<()> {
+        let mut contracts = self.contracts.write().map_err(|_| IcnError::SmartContract("Failed to acquire write lock".into()))?;
+        
+        if contracts.contains_key(&id) {
+            return Err(IcnError::SmartContract(format!("Contract with id {} already exists", id)));
         }
 
         let contract = SmartContract {
@@ -43,42 +46,47 @@ impl SmartContractExecutor {
             state: HashMap::new(),
         };
 
-        self.contracts.insert(id, contract);
+        contracts.insert(id, contract);
         Ok(())
     }
 
-    pub fn execute_contract(&mut self, id: &str, function: &str, args: Vec<Value>) -> IcnResult<Value> {
-        let contract = self.contracts.get_mut(id)
-            .ok_or_else(|| IcnError::VM(format!("Contract with id {} not found", id)))?;
+    pub fn execute_contract(&self, id: &str, function: &str, args: Vec<Value>) -> IcnResult<Value> {
+        let contracts = self.contracts.read().map_err(|_| IcnError::SmartContract("Failed to acquire read lock".into()))?;
+        
+        let contract = contracts.get(id)
+            .ok_or_else(|| IcnError::SmartContract(format!("Contract with id {} not found", id)))?;
 
         // In a real implementation, you would parse and execute the contract code here.
         // For this example, we'll simulate a simple token transfer function.
         match function {
             "transfer" => self.execute_transfer(contract, args),
-            _ => Err(IcnError::VM(format!("Unknown function: {}", function))),
+            _ => Err(IcnError::SmartContract(format!("Unknown function: {}", function))),
         }
     }
 
-    fn execute_transfer(&mut self, contract: &mut SmartContract, args: Vec<Value>) -> IcnResult<Value> {
+    fn execute_transfer(&self, contract: &SmartContract, args: Vec<Value>) -> IcnResult<Value> {
         if args.len() != 3 {
-            return Err(IcnError::VM("transfer function requires 3 arguments: from, to, and amount".into()));
+            return Err(IcnError::SmartContract("transfer function requires 3 arguments: from, to, and amount".into()));
         }
 
         let from = match &args[0] {
             Value::String(s) => s,
-            _ => return Err(IcnError::VM("'from' argument must be a string".into())),
+            _ => return Err(IcnError::SmartContract("'from' argument must be a string".into())),
         };
 
         let to = match &args[1] {
             Value::String(s) => s,
-            _ => return Err(IcnError::VM("'to' argument must be a string".into())),
+            _ => return Err(IcnError::SmartContract("'to' argument must be a string".into())),
         };
 
         let amount = match &args[2] {
             Value::Int(n) => *n as f64,
             Value::Float(n) => *n,
-            _ => return Err(IcnError::VM("'amount' argument must be a number".into())),
+            _ => return Err(IcnError::SmartContract("'amount' argument must be a number".into())),
         };
+
+        let mut contracts = self.contracts.write().map_err(|_| IcnError::SmartContract("Failed to acquire write lock".into()))?;
+        let contract = contracts.get_mut(&contract.id).ok_or_else(|| IcnError::SmartContract("Contract not found".into()))?;
 
         let balances = contract.state.entry("balances".to_string())
             .or_insert_with(|| Value::Map(HashMap::new()));
@@ -92,7 +100,7 @@ impl SmartContractExecutor {
 
             if let (Value::Float(from_amount), Value::Float(to_amount)) = (from_balance, to_balance) {
                 if *from_amount < amount {
-                    return Err(IcnError::VM("Insufficient balance for transfer".into()));
+                    return Err(IcnError::SmartContract("Insufficient balance for transfer".into()));
                 }
 
                 *from_amount -= amount;
@@ -100,22 +108,24 @@ impl SmartContractExecutor {
 
                 Ok(Value::Bool(true))
             } else {
-                Err(IcnError::VM("Invalid balance type".into()))
+                Err(IcnError::SmartContract("Invalid balance type".into()))
             }
         } else {
-            Err(IcnError::VM("Invalid state structure".into()))
+            Err(IcnError::SmartContract("Invalid state structure".into()))
         }
     }
 
-    pub fn get_contract_state(&self, id: &str) -> IcnResult<&HashMap<String, Value>> {
-        self.contracts.get(id)
-            .map(|contract| &contract.state)
-            .ok_or_else(|| IcnError::VM(format!("Contract with id {} not found", id)))
+    pub fn get_contract_state(&self, id: &str) -> IcnResult<HashMap<String, Value>> {
+        let contracts = self.contracts.read().map_err(|_| IcnError::SmartContract("Failed to acquire read lock".into()))?;
+        contracts.get(id)
+            .map(|contract| contract.state.clone())
+            .ok_or_else(|| IcnError::SmartContract(format!("Contract with id {} not found", id)))
     }
 
-    pub fn update_contract_state(&mut self, id: &str, key: String, value: Value) -> IcnResult<()> {
-        let contract = self.contracts.get_mut(id)
-            .ok_or_else(|| IcnError::VM(format!("Contract with id {} not found", id)))?;
+    pub fn update_contract_state(&self, id: &str, key: String, value: Value) -> IcnResult<()> {
+        let mut contracts = self.contracts.write().map_err(|_| IcnError::SmartContract("Failed to acquire write lock".into()))?;
+        let contract = contracts.get_mut(id)
+            .ok_or_else(|| IcnError::SmartContract(format!("Contract with id {} not found", id)))?;
 
         contract.state.insert(key, value);
         Ok(())
@@ -128,7 +138,7 @@ mod tests {
 
     #[test]
     fn test_smart_contract_deployment_and_execution() {
-        let mut executor = SmartContractExecutor::new();
+        let executor = SmartContractExecutor::new();
 
         // Deploy a simple token contract
         let contract_id = "token_contract".to_string();
@@ -183,7 +193,7 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err().to_string(),
-            IcnError::VM("Insufficient balance for transfer".into()).to_string()
+            IcnError::SmartContract("Insufficient balance for transfer".into()).to_string()
         );
     }
 }

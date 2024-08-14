@@ -1,7 +1,6 @@
 ===== START OF FILE STRUCTURE =====
-/home/matt/InterCooperative-Network
+/home/fahertym/InterCooperative-Network-Node
 ├── build_and_run_demo.sh
-├── Cargo.lock
 ├── Cargo.toml
 ├── CHANGELOG.md
 ├── cliff.toml
@@ -199,10 +198,10 @@
 ├── README.md
 └── update_project.sh
 
-58 directories, 141 files
+58 directories, 140 files
 ===== END OF FILE STRUCTURE =====
 
-===== START OF /home/matt/InterCooperative-Network/Cargo.toml =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/Cargo.toml =====
 [workspace]
 members = [
     "crates/icn_common",
@@ -236,9 +235,9 @@ chrono = { version = "0.4", features = ["serde"] }
 thiserror = "1.0"
 log = "0.4"
 env_logger = "0.9"
-===== END OF /home/matt/InterCooperative-Network/Cargo.toml =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/Cargo.toml =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_api/Cargo.toml =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_api/Cargo.toml =====
 [package]
 name = "icn_api"
 version = "0.1.0"
@@ -254,9 +253,9 @@ serde_json = "1.0"
 
 [dev-dependencies]
 tokio = { version = "1.0", features = ["full", "test-util"] }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_api/Cargo.toml =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_api/Cargo.toml =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_api/src/lib.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_api/src/lib.rs =====
 // File: crates/icn_api/src/lib.rs
 
 use std::sync::Arc;
@@ -812,9 +811,9 @@ mod tests {
             panic!("Unexpected response type");
         }
     }
-}===== END OF /home/matt/InterCooperative-Network/crates/icn_api/src/lib.rs =====
+}===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_api/src/lib.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_api/src/web.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_api/src/web.rs =====
 // File: crates/icn_api/src/web.rs
 
 use warp::Filter;
@@ -1067,9 +1066,9 @@ mod tests {
 
         assert_eq!(response.status(), StatusCode::OK);
     }
-}===== END OF /home/matt/InterCooperative-Network/crates/icn_api/src/web.rs =====
+}===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_api/src/web.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_blockchain/Cargo.toml =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_blockchain/Cargo.toml =====
 [package]
 name = "icn_blockchain"
 version = "0.1.0"
@@ -1086,9 +1085,9 @@ serde_json = "1.0"
 
 [dev-dependencies]
 tokio-test = "0.4"
-===== END OF /home/matt/InterCooperative-Network/crates/icn_blockchain/Cargo.toml =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_blockchain/Cargo.toml =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_blockchain/src/asset_tokenization.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_blockchain/src/asset_tokenization.rs =====
 // File: icn_blockchain/src/asset_tokenization.rs
 
 use icn_common::bit_utils::{BitVec, set_bit, clear_bit, toggle_bit, rotate_left, rotate_right};
@@ -1223,9 +1222,9 @@ mod tests {
         assert!(TransactionValidator::validate_transaction(&tx, &blockchain).is_err());
     }
 }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_blockchain/src/asset_tokenization.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_blockchain/src/asset_tokenization.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_blockchain/src/blockchain.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_blockchain/src/blockchain.rs =====
 // File: crates/icn_blockchain/src/lib.rs
 
 use chrono::{DateTime, Utc};
@@ -1570,9 +1569,9 @@ mod tests {
         assert_eq!(bob_transactions.len(), 2);
     }
 }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_blockchain/src/blockchain.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_blockchain/src/blockchain.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_blockchain/src/lib.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_blockchain/src/lib.rs =====
 // File: crates/icn_blockchain/src/blockchain.rs
 
 use chrono::{DateTime, Utc};
@@ -2083,9 +2082,9 @@ mod tests {
         assert_eq!(blockchain.get_balance("David", &CurrencyType::BasicNeeds).unwrap(), 30.0);
         assert_eq!(blockchain.get_balance("Frank", &CurrencyType::BasicNeeds).unwrap(), 20.0);
     }
-}===== END OF /home/matt/InterCooperative-Network/crates/icn_blockchain/src/lib.rs =====
+}===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_blockchain/src/lib.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_blockchain/src/transaction_validator.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_blockchain/src/transaction_validator.rs =====
 // File: icn_blockchain/src/transaction_validator.rs
 
 use icn_common::error::{IcnError, IcnResult};
@@ -2207,9 +2206,9 @@ mod tests {
         assert!(TransactionValidator::validate_transaction(&tx, &blockchain).is_err());
     }
 }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_blockchain/src/transaction_validator.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_blockchain/src/transaction_validator.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_common/Cargo.toml =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_common/Cargo.toml =====
 [package]
 name = "icn_common"
 version = "0.1.0"
@@ -2231,9 +2230,9 @@ uuid = "0.8"
 
 [dev-dependencies]
 rand = "0.8"
-rand_chacha = "0.3"===== END OF /home/matt/InterCooperative-Network/crates/icn_common/Cargo.toml =====
+rand_chacha = "0.3"===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_common/Cargo.toml =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_common/src/bit_utils.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_common/src/bit_utils.rs =====
 // File: crates/icn_common/src/bit_utils.rs
 
 /// A custom bit vector implementation.
@@ -2397,73 +2396,357 @@ mod tests {
         bv.set(10);
     }
 }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_common/src/bit_utils.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_common/src/bit_utils.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_common/src/error.rs =====
-// File: crates/icn_common/src/error.rs
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_common/src/error.rs =====
+// File: crates/icn_governance/src/lib.rs
 
-use thiserror::Error;
+use icn_common::{IcnResult, IcnError};
+use chrono::{DateTime, Utc, Duration};
+use serde::{Serialize, Deserialize};
+use std::collections::HashMap;
+use std::sync::{Arc, RwLock};
 
-/// Custom error type for the ICN project.
-#[derive(Error, Debug)]
-pub enum IcnError {
-    #[error("Blockchain error: {0}")]
-    Blockchain(String),
-
-    #[error("Consensus error: {0}")]
-    Consensus(String),
-
-    #[error("Currency error: {0}")]
-    Currency(String),
-
-    #[error("Governance error: {0}")]
-    Governance(String),
-
-    #[error("Identity error: {0}")]
-    Identity(String),
-
-    #[error("Network error: {0}")]
-    Network(String),
-
-    #[error("Node management error: {0}")]
-    NodeManagement(String),
-
-    #[error("Sharding error: {0}")]
-    Sharding(String),
-
-    #[error("Storage error: {0}")]
-    Storage(String),
-
-    #[error("VM error: {0}")]
-    Vm(String),
-
-    #[error("I/O error: {0}")]
-    Io(#[from] std::io::Error),
-
-    #[error("Serialization error: {0}")]
-    Serialization(#[from] serde_json::Error),
-
-    #[error("Database error: {0}")]
-    Database(String),
-
-    #[error("Configuration error: {0}")]
-    Config(String),
-
-    #[error("Zero-Knowledge Proof error: {0}")]
-    Zkp(String),
-
-    #[error("Validation error: {0}")]
-    Validation(String),
-
-    #[error("Unknown error: {0}")]
-    Unknown(String),
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum ProposalStatus {
+    Active,
+    Passed,
+    Rejected,
+    Executed,
+    Expired,
 }
 
-/// Result type for the ICN project.
-pub type IcnResult<T> = std::result::Result<T, IcnError>;
-===== END OF /home/matt/InterCooperative-Network/crates/icn_common/src/error.rs =====
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum ProposalType {
+    Constitutional,
+    EconomicAdjustment,
+    NetworkUpgrade,
+    CommunityInitiative,
+}
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_common/src/lib.rs =====
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum ProposalCategory {
+    Economic,
+    Technical,
+    Social,
+    Environmental,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Proposal {
+    pub id: String,
+    pub title: String,
+    pub description: String,
+    pub proposer: String,
+    pub created_at: DateTime<Utc>,
+    pub voting_ends_at: DateTime<Utc>,
+    pub execution_deadline: Option<DateTime<Utc>>,
+    pub status: ProposalStatus,
+    pub proposal_type: ProposalType,
+    pub category: ProposalCategory,
+    pub required_quorum: f64,
+    pub required_majority: f64,
+    pub execution_threshold: Option<f64>,
+    pub execution_delay: Option<Duration>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Vote {
+    pub voter: String,
+    pub weight: f64,
+    pub in_favor: bool,
+    pub timestamp: DateTime<Utc>,
+}
+
+pub struct GovernanceSystem {
+    proposals: Arc<RwLock<HashMap<String, Proposal>>>,
+    votes: Arc<RwLock<HashMap<String, Vec<Vote>>>>,
+}
+
+impl GovernanceSystem {
+    pub fn new() -> Self {
+        GovernanceSystem {
+            proposals: Arc::new(RwLock::new(HashMap::new())),
+            votes: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+
+    pub fn create_proposal(&self, proposal: Proposal) -> IcnResult<String> {
+        let mut proposals = self.proposals.write().map_err(|_| IcnError::Governance("Failed to acquire write lock for proposals".into()))?;
+        
+        if proposals.contains_key(&proposal.id) {
+            return Err(IcnError::Governance("Proposal ID already exists".into()));
+        }
+
+        let proposal_id = proposal.id.clone();
+        proposals.insert(proposal_id.clone(), proposal);
+        self.votes.write().map_err(|_| IcnError::Governance("Failed to acquire write lock for votes".into()))?.insert(proposal_id.clone(), Vec::new());
+
+        Ok(proposal_id)
+    }
+
+    pub fn get_proposal(&self, proposal_id: &str) -> IcnResult<Proposal> {
+        let proposals = self.proposals.read().map_err(|_| IcnError::Governance("Failed to acquire read lock for proposals".into()))?;
+        proposals.get(proposal_id).cloned().ok_or_else(|| IcnError::Governance("Proposal not found".into()))
+    }
+
+    pub fn vote_on_proposal(&self, proposal_id: &str, voter: String, in_favor: bool, weight: f64) -> IcnResult<()> {
+        let mut proposals = self.proposals.write().map_err(|_| IcnError::Governance("Failed to acquire write lock for proposals".into()))?;
+        let proposal = proposals.get_mut(proposal_id).ok_or_else(|| IcnError::Governance("Proposal not found".into()))?;
+
+        if proposal.status != ProposalStatus::Active {
+            return Err(IcnError::Governance("Proposal is not active".into()));
+        }
+
+        if Utc::now() > proposal.voting_ends_at {
+            return Err(IcnError::Governance("Voting period has ended".into()));
+        }
+
+        let mut votes = self.votes.write().map_err(|_| IcnError::Governance("Failed to acquire write lock for votes".into()))?;
+        let proposal_votes = votes.get_mut(proposal_id).ok_or_else(|| IcnError::Governance("Votes not found for proposal".into()))?;
+
+        if proposal_votes.iter().any(|v| v.voter == voter) {
+            return Err(IcnError::Governance("Voter has already voted on this proposal".into()));
+        }
+
+        proposal_votes.push(Vote {
+            voter,
+            weight,
+            in_favor,
+            timestamp: Utc::now(),
+        });
+
+        Ok(())
+    }
+
+    pub fn finalize_proposal(&self, proposal_id: &str) -> IcnResult<ProposalStatus> {
+        let mut proposals = self.proposals.write().map_err(|_| IcnError::Governance("Failed to acquire write lock for proposals".into()))?;
+        let proposal = proposals.get_mut(proposal_id).ok_or_else(|| IcnError::Governance("Proposal not found".into()))?;
+
+        if proposal.status != ProposalStatus::Active {
+            return Err(IcnError::Governance("Proposal is not active".into()));
+        }
+
+        let now = Utc::now();
+        if now < proposal.voting_ends_at {
+            return Err(IcnError::Governance("Voting period has not ended yet".into()));
+        }
+
+        let votes = self.votes.read().map_err(|_| IcnError::Governance("Failed to acquire read lock for votes".into()))?;
+        let proposal_votes = votes.get(proposal_id).ok_or_else(|| IcnError::Governance("Votes not found for proposal".into()))?;
+
+        let total_votes: f64 = proposal_votes.iter().map(|v| v.weight).sum();
+        let votes_in_favor: f64 = proposal_votes.iter().filter(|v| v.in_favor).map(|v| v.weight).sum();
+
+        if total_votes < proposal.required_quorum {
+            proposal.status = ProposalStatus::Rejected;
+        } else if votes_in_favor / total_votes > proposal.required_majority {
+            proposal.status = ProposalStatus::Passed;
+            if let Some(delay) = proposal.execution_delay {
+                proposal.execution_deadline = Some(now + delay);
+            }
+        } else {
+            proposal.status = ProposalStatus::Rejected;
+        }
+
+        Ok(proposal.status.clone())
+    }
+
+    pub fn execute_proposal(&self, proposal_id: &str) -> IcnResult<()> {
+        let mut proposals = self.proposals.write().map_err(|_| IcnError::Governance("Failed to acquire write lock for proposals".into()))?;
+        let proposal = proposals.get_mut(proposal_id).ok_or_else(|| IcnError::Governance("Proposal not found".into()))?;
+
+        if proposal.status != ProposalStatus::Passed {
+            return Err(IcnError::Governance("Proposal has not passed".into()));
+        }
+
+        if let Some(deadline) = proposal.execution_deadline {
+            if Utc::now() > deadline {
+                proposal.status = ProposalStatus::Expired;
+                return Err(IcnError::Governance("Proposal execution deadline has passed".into()));
+            }
+        }
+
+        if let Some(threshold) = proposal.execution_threshold {
+            let votes = self.votes.read().map_err(|_| IcnError::Governance("Failed to acquire read lock for votes".into()))?;
+            let proposal_votes = votes.get(proposal_id).ok_or_else(|| IcnError::Governance("Votes not found for proposal".into()))?;
+            let total_votes: f64 = proposal_votes.iter().map(|v| v.weight).sum();
+            let votes_in_favor: f64 = proposal_votes.iter().filter(|v| v.in_favor).map(|v| v.weight).sum();
+
+            if votes_in_favor / total_votes < threshold {
+                return Err(IcnError::Governance("Execution threshold not met".into()));
+            }
+        }
+
+        // Here you would implement the actual execution logic based on the proposal type
+        match proposal.proposal_type {
+            ProposalType::Constitutional => {
+                // Implement constitutional change logic
+            }
+            ProposalType::EconomicAdjustment => {
+                // Implement economic adjustment logic
+            }
+            ProposalType::NetworkUpgrade => {
+                // Implement network upgrade logic
+            }
+            ProposalType::CommunityInitiative => {
+                // Implement community initiative logic
+            }
+        }
+
+        proposal.status = ProposalStatus::Executed;
+        Ok(())
+    }
+
+    pub fn list_active_proposals(&self) -> IcnResult<Vec<Proposal>> {
+        let proposals = self.proposals.read().map_err(|_| IcnError::Governance("Failed to acquire read lock for proposals".into()))?;
+        Ok(proposals.values().filter(|p| p.status == ProposalStatus::Active).cloned().collect())
+    }
+
+    pub fn get_proposal_results(&self, proposal_id: &str) -> IcnResult<(f64, f64)> {
+        let votes = self.votes.read().map_err(|_| IcnError::Governance("Failed to acquire read lock for votes".into()))?;
+        let proposal_votes = votes.get(proposal_id).ok_or_else(|| IcnError::Governance("Votes not found for proposal".into()))?;
+
+        let total_votes: f64 = proposal_votes.iter().map(|v| v.weight).sum();
+        let votes_in_favor: f64 = proposal_votes.iter().filter(|v| v.in_favor).map(|v| v.weight).sum();
+
+        Ok((votes_in_favor, total_votes))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn create_test_proposal() -> Proposal {
+        Proposal {
+            id: "test_proposal".to_string(),
+            title: "Test Proposal".to_string(),
+            description: "This is a test proposal".to_string(),
+            proposer: "Alice".to_string(),
+            created_at: Utc::now(),
+            voting_ends_at: Utc::now() + Duration::days(7),
+            execution_deadline: Some(Utc::now() + Duration::days(14)),
+            status: ProposalStatus::Active,
+            proposal_type: ProposalType::Constitutional,
+            category: ProposalCategory::Technical,
+            required_quorum: 0.5,
+            required_majority: 0.66,
+            execution_threshold: Some(0.75),
+            execution_delay: Some(Duration::days(1)),
+        }
+    }
+
+    #[test]
+    fn test_create_and_get_proposal() {
+        let governance = GovernanceSystem::new();
+        let proposal = create_test_proposal();
+        let proposal_id = governance.create_proposal(proposal.clone()).unwrap();
+
+        let retrieved_proposal = governance.get_proposal(&proposal_id).unwrap();
+        assert_eq!(retrieved_proposal.id, proposal.id);
+        assert_eq!(retrieved_proposal.title, proposal.title);
+    }
+
+    #[test]
+    fn test_vote_on_proposal() {
+        let governance = GovernanceSystem::new();
+        let proposal = create_test_proposal();
+        let proposal_id = governance.create_proposal(proposal).unwrap();
+
+        assert!(governance.vote_on_proposal(&proposal_id, "Bob".to_string(), true, 1.0).is_ok());
+        assert!(governance.vote_on_proposal(&proposal_id, "Charlie".to_string(), false, 1.0).is_ok());
+
+        // Test duplicate vote
+        assert!(governance.vote_on_proposal(&proposal_id, "Bob".to_string(), false, 1.0).is_err());
+    }
+
+    #[test]
+    fn test_finalize_proposal() {
+        let governance = GovernanceSystem::new();
+        let mut proposal = create_test_proposal();
+        proposal.voting_ends_at = Utc::now() - Duration::hours(1);
+        let proposal_id = governance.create_proposal(proposal).unwrap();
+
+        governance.vote_on_proposal(&proposal_id, "Bob".to_string(), true, 3.0).unwrap();
+        governance.vote_on_proposal(&proposal_id, "Charlie".to_string(), false, 1.0).unwrap();
+
+        let status = governance.finalize_proposal(&proposal_id).unwrap();
+        assert_eq!(status, ProposalStatus::Passed);
+
+        let finalized_proposal = governance.get_proposal(&proposal_id).unwrap();
+        assert!(finalized_proposal.execution_deadline.is_some());
+    }
+
+    #[test]
+    fn test_execute_proposal() {
+        let governance = GovernanceSystem::new();
+        let mut proposal = create_test_proposal();
+        proposal.voting_ends_at = Utc::now() - Duration::hours(2);
+        proposal.status = ProposalStatus::Passed;
+        let proposal_id = governance.create_proposal(proposal).unwrap();
+
+        governance.vote_on_proposal(&proposal_id, "Bob".to_string(), true, 4.0).unwrap();
+        governance.vote_on_proposal(&proposal_id, "Charlie".to_string(), true, 3.0).unwrap();
+        governance.vote_on_proposal(&proposal_id, "David".to_string(), false, 2.0).unwrap();
+
+        assert!(governance.execute_proposal(&proposal_id).is_ok());
+
+        let executed_proposal = governance.get_proposal(&proposal_id).unwrap();
+        assert_eq!(executed_proposal.status, ProposalStatus::Executed);
+    }
+
+    #[test]
+    fn test_list_active_proposals() {
+        let governance = GovernanceSystem::new();
+        let active_proposal = create_test_proposal();
+        let mut passed_proposal = create_test_proposal();
+        passed_proposal.id = "passed_proposal".to_string();
+        passed_proposal.status = ProposalStatus::Passed;
+
+        governance.create_proposal(active_proposal).unwrap();
+        governance.create_proposal(passed_proposal).unwrap();
+
+        let active_proposals = governance.list_active_proposals().unwrap();
+        assert_eq!(active_proposals.len(), 1);
+        assert_eq!(active_proposals[0].status, ProposalStatus::Active);
+    }
+
+    #[test]
+    fn test_get_proposal_results() {
+        let governance = GovernanceSystem::new();
+        let proposal = create_test_proposal();
+        let proposal_id = governance.create_proposal(proposal).unwrap();
+
+        governance.vote_on_proposal(&proposal_id, "Bob".to_string(), true, 3.0).unwrap();
+        governance.vote_on_proposal(&proposal_id, "Charlie".to_string(), false, 2.0).unwrap();
+        governance.vote_on_proposal(&proposal_id, "David".to_string(), true, 1.0).unwrap();
+
+        let (votes_in_favor, total_votes) = governance.get_proposal_results(&proposal_id).unwrap();
+        assert_eq!(votes_in_favor, 4.0);
+        assert_eq!(total_votes, 6.0);
+    }
+
+    #[test]
+    fn test_proposal_expiration() {
+        let governance = GovernanceSystem::new();
+        let mut proposal = create_test_proposal();
+        proposal.voting_ends_at = Utc::now() - Duration::days(8);
+        proposal.execution_deadline = Some(Utc::now() - Duration::days(1));
+        proposal.status = ProposalStatus::Passed;
+        let proposal_id = governance.create_proposal(proposal).unwrap();
+
+        let result = governance.execute_proposal(&proposal_id);
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert_eq!(error.to_string(), "Governance error: Proposal execution deadline has passed");
+
+        let expired_proposal = governance.get_proposal(&proposal_id).unwrap();
+        assert_eq!(expired_proposal.status, ProposalStatus::Expired);
+    }
+}===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_common/src/error.rs =====
+
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_common/src/lib.rs =====
 // File: crates/icn_common/src/lib.rs
 
 pub mod error;
@@ -2649,9 +2932,9 @@ mod tests {
         assert_eq!(stats.active_proposals, 3);
     }
 }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_common/src/lib.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_common/src/lib.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_consensus/Cargo.toml =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_consensus/Cargo.toml =====
 [package]
 name = "icn_consensus"
 version = "0.1.0"
@@ -2667,9 +2950,9 @@ chrono = { version = "0.4", features = ["serde"] }
 rand = "0.8"
 
 [dev-dependencies]
-tokio = { version = "1.0", features = ["full"] }===== END OF /home/matt/InterCooperative-Network/crates/icn_consensus/Cargo.toml =====
+tokio = { version = "1.0", features = ["full"] }===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_consensus/Cargo.toml =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_consensus/src/bft_poc.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_consensus/src/bft_poc.rs =====
 use icn_utils::{error::IcnError, IcnResult};
 use serde::{Serialize, Deserialize};
 
@@ -2798,9 +3081,9 @@ mod tests {
         assert_eq!(status, ProposalStatus::Rejected);
     }
 }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_consensus/src/bft_poc.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_consensus/src/bft_poc.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_consensus/src/consensus.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_consensus/src/consensus.rs =====
 // File: icn_consensus/src/consensus.rs
 
 use icn_common::{Block, IcnResult, IcnError, Transaction};
@@ -3089,9 +3372,9 @@ mod tests {
         consensus.update_reputation("validator1", -1.5).unwrap();
         assert_eq!(consensus.validators["validator1"], 0.0);
     }
-}===== END OF /home/matt/InterCooperative-Network/crates/icn_consensus/src/consensus.rs =====
+}===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_consensus/src/consensus.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_consensus/src/lib.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_consensus/src/lib.rs =====
 // File: icn_consensus/src/lib.rs
 
 use icn_blockchain::Block;
@@ -3422,9 +3705,9 @@ mod tests {
         assert_eq!(blockchain.len(), 4);  // Genesis block + 3 new blocks
     }
 }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_consensus/src/lib.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_consensus/src/lib.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_consensus/src/proof_of_cooperation.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_consensus/src/proof_of_cooperation.rs =====
 use icn_utils::{error::IcnError, IcnResult};
 use sha2::{Sha256, Digest};
 use serde::{Serialize, Deserialize};
@@ -3526,9 +3809,9 @@ mod tests {
         assert!(poc.validate_chain().is_err());
     }
 }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_consensus/src/proof_of_cooperation.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_consensus/src/proof_of_cooperation.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_core/Cargo.toml =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_core/Cargo.toml =====
 [package]
 name = "icn_core"
 version = "0.1.0"
@@ -3553,9 +3836,9 @@ ed25519-dalek = "1.0" # Add this line
 
 [dev-dependencies]
 tokio-test = "0.4"
-===== END OF /home/matt/InterCooperative-Network/crates/icn_core/Cargo.toml =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_core/Cargo.toml =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_core/src/config.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_core/src/config.rs =====
 // icn_core/src/config.rs
 
 use serde::{Deserialize, Serialize};
@@ -3595,9 +3878,9 @@ impl Default for Config {
         }
     }
 }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_core/src/config.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_core/src/config.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_core/src/error.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_core/src/error.rs =====
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -3645,22 +3928,22 @@ pub enum Error {
     GovernanceError(String),
 }
 
-pub type Result<T> = std::result::Result<T, Error>;===== END OF /home/matt/InterCooperative-Network/crates/icn_core/src/error.rs =====
+pub type Result<T> = std::result::Result<T, Error>;===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_core/src/error.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_core/src/lib.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_core/src/lib.rs =====
 // File: crates/icn_core/src/lib.rs
 
 use icn_common::{Config, Transaction, Proposal, ProposalStatus, Vote, CurrencyType, IcnResult, IcnError, NetworkStats};
 use icn_blockchain::Blockchain;
 use icn_consensus::PoCConsensus;
 use icn_currency::CurrencySystem;
-use icn_governance::GovernanceSystem;
+use icn_governance::{GovernanceSystem, ProposalType, ProposalCategory};
 use icn_identity::IdentityService;
 use icn_network::NetworkManager;
 use icn_sharding::ShardingManager;
 use icn_vm::SmartContractExecutor;
 use icn_storage::StorageManager;
-use icn_zkp::{ZKPManager, RangeProofWrapper};
+use icn_zkp::ZKPManager;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use std::collections::HashMap;
@@ -3679,7 +3962,6 @@ pub struct IcnNode {
     smart_contract_executor: Arc<RwLock<SmartContractExecutor>>,
     storage_manager: Arc<RwLock<StorageManager>>,
     zkp_manager: Arc<RwLock<ZKPManager>>,
-    proposals: Arc<RwLock<HashMap<String, Proposal>>>,
 }
 
 impl IcnNode {
@@ -3694,7 +3976,6 @@ impl IcnNode {
         let smart_contract_executor = Arc::new(RwLock::new(SmartContractExecutor::new()));
         let storage_manager = Arc::new(RwLock::new(StorageManager::new(3))); // Assuming a replication factor of 3
         let zkp_manager = Arc::new(RwLock::new(ZKPManager::new(64))); // Assuming a max bitsize of 64
-        let proposals = Arc::new(RwLock::new(HashMap::new()));
 
         Ok(Self {
             config,
@@ -3708,7 +3989,6 @@ impl IcnNode {
             smart_contract_executor,
             storage_manager,
             zkp_manager,
-            proposals,
         })
     }
 
@@ -3772,6 +4052,10 @@ impl IcnNode {
         self.governance.write().await.finalize_proposal(proposal_id)
     }
 
+    pub async fn execute_proposal(&self, proposal_id: &str) -> IcnResult<()> {
+        self.governance.write().await.execute_proposal(proposal_id)
+    }
+
     pub async fn mint_currency(&self, address: &str, currency_type: &CurrencyType, amount: f64) -> IcnResult<()> {
         self.currency_system.write().await.mint(address, currency_type, amount)
     }
@@ -3785,15 +4069,11 @@ impl IcnNode {
     }
 
     pub async fn execute_smart_contract(&self, contract_id: &str, function: &str, args: Vec<icn_vm::Value>) -> IcnResult<Option<icn_vm::Value>> {
-        // Retrieve the smart contract code from storage
         let contract_code = self.storage_manager.read().await.retrieve_data(contract_id)?;
-
-        // Pass the code and arguments to the VM for execution
         let mut executor = self.smart_contract_executor.write().await;
         executor.load_contract(contract_id, &String::from_utf8(contract_code)?)?;
         let result = executor.execute_contract(contract_id, function, args)?;
 
-        // Update the state based on the execution results
         if let Some(state_changes) = executor.get_state_changes(contract_id) {
             for (key, value) in state_changes {
                 self.storage_manager.write().await.store_data(&format!("{}:{}", contract_id, key), value.to_vec())?;
@@ -3916,10 +4196,21 @@ impl IcnNode {
             return Err(IcnError::Governance("Proposer does not exist".into()));
         }
 
-        // Additional checks can be added here, such as:
-        // - Checking if the proposal type is valid
-        // - Verifying the proposal's required quorum is within acceptable limits
-        // - Ensuring the voting period is reasonable
+        if !matches!(proposal.proposal_type, ProposalType::Constitutional | ProposalType::EconomicAdjustment | ProposalType::NetworkUpgrade | ProposalType::CommunityInitiative) {
+            return Err(IcnError::Governance("Invalid proposal type".into()));
+        }
+
+        if proposal.required_quorum < 0.0 || proposal.required_quorum > 1.0 {
+            return Err(IcnError::Governance("Invalid quorum value".into()));
+        }
+
+        if proposal.required_majority < 0.5 || proposal.required_majority > 1.0 {
+            return Err(IcnError::Governance("Invalid majority value".into()));
+        }
+
+        if proposal.voting_ends_at <= Utc::now() {
+            return Err(IcnError::Governance("Voting period has already ended".into()));
+        }
 
         Ok(())
     }
@@ -3956,7 +4247,7 @@ mod tests {
     #[tokio::test]
     async fn test_transaction_processing() {
         let node = create_test_node().await;
-        
+
         // Mint some currency for testing
         assert!(node.mint_currency("Alice", &CurrencyType::BasicNeeds, 1000.0).await.is_ok());
 
@@ -3993,7 +4284,9 @@ mod tests {
             proposal_type: ProposalType::Constitutional,
             category: ProposalCategory::Economic,
             required_quorum: 0.51,
-            execution_timestamp: None,
+            required_majority: 0.66,
+            execution_threshold: None,
+            execution_delay: None,
         };
 
         // Create proposal
@@ -4018,6 +4311,11 @@ mod tests {
         // Finalize proposal
         let final_status = node.finalize_proposal(&proposal_id).await.unwrap();
         assert_eq!(final_status, ProposalStatus::Passed);
+
+        // Execute proposal
+        assert!(node.execute_proposal(&proposal_id).await.is_ok());
+        let executed_proposal_status = node.get_proposal_status(&proposal_id).await.unwrap();
+        assert_eq!(executed_proposal_status, ProposalStatus::Executed);
     }
 
     #[tokio::test]
@@ -4035,10 +4333,16 @@ mod tests {
         // Execute the smart contract
         let result = node.execute_smart_contract(&contract_id, "add", vec![icn_vm::Value::Int(5), icn_vm::Value::Int(3)]).await.unwrap();
         assert_eq!(result, Some(icn_vm::Value::Int(8)));
+
+        // Test contract state persistence
+        let state_key = "last_result";
+        node.execute_smart_contract(&contract_id, "add", vec![icn_vm::Value::Int(10), icn_vm::Value::Int(15)]).await.unwrap();
+        let state_value = node.storage_manager.read().await.retrieve_data(&format!("{}:{}", contract_id, state_key)).unwrap();
+        assert_eq!(String::from_utf8(state_value).unwrap(), "25");
     }
 
     #[tokio::test]
-    async fn test_node_reputation_update() {
+    async fn test_node_reputation_management() {
         let node = create_test_node().await;
         let node_id = "test_node";
 
@@ -4068,10 +4372,27 @@ mod tests {
         assert_eq!(min_reputation, 0.0);
     }
 
-    // Add more tests as needed
-}===== END OF /home/matt/InterCooperative-Network/crates/icn_core/src/lib.rs =====
+    #[tokio::test]
+    async fn test_zkp_creation() {
+        let node = create_test_node().await;
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_core/src/logging/mod.rs =====
+        let transaction = Transaction {
+            from: "Alice".to_string(),
+            to: "Bob".to_string(),
+            amount: 50.0,
+            currency_type: CurrencyType::BasicNeeds,
+            timestamp: Utc::now().timestamp(),
+            signature: None,
+        };
+
+        let (proof, committed_values) = node.create_zkp(&transaction).await.unwrap();
+        assert!(!proof.is_empty());
+        assert!(!committed_values.is_empty());
+    }
+}
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_core/src/lib.rs =====
+
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_core/src/logging/mod.rs =====
 use log::{info, warn, error, debug};
 
 pub fn log_info(message: &str) {
@@ -4088,9 +4409,9 @@ pub fn log_error(message: &str) {
 
 pub fn log_debug(message: &str) {
     debug!("{}", message);
-}===== END OF /home/matt/InterCooperative-Network/crates/icn_core/src/logging/mod.rs =====
+}===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_core/src/logging/mod.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_core/src/main.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_core/src/main.rs =====
 // icn_core/src/main.rs
 
 use icn_core::{IcnNode, Config};
@@ -4229,9 +4550,9 @@ fn check_balance(node: &IcnNode) -> IcnResult<()> {
     let balance = node.get_balance(address.trim(), &CurrencyType::BasicNeeds)?;
     println!("Balance: {}", balance);
     Ok(())
-}===== END OF /home/matt/InterCooperative-Network/crates/icn_core/src/main.rs =====
+}===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_core/src/main.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_core/src/security/mod.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_core/src/security/mod.rs =====
 use crate::error::Result;
 use ed25519_dalek::{Keypair, PublicKey, Signature, Verifier};
 
@@ -4255,9 +4576,9 @@ impl SecurityManager {
     }
 
     // Add more security-related methods as needed
-}===== END OF /home/matt/InterCooperative-Network/crates/icn_core/src/security/mod.rs =====
+}===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_core/src/security/mod.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_core/tests/blockchain_and_consensus_tests.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_core/tests/blockchain_and_consensus_tests.rs =====
 // Filename: src/tests/blockchain_and_consensus_tests.rs
 
 use crate::blockchain::{Blockchain, Transaction};
@@ -4316,9 +4637,9 @@ mod tests {
         assert!(blockchain.consensus.is_block_valid(1), "Block should be valid after voting");
     }
 }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_core/tests/blockchain_and_consensus_tests.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_core/tests/blockchain_and_consensus_tests.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_core/tests/blockchain_tests.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_core/tests/blockchain_tests.rs =====
 // Filename: src/tests/blockchain_tests.rs
 
 use crate::blockchain::{Blockchain, Transaction};
@@ -4360,9 +4681,9 @@ fn test_blockchain_validity() {
     assert!(blockchain.create_block("Node1".to_string()).is_ok());
     assert!(blockchain.is_chain_valid());
 }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_core/tests/blockchain_tests.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_core/tests/blockchain_tests.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_core/tests/icn_node_tests.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_core/tests/icn_node_tests.rs =====
 // Filename: src/tests/icn_node_tests.rs
 
 // Import necessary modules and types
@@ -4430,9 +4751,9 @@ fn test_packet_processing() {
     assert!(!node.pit.has_pending_interest(&data_packet.name));
     assert!(node.content_store.get(&data_packet.name).is_some());
 }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_core/tests/icn_node_tests.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_core/tests/icn_node_tests.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_core/tests/integration_tests.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_core/tests/integration_tests.rs =====
 // File: crates/icn_core/tests/integration_tests.rs
 
 use icn_core::{IcnNode, Config};
@@ -4501,9 +4822,9 @@ async fn test_node_creation_and_basic_operations() {
 
     node.stop().await.unwrap();
 }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_core/tests/integration_tests.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_core/tests/integration_tests.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_core/tests/mod.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_core/tests/mod.rs =====
 // ===============================================
 // Tests Module
 // ===============================================
@@ -4554,9 +4875,9 @@ mod tests {
         assert_eq!(sharding_manager.get_balance("Bob".to_string(), CurrencyType::BasicNeeds), 500.0);
     }
 }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_core/tests/mod.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_core/tests/mod.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_core/tests/smart_contract_tests.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_core/tests/smart_contract_tests.rs =====
 // Filename: src/tests/smart_contract_tests.rs
 
 use crate::blockchain::Blockchain;
@@ -4602,9 +4923,9 @@ Quorum: 0.5";
     assert_eq!(env.balances.get("Bob").unwrap().get("ICN_TOKEN").unwrap(), &100.0);
     assert!(env.votes.contains_key(&blockchain.chain.last().unwrap().smart_contracts[1].id));
 }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_core/tests/smart_contract_tests.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_core/tests/smart_contract_tests.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_currency/Cargo.toml =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_currency/Cargo.toml =====
 [package]
 name = "icn_currency"
 version = "0.1.0"
@@ -4618,9 +4939,9 @@ thiserror = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
 
 [dev-dependencies]
-tokio = { version = "1.0", features = ["full"] }===== END OF /home/matt/InterCooperative-Network/crates/icn_currency/Cargo.toml =====
+tokio = { version = "1.0", features = ["full"] }===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_currency/Cargo.toml =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_currency/src/asset_token.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_currency/src/asset_token.rs =====
 use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -4647,9 +4968,9 @@ impl AssetToken {
         self.owner = new_owner;
     }
 }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_currency/src/asset_token.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_currency/src/asset_token.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_currency/src/bond.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_currency/src/bond.rs =====
 use serde::{Serialize, Deserialize};
 use chrono::{DateTime, Utc};
 
@@ -4692,9 +5013,9 @@ impl Bond {
         }
     }
 }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_currency/src/bond.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_currency/src/bond.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_currency/src/currency.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_currency/src/currency.rs =====
 use icn_common::{IcnResult, IcnError, CurrencyType, Transaction};
 use std::collections::HashMap;
 use chrono::{DateTime, Utc};
@@ -4882,9 +5203,9 @@ mod tests {
         assert!(currency_system.list_balances("Bob").is_err());
     }
 }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_currency/src/currency.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_currency/src/currency.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_currency/src/lib.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_currency/src/lib.rs =====
 // File: crates/icn_currency/src/lib.rs
 
 use icn_common::{IcnResult, IcnError, Transaction, CurrencyType};
@@ -5243,9 +5564,9 @@ mod tests {
         assert!(system.exchange_currency("Alice", &CurrencyType::BasicNeeds, &CurrencyType::Environmental, 10.0).is_err());
     }
 }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_currency/src/lib.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_currency/src/lib.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_currency/src/wallet.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_currency/src/wallet.rs =====
 use super::CurrencyType;
 use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
@@ -5332,12 +5653,12 @@ mod tests {
         assert_eq!(wallet.get_balance(&CurrencyType::BasicNeeds), 25.0);
         assert_eq!(wallet2.get_balance(&CurrencyType::BasicNeeds), 25.0);
     }
-}===== END OF /home/matt/InterCooperative-Network/crates/icn_currency/src/wallet.rs =====
+}===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_currency/src/wallet.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_dao/Cargo.toml =====
-===== END OF /home/matt/InterCooperative-Network/crates/icn_dao/Cargo.toml =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_dao/Cargo.toml =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_dao/Cargo.toml =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_dao/src/lib.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_dao/src/lib.rs =====
 // crates/icn_dao/src/lib.rs
 
 use std::collections::HashMap;
@@ -5803,9 +6124,9 @@ mod tests {
             dao.execute_proposal(&proposal_id).unwrap();
         }
     }
-}===== END OF /home/matt/InterCooperative-Network/crates/icn_dao/src/lib.rs =====
+}===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_dao/src/lib.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_demo/Cargo.toml =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_demo/Cargo.toml =====
 [package]
 name = "icn_demo"
 version = "0.1.0"
@@ -5823,9 +6144,9 @@ tokio = { version = "1.0", features = ["full"] }
 env_logger = "0.9"
 log = "0.4"
 chrono = { version = "0.4", features = ["serde"] }
-uuid = { version = "1.0", features = ["v4"] }===== END OF /home/matt/InterCooperative-Network/crates/icn_demo/Cargo.toml =====
+uuid = { version = "1.0", features = ["v4"] }===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_demo/Cargo.toml =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_demo/src/main.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_demo/src/main.rs =====
 // File: icn_demo/src/main.rs
 
 use icn_core::{IcnNode, Config};
@@ -6036,9 +6357,9 @@ fn get_proposal_category() -> IcnResult<ProposalCategory> {
         3 => Ok(ProposalCategory::Social),
         _ => Err(IcnError::InvalidInput("Invalid proposal category choice".to_string())),
     }
-}===== END OF /home/matt/InterCooperative-Network/crates/icn_demo/src/main.rs =====
+}===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_demo/src/main.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_federation/Cargo.toml =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_federation/Cargo.toml =====
 [package]
 name = "icn_federation"
 version = "0.1.0"
@@ -6052,9 +6373,9 @@ icn_common = { path = "../icn_common" } # Adjust the path according to your proj
 
 [dev-dependencies]
 tokio = { version = "1.0", features = ["full", "test-util"] }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_federation/Cargo.toml =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_federation/Cargo.toml =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_federation/src/federation.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_federation/src/federation.rs =====
 // src/federation.rs
 
 use serde::{Serialize, Deserialize};
@@ -6085,9 +6406,9 @@ impl Federation {
         self.members.clone()
     }
 }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_federation/src/federation.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_federation/src/federation.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_federation/src/lib.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_federation/src/lib.rs =====
 pub mod federation;
 
 use serde::{Serialize, Deserialize};
@@ -6144,9 +6465,9 @@ mod tests {
         assert_eq!(federation.members, vec!["DAO2"]);
     }
 }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_federation/src/lib.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_federation/src/lib.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_governance/Cargo.toml =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_governance/Cargo.toml =====
 [package]
 name = "icn_governance"
 version = "0.1.0"
@@ -6160,9 +6481,9 @@ log = "0.4"
 thiserror = "1.0"
 
 [dev-dependencies]
-tokio = { version = "1.0", features = ["full"] }===== END OF /home/matt/InterCooperative-Network/crates/icn_governance/Cargo.toml =====
+tokio = { version = "1.0", features = ["full"] }===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_governance/Cargo.toml =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_governance/src/democracy.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_governance/src/democracy.rs =====
 use icn_utils::{Error, Result, Proposal, Vote};
 use chrono::{DateTime, Utc, Duration};
 use serde::{Serialize, Deserialize};
@@ -6361,9 +6682,9 @@ mod tests {
         assert_eq!(updated_proposal.status, ProposalStatus::Implemented);
     }
 }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_governance/src/democracy.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_governance/src/democracy.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_governance/src/governance.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_governance/src/governance.rs =====
 // File: crates/icn_governance/src/governance.rs
 
 use crate::{Proposal, ProposalStatus, Vote, ProposalType, ProposalCategory};
@@ -6562,9 +6883,9 @@ mod tests {
         assert!(active_proposals.iter().any(|p| p.id == "prop2"));
     }
 }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_governance/src/governance.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_governance/src/governance.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_governance/src/lib.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_governance/src/lib.rs =====
 // File: crates/icn_governance/src/lib.rs
 
 use icn_common::{IcnResult, IcnError};
@@ -7007,9 +7328,9 @@ mod tests {
         }
     }
 }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_governance/src/lib.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_governance/src/lib.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_governance/src/proposal.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_governance/src/proposal.rs =====
 use chrono::{DateTime, Utc, Duration};
 use serde::{Serialize, Deserialize};
 
@@ -7078,9 +7399,9 @@ impl Proposal {
         }
     }
 }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_governance/src/proposal.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_governance/src/proposal.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_governance/src/voting.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_governance/src/voting.rs =====
 use chrono::{DateTime, Utc};
 use serde::{Serialize, Deserialize};
 
@@ -7104,9 +7425,9 @@ impl Vote {
         }
     }
 }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_governance/src/voting.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_governance/src/voting.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_identity/Cargo.toml =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_identity/Cargo.toml =====
 [package]
 name = "icn_identity"
 version = "0.1.0"
@@ -7121,9 +7442,9 @@ chrono = { version = "0.4", features = ["serde"] }
 hex = "0.4"
 
 [dev-dependencies]
-tokio = { version = "1.0", features = ["full"] }===== END OF /home/matt/InterCooperative-Network/crates/icn_identity/Cargo.toml =====
+tokio = { version = "1.0", features = ["full"] }===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_identity/Cargo.toml =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_identity/src/did.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_identity/src/did.rs =====
 use chrono::{DateTime, Utc};
 use ed25519_dalek::{Keypair, PublicKey, Signature, Verifier};
 use serde::{Deserialize, Serialize};
@@ -7182,9 +7503,9 @@ impl DecentralizedIdentity {
     pub fn verify_signature(&self, message: &[u8], signature: &Signature) -> bool {
         self.public_key.verify(message, signature).is_ok()
     }
-}===== END OF /home/matt/InterCooperative-Network/crates/icn_identity/src/did.rs =====
+}===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_identity/src/did.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_identity/src/identity_manager.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_identity/src/identity_manager.rs =====
 use crate::DecentralizedIdentity;
 use ed25519_dalek::Signature;
 use icn_common::{IcnError, IcnResult};
@@ -7278,9 +7599,9 @@ mod tests {
         assert!(!manager.verify_signature(&identity.id, message, &signature).unwrap());
     }
 }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_identity/src/identity_manager.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_identity/src/identity_manager.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_identity/src/lib.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_identity/src/lib.rs =====
 // File: crates/icn_identity/src/lib.rs
 
 use icn_common::{IcnResult, IcnError};
@@ -7598,18 +7919,18 @@ mod tests {
         let another_update = HashMap::new();
         assert!(service.update_identity(&identity.id, another_update).is_err());
     }
-}===== END OF /home/matt/InterCooperative-Network/crates/icn_identity/src/lib.rs =====
+}===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_identity/src/lib.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_incentives/Cargo.toml =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_incentives/Cargo.toml =====
 [package]
 name = "icn_incentives"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-===== END OF /home/matt/InterCooperative-Network/crates/icn_incentives/Cargo.toml =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_incentives/Cargo.toml =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_incentives/src/lib.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_incentives/src/lib.rs =====
 pub fn add(left: usize, right: usize) -> usize {
     left + right
 }
@@ -7624,9 +7945,9 @@ mod tests {
         assert_eq!(result, 4);
     }
 }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_incentives/src/lib.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_incentives/src/lib.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_language/Cargo.toml =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_language/Cargo.toml =====
 [package]
 name = "icn_language"
 version = "0.1.0"
@@ -7641,9 +7962,9 @@ icn_common = { path = "../icn_common" }
 icn_vm = { path = "../icn_vm" }
 
 [dev-dependencies]
-env_logger = "0.10"===== END OF /home/matt/InterCooperative-Network/crates/icn_language/Cargo.toml =====
+env_logger = "0.10"===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_language/Cargo.toml =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_language/src/bytecode.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_language/src/bytecode.rs =====
 // crates/icn_language/src/bytecode.rs
 
 use crate::Statement;
@@ -7717,9 +8038,9 @@ pub fn generate_bytecode(statements: &[Statement]) -> Vec<Opcode> {
     }
 
     bytecode
-}===== END OF /home/matt/InterCooperative-Network/crates/icn_language/src/bytecode.rs =====
+}===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_language/src/bytecode.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_language/src/lib.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_language/src/lib.rs =====
 use nom::{
     IResult,
     branch::alt,
@@ -8333,9 +8654,9 @@ mod tests {
         assert!(matches!(bytecode[4], Opcode::Push(Value::String(_))));
     }
 }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_language/src/lib.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_language/src/lib.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_market/Cargo.toml =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_market/Cargo.toml =====
 [package]
 name = "icn_market"
 version = "0.1.0"
@@ -8344,9 +8665,9 @@ edition = "2018"
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 icn_common = { path = "../icn_common" }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_market/Cargo.toml =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_market/Cargo.toml =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_market/src/entities.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_market/src/entities.rs =====
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -8383,9 +8704,9 @@ pub struct Labor {
     pub skill: String,
     pub hours: f64,
 }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_market/src/entities.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_market/src/entities.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_market/src/lib.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_market/src/lib.rs =====
 // File: crates/icn_market/src/lib.rs
 
 pub mod entities;
@@ -8406,9 +8727,9 @@ pub use matching_engine::*;
 pub use market_maker::*;
 pub use price_discovery::*;
 pub use risk_management::*;
-pub use analytics::*;===== END OF /home/matt/InterCooperative-Network/crates/icn_market/src/lib.rs =====
+pub use analytics::*;===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_market/src/lib.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_market/src/market_maker.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_market/src/market_maker.rs =====
 // File: crates/icn_market/src/market_maker.rs
 
 use crate::entities::Resource;
@@ -8512,9 +8833,9 @@ mod tests {
         // as it depends on the MatchingEngine's state. In a real scenario,
         // we would need to set up the engine with some opposing orders first.
     }
-}===== END OF /home/matt/InterCooperative-Network/crates/icn_market/src/market_maker.rs =====
+}===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_market/src/market_maker.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_market/src/market.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_market/src/market.rs =====
 use crate::entities::{Cooperative, Community, Member, Resource, Labor};
 use crate::transaction::{Transaction, TransactionType, TransactionResult};
 use std::collections::HashMap;
@@ -8615,9 +8936,9 @@ impl Default for Market {
         Self::new()
     }
 }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_market/src/market.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_market/src/market.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_market/src/market_tests.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_market/src/market_tests.rs =====
 use icn_market::{Market, Cooperative, Community, Member, Resource, Labor};
 use std::collections::HashMap;
 
@@ -8677,9 +8998,9 @@ fn test_exchange_labor_between_members() {
     
     assert!(market.exchange_labor("member1", "member2", labor).is_ok());
 }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_market/src/market_tests.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_market/src/market_tests.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_market/src/matching_engine.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_market/src/matching_engine.rs =====
 // File: crates/icn_market/src/matching_engine.rs
 
 use crate::order_book::{OrderBook, Order};
@@ -8769,9 +9090,9 @@ impl MatchingEngine {
             self.order_book.add_order(sell_order);
         }
     }
-}===== END OF /home/matt/InterCooperative-Network/crates/icn_market/src/matching_engine.rs =====
+}===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_market/src/matching_engine.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_market/src/order_book.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_market/src/order_book.rs =====
 // File: crates/icn_market/src/order_book.rs
 
 use std::collections::{BTreeMap, VecDeque};
@@ -8836,9 +9157,9 @@ impl OrderBook {
     pub fn get_best_ask(&self) -> Option<&Order> {
         self.sell_orders.iter().next().and_then(|(_, queue)| queue.front())
     }
-}===== END OF /home/matt/InterCooperative-Network/crates/icn_market/src/order_book.rs =====
+}===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_market/src/order_book.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_market/src/transaction.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_market/src/transaction.rs =====
 use crate::entities::{Resource, Labor};
 use serde::{Serialize, Deserialize};
 
@@ -8876,9 +9197,9 @@ impl Transaction {
 }
 
 pub type TransactionResult = Result<(), String>;
-===== END OF /home/matt/InterCooperative-Network/crates/icn_market/src/transaction.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_market/src/transaction.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_network/Cargo.toml =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_network/Cargo.toml =====
 [package]
 name = "icn_network"
 version = "0.1.0"
@@ -8893,9 +9214,9 @@ log = "0.4"
 thiserror = "1.0"
 tokio = { version = "1.0", features = ["full"] }
 
-===== END OF /home/matt/InterCooperative-Network/crates/icn_network/Cargo.toml =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_network/Cargo.toml =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_network/src/discovery.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_network/src/discovery.rs =====
 use icn_common::{IcnError, IcnResult};
 use std::sync::{Arc, RwLock};
 use log::{info, error};
@@ -8963,9 +9284,9 @@ mod tests {
         assert!(discovery.get_discovered_nodes().is_empty());
     }
 }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_network/src/discovery.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_network/src/discovery.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_network/src/lib.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_network/src/lib.rs =====
 // File: crates/icn_network/src/lib.rs
 
 use icn_common::{IcnResult, IcnError, Transaction, NetworkStats};
@@ -9376,9 +9697,9 @@ mod tests {
             manager1.stop().await.unwrap();
         });
     }
-}===== END OF /home/matt/InterCooperative-Network/crates/icn_network/src/lib.rs =====
+}===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_network/src/lib.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_network/src/naming.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_network/src/naming.rs =====
 use icn_common::{IcnError, IcnResult};
 use log::{info, error};
 
@@ -9425,9 +9746,9 @@ mod tests {
         assert!(naming_service.stop().is_ok());
     }
 }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_network/src/naming.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_network/src/naming.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_network/src/network.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_network/src/network.rs =====
 use crate::{discovery::NodeDiscovery, protocol::NetworkProtocol, routing::Router, security::NetworkSecurity};
 use icn_common::{IcnError, IcnResult};
 use std::sync::{Arc, RwLock};
@@ -9532,9 +9853,9 @@ mod tests {
         assert!(network.stop().is_ok());
     }
 }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_network/src/network.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_network/src/network.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_network/src/node.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_network/src/node.rs =====
 use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -9560,9 +9881,9 @@ impl Node {
         }
     }
 }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_network/src/node.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_network/src/node.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_network/src/packet.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_network/src/packet.rs =====
 use icn_common::{IcnError, IcnResult};
 use serde::{Serialize, Deserialize};
 
@@ -9620,9 +9941,9 @@ mod tests {
         assert!(invalid_packet.validate().is_err());
     }
 }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_network/src/packet.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_network/src/packet.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_network/src/protocol.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_network/src/protocol.rs =====
 use icn_common::{IcnError, IcnResult};
 use log::{info, error};
 
@@ -9669,9 +9990,9 @@ mod tests {
         assert!(protocol.stop().is_ok());
     }
 }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_network/src/protocol.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_network/src/protocol.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_network/src/routing.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_network/src/routing.rs =====
 use icn_common::{IcnError, IcnResult};
 use log::{info, error};
 
@@ -9718,9 +10039,9 @@ mod tests {
         assert!(router.stop().is_ok());
     }
 }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_network/src/routing.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_network/src/routing.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_network/src/security.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_network/src/security.rs =====
 use icn_common::{IcnError, IcnResult};
 use log::{info, error};
 
@@ -9767,9 +10088,9 @@ mod tests {
         assert!(security.stop().is_ok());
     }
 }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_network/src/security.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_network/src/security.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_node_management/Cargo.toml =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_node_management/Cargo.toml =====
 [package]
 name = "icn_node_management"
 version = "0.1.0"
@@ -9785,9 +10106,9 @@ thiserror = "1.0"
 
 [dev-dependencies]
 tokio = { version = "1.0", features = ["full"] }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_node_management/Cargo.toml =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_node_management/Cargo.toml =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_node_management/src/content_store.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_node_management/src/content_store.rs =====
 use icn_common::{IcnError, IcnResult};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
@@ -9888,9 +10209,9 @@ mod tests {
         assert!(content_store.retrieve(&content_id).is_err());
     }
 }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_node_management/src/content_store.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_node_management/src/content_store.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_node_management/src/fib.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_node_management/src/fib.rs =====
 use icn_common::{IcnError, IcnResult};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
@@ -9991,9 +10312,9 @@ mod tests {
         assert!(fib.get_next_hop(&prefix).is_err());
     }
 }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_node_management/src/fib.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_node_management/src/fib.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_node_management/src/icn_node.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_node_management/src/icn_node.rs =====
 use crate::{content_store::ContentStore, fib::FIB, pit::PIT};
 use icn_common::{IcnError, IcnResult};
 use log::{info, error};
@@ -10101,18 +10422,18 @@ mod tests {
         assert!(node.process_interest("interest_1").is_ok());
     }
 }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_node_management/src/icn_node.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_node_management/src/icn_node.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_node_management/src/lib.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_node_management/src/lib.rs =====
 /// The ICN node management module.
 pub mod content_store;
 pub mod fib;
 pub mod icn_node;
 pub mod node;
 pub mod pit;
-===== END OF /home/matt/InterCooperative-Network/crates/icn_node_management/src/lib.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_node_management/src/lib.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_node_management/src/node.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_node_management/src/node.rs =====
 // ===============================================
 // Content Store, FIB, and PIT Implementation
 // ===============================================
@@ -10254,9 +10575,9 @@ impl PendingInterestTable {
         self.table.is_empty()
     }
 }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_node_management/src/node.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_node_management/src/node.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_node_management/src/pit.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_node_management/src/pit.rs =====
 use icn_common::{IcnError, IcnResult};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
@@ -10357,18 +10678,18 @@ mod tests {
         assert!(pit.get_requesters(&interest).is_err());
     }
 }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_node_management/src/pit.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_node_management/src/pit.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_reputation/Cargo.toml =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_reputation/Cargo.toml =====
 [package]
 name = "icn_reputation"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-===== END OF /home/matt/InterCooperative-Network/crates/icn_reputation/Cargo.toml =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_reputation/Cargo.toml =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_reputation/src/lib.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_reputation/src/lib.rs =====
 // File: crates/icn_common/src/lib.rs
 
 pub mod error;
@@ -10582,9 +10903,9 @@ mod tests {
         assert!(verified);
     }
 }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_reputation/src/lib.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_reputation/src/lib.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_sharding/Cargo.toml =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_sharding/Cargo.toml =====
 [package]
 name = "icn_sharding"
 version = "0.1.0"
@@ -10602,9 +10923,9 @@ rand = "0.8"
 sha2 = "0.9"
 
 [dev-dependencies]
-tokio-test = "0.4"===== END OF /home/matt/InterCooperative-Network/crates/icn_sharding/Cargo.toml =====
+tokio-test = "0.4"===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_sharding/Cargo.toml =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_sharding/src/cross_shard_communication.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_sharding/src/cross_shard_communication.rs =====
 use crate::blockchain::Transaction;
 use crate::sharding::ShardingManager;
 use std::collections::HashMap;
@@ -10800,9 +11121,9 @@ mod tests {
         assert_eq!(alice_balance, 800.0);
         assert_eq!(bob_balance, 200.0);
     }
-}===== END OF /home/matt/InterCooperative-Network/crates/icn_sharding/src/cross_shard_communication.rs =====
+}===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_sharding/src/cross_shard_communication.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_sharding/src/cross_shard_sync.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_sharding/src/cross_shard_sync.rs =====
 use icn_common::{Result, Error};
 use icn_blockchain::Block;
 use std::collections::HashMap;
@@ -10871,243 +11192,237 @@ mod tests {
 
         assert!(sync_manager.validate_cross_shard_state().await.unwrap());
     }
-}===== END OF /home/matt/InterCooperative-Network/crates/icn_sharding/src/cross_shard_sync.rs =====
+}===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_sharding/src/cross_shard_sync.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_sharding/src/cross_shard_transaction_manager.rs =====
-use icn_common::{IcnResult, IcnError, Block, Transaction, CurrencyType};
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_sharding/src/cross_shard_transaction_manager.rs =====
+// File: crates/icn_sharding/src/cross_shard_transaction_manager.rs
+
+use icn_common::{IcnResult, IcnError, Transaction, CurrencyType};
 use std::collections::HashMap;
-use sha2::{Sha256, Digest};
+use std::sync::{Arc, RwLock};
+use tokio::sync::mpsc;
 
-pub struct Shard {
-    pub id: u64,
-    pub blockchain: Vec<Block>,
-    pub balances: HashMap<String, HashMap<CurrencyType, f64>>,
-    pub pending_transactions: Vec<Transaction>,
+pub struct CrossShardTransactionManager {
+    shards: Arc<RwLock<HashMap<u64, Shard>>>,
+    channels: HashMap<u64, mpsc::Sender<CrossShardMessage>>,
 }
 
-pub struct ShardingManager {
-    shards: HashMap<u64, Shard>,
-    shard_count: u64,
-    address_to_shard: HashMap<String, u64>,
+struct Shard {
+    id: u64,
+    balances: HashMap<String, HashMap<CurrencyType, f64>>,
+    pending_transactions: Vec<Transaction>,
 }
 
-impl ShardingManager {
+#[derive(Clone)]
+enum CrossShardMessage {
+    LockFunds(String, CurrencyType, f64),
+    ReleaseFunds(String, CurrencyType, f64),
+    TransferFunds(String, String, CurrencyType, f64),
+}
+
+impl CrossShardTransactionManager {
     pub fn new(shard_count: u64) -> Self {
         let mut shards = HashMap::new();
+        let mut channels = HashMap::new();
+
         for i in 0..shard_count {
             shards.insert(i, Shard {
                 id: i,
-                blockchain: vec![Block::genesis()],
                 balances: HashMap::new(),
                 pending_transactions: Vec::new(),
             });
+
+            let (tx, mut rx) = mpsc::channel(100);
+            channels.insert(i, tx);
+
+            let shard_shards = Arc::clone(&Arc::new(RwLock::new(shards.clone())));
+
+            tokio::spawn(async move {
+                while let Some(message) = rx.recv().await {
+                    let mut shards = shard_shards.write().unwrap();
+                    let shard = shards.get_mut(&i).unwrap();
+                    match message {
+                        CrossShardMessage::LockFunds(address, currency_type, amount) => {
+                            if let Some(balance) = shard.balances.get_mut(&address).and_then(|b| b.get_mut(&currency_type)) {
+                                if *balance >= amount {
+                                    *balance -= amount;
+                                }
+                            }
+                        }
+                        CrossShardMessage::ReleaseFunds(address, currency_type, amount) => {
+                            shard.balances.entry(address)
+                                .or_insert_with(HashMap::new)
+                                .entry(currency_type)
+                                .and_modify(|balance| *balance += amount)
+                                .or_insert(amount);
+                        }
+                        CrossShardMessage::TransferFunds(from, to, currency_type, amount) => {
+                            if let Some(from_balance) = shard.balances.get_mut(&from).and_then(|b| b.get_mut(&currency_type)) {
+                                if *from_balance >= amount {
+                                    *from_balance -= amount;
+                                    shard.balances.entry(to)
+                                        .or_insert_with(HashMap::new)
+                                        .entry(currency_type)
+                                        .and_modify(|balance| *balance += amount)
+                                        .or_insert(amount);
+                                }
+                            }
+                        }
+                    }
+                }
+            });
         }
-        
-        ShardingManager {
-            shards,
-            shard_count,
-            address_to_shard: HashMap::new(),
+
+        CrossShardTransactionManager {
+            shards: Arc::new(RwLock::new(shards)),
+            channels,
         }
     }
 
-    pub fn get_shard_count(&self) -> u64 {
-        self.shard_count
-    }
+    pub async fn process_cross_shard_transaction(&self, transaction: &Transaction) -> IcnResult<()> {
+        let from_shard = self.get_shard_for_address(&transaction.from);
+        let to_shard = self.get_shard_for_address(&transaction.to);
 
-    pub fn process_transaction(&mut self, transaction: &Transaction) -> IcnResult<()> {
-        let shard_id = self.get_shard_for_address(&transaction.from);
-        {
-            let shard = self.shards.get_mut(&shard_id).ok_or_else(|| IcnError::Sharding("Shard not found".to_string()))?;
-            if !self.verify_transaction(shard, transaction) {
-                return Err(IcnError::Sharding("Invalid transaction".to_string()));
-            }
-            shard.pending_transactions.push(transaction.clone());
+        if from_shard == to_shard {
+            return Err(IcnError::Sharding("Not a cross-shard transaction".into()));
         }
-        let shard = self.shards.get_mut(&shard_id).ok_or_else(|| IcnError::Sharding("Shard not found".to_string()))?;
-        self.update_balances(shard, transaction)
-    }
 
-    fn update_balances(&mut self, shard: &mut Shard, transaction: &Transaction) -> IcnResult<()> {
-        let sender_balances = shard.balances.entry(transaction.from.clone()).or_insert_with(HashMap::new);
-        let sender_balance = sender_balances.entry(transaction.currency_type.clone()).or_insert(0.0);
+        // Phase 1: Lock funds in the source shard
+        self.channels[&from_shard].send(CrossShardMessage::LockFunds(
+            transaction.from.clone(),
+            transaction.currency_type.clone(),
+            transaction.amount,
+        )).await.map_err(|e| IcnError::Sharding(format!("Failed to send lock funds message: {}", e)))?;
+
+        // Phase 2: Transfer funds to the destination shard
+        self.channels[&to_shard].send(CrossShardMessage::TransferFunds(
+            transaction.from.clone(),
+            transaction.to.clone(),
+            transaction.currency_type.clone(),
+            transaction.amount,
+        )).await.map_err(|e| IcnError::Sharding(format!("Failed to send transfer funds message: {}", e)))?;
+
+        // Phase 3: Release funds in the source shard (in case of failure)
+        // In a real implementation, you'd need a way to handle failures and rollbacks
         
-        if *sender_balance < transaction.amount {
-            return Err(IcnError::Sharding("Insufficient balance".to_string()));
-        }
-        
-        *sender_balance -= transaction.amount;
-
-        let recipient_balances = shard.balances.entry(transaction.to.clone()).or_insert_with(HashMap::new);
-        let recipient_balance = recipient_balances.entry(transaction.currency_type.clone()).or_insert(0.0);
-        *recipient_balance += transaction.amount;
-
         Ok(())
     }
 
-    pub fn create_block(&mut self, shard_id: u64) -> IcnResult<Block> {
-        let new_block;
-        {
-            let shard = self.shards.get_mut(&shard_id).ok_or_else(|| IcnError::Sharding("Shard not found".to_string()))?;
-            let previous_block = shard.blockchain.last().ok_or_else(|| IcnError::Sharding("No previous block found".to_string()))?;
-            
-            new_block = Block {
-                index: shard.blockchain.len() as u64,
-                timestamp: chrono::Utc::now().timestamp(),
-                transactions: shard.pending_transactions.clone(),
-                previous_hash: previous_block.hash.clone(),
-                hash: String::new(), // Will be set later
-            };
-
-            shard.pending_transactions.clear();
+    fn get_shard_for_address(&self, address: &str) -> u64 {
+        // Simple hash function to determine shard
+        let mut hash = 0u64;
+        for byte in address.bytes() {
+            hash = hash.wrapping_mul(31).wrapping_add(byte as u64);
         }
-        let new_block = self.calculate_block_hash(new_block);
-        let shard = self.shards.get_mut(&shard_id).ok_or_else(|| IcnError::Sharding("Shard not found".to_string()))?;
-        shard.blockchain.push(new_block.clone());
-        Ok(new_block)
+        hash % self.shards.read().unwrap().len() as u64
     }
 
-    pub fn get_shard_for_address(&self, address: &str) -> u64 {
-        *self.address_to_shard.get(address).unwrap_or(&(self.hash_address(address) % self.shard_count))
-    }
-
-    pub fn add_address_to_shard(&mut self, address: String, shard_id: u64) -> IcnResult<()> {
-        if shard_id >= self.shard_count {
-            return Err(IcnError::Sharding("Invalid shard ID".to_string()));
-        }
-        self.address_to_shard.insert(address, shard_id);
-        Ok(())
-    }
-
-    pub fn get_balance(&self, address: &str, currency_type: &CurrencyType) -> IcnResult<f64> {
+    pub async fn get_balance(&self, address: &str, currency_type: &CurrencyType) -> IcnResult<f64> {
         let shard_id = self.get_shard_for_address(address);
-        let shard = self.shards.get(&shard_id).ok_or_else(|| IcnError::Sharding("Shard not found".to_string()))?;
+        let shards = self.shards.read().unwrap();
+        let shard = shards.get(&shard_id).ok_or_else(|| IcnError::Sharding("Shard not found".into()))?;
         
-        Ok(shard.balances
-            .get(address)
+        shard.balances.get(address)
             .and_then(|balances| balances.get(currency_type))
-            .cloned()
-            .unwrap_or(0.0))
+            .copied()
+            .ok_or_else(|| IcnError::Sharding("Balance not found".into()))
     }
 
-    fn verify_transaction(&self, shard: &Shard, transaction: &Transaction) -> bool {
-        if let Some(sender_balances) = shard.balances.get(&transaction.from) {
-            if let Some(balance) = sender_balances.get(&transaction.currency_type) {
-                return *balance >= transaction.amount;
-            }
-        }
-        false
-    }
+    pub async fn initialize_balance(&self, address: &str, currency_type: &CurrencyType, amount: f64) -> IcnResult<()> {
+        let shard_id = self.get_shard_for_address(address);
+        let mut shards = self.shards.write().unwrap();
+        let shard = shards.get_mut(&shard_id).ok_or_else(|| IcnError::Sharding("Shard not found".into()))?;
 
-    fn hash_address(&self, address: &str) -> u64 {
-        let mut hasher = Sha256::new();
-        hasher.update(address.as_bytes());
-        let result = hasher.finalize();
-        let hash_bytes: [u8; 8] = result[..8].try_into().unwrap_or([0; 8]);
-        u64::from_le_bytes(hash_bytes)
-    }
-
-    fn calculate_block_hash(&self, mut block: Block) -> Block {
-        let mut hasher = Sha256::new();
-        hasher.update(block.index.to_string().as_bytes());
-        hasher.update(block.timestamp.to_string().as_bytes());
-        for transaction in &block.transactions {
-            hasher.update(transaction.from.as_bytes());
-            hasher.update(transaction.to.as_bytes());
-            hasher.update(transaction.amount.to_string().as_bytes());
-            hasher.update(format!("{:?}", transaction.currency_type).as_bytes());
-        }
-        hasher.update(block.previous_hash.as_bytes());
-        
-        let hash = format!("{:x}", hasher.finalize());
-        block.hash = hash;
-        block
-    }
-
-    pub fn transfer_between_shards(&mut self, from_shard_id: u64, to_shard_id: u64, transaction: &Transaction) -> IcnResult<()> {
-        {
-            // Deduct from the source shard
-            let from_shard = self.shards.get_mut(&from_shard_id).ok_or_else(|| IcnError::Sharding("Source shard not found".to_string()))?;
-            self.update_balances(from_shard, transaction)?;
-        }
-
-        // Add to the destination shard
-        let mut reverse_transaction = transaction.clone();
-        reverse_transaction.from = transaction.to.clone();
-        reverse_transaction.to = transaction.from.clone();
-        {
-            let to_shard = self.shards.get_mut(&to_shard_id).ok_or_else(|| IcnError::Sharding("Destination shard not found".to_string()))?;
-            self.update_balances(to_shard, &reverse_transaction)?;
-        }
+        shard.balances.entry(address.to_string())
+            .or_insert_with(HashMap::new)
+            .insert(currency_type.clone(), amount);
 
         Ok(())
-    }
-
-    pub fn get_shard_state(&self, shard_id: u64) -> IcnResult<&Shard> {
-        self.shards.get(&shard_id).ok_or_else(|| IcnError::Sharding("Shard not found".to_string()))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tokio;
 
-    #[test]
-    fn test_sharding_manager() {
-        let mut manager = ShardingManager::new(4);
-        assert_eq!(manager.get_shard_count(), 4);
+    #[tokio::test]
+    async fn test_cross_shard_transaction() {
+        let manager = CrossShardTransactionManager::new(2);
+
+        manager.initialize_balance("Alice", &CurrencyType::BasicNeeds, 1000.0).await.unwrap();
+        manager.initialize_balance("Bob", &CurrencyType::BasicNeeds, 0.0).await.unwrap();
 
         let transaction = Transaction {
             from: "Alice".to_string(),
             to: "Bob".to_string(),
-            amount: 100.0,
+            amount: 500.0,
             currency_type: CurrencyType::BasicNeeds,
             timestamp: 0,
             signature: None,
         };
 
-        manager.add_address_to_shard("Alice".to_string(), 0).unwrap();
-        manager.add_address_to_shard("Bob".to_string(), 1).unwrap();
+        manager.process_cross_shard_transaction(&transaction).await.unwrap();
 
-        // Initialize Alice's balance
-        let alice_shard = manager.shards.get_mut(&0).unwrap();
-        alice_shard.balances.entry("Alice".to_string()).or_insert_with(HashMap::new).insert(CurrencyType::BasicNeeds, 200.0);
+        // Give some time for the async operations to complete
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
-        assert!(manager.process_transaction(&transaction).is_ok());
+        let alice_balance = manager.get_balance("Alice", &CurrencyType::BasicNeeds).await.unwrap();
+        let bob_balance = manager.get_balance("Bob", &CurrencyType::BasicNeeds).await.unwrap();
 
-        assert_eq!(manager.get_balance("Alice", &CurrencyType::BasicNeeds).unwrap(), 100.0);
-        assert_eq!(manager.get_balance("Bob", &CurrencyType::BasicNeeds).unwrap(), 100.0);
+        assert_eq!(alice_balance, 500.0);
+        assert_eq!(bob_balance, 500.0);
+    }
 
-        // Test block creation
-        let block = manager.create_block(0).unwrap();
-        assert_eq!(block.index, 1);
-        assert_eq!(block.transactions.len(), 1);
+    #[tokio::test]
+    async fn test_same_shard_transaction_error() {
+        let manager = CrossShardTransactionManager::new(1);
 
-        // Test cross-shard transaction
-        let cross_shard_tx = Transaction {
+        let transaction = Transaction {
             from: "Alice".to_string(),
             to: "Bob".to_string(),
-            amount: 50.0,
+            amount: 500.0,
             currency_type: CurrencyType::BasicNeeds,
-            timestamp: 1,
+            timestamp: 0,
             signature: None,
         };
 
-        assert!(manager.transfer_between_shards(0, 1, &cross_shard_tx).is_ok());
-        assert_eq!(manager.get_balance("Alice", &CurrencyType::BasicNeeds).unwrap(), 50.0);
-        assert_eq!(manager.get_balance("Bob", &CurrencyType::BasicNeeds).unwrap(), 150.0);
-
-        // Test getting shard state
-        let shard_state = manager.get_shard_state(0).unwrap();
-        assert_eq!(shard_state.id, 0);
-        assert_eq!(shard_state.blockchain.len(), 2); // Genesis block + 1 new block
-
-        // Test invalid shard access
-        assert!(manager.get_shard_state(10).is_err());
+        let result = manager.process_cross_shard_transaction(&transaction).await;
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "Sharding error: Not a cross-shard transaction");
     }
-}
-===== END OF /home/matt/InterCooperative-Network/crates/icn_sharding/src/cross_shard_transaction_manager.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_sharding/src/lib.rs =====
+    #[tokio::test]
+    async fn test_insufficient_balance() {
+        let manager = CrossShardTransactionManager::new(2);
+
+        manager.initialize_balance("Alice", &CurrencyType::BasicNeeds, 100.0).await.unwrap();
+        manager.initialize_balance("Bob", &CurrencyType::BasicNeeds, 0.0).await.unwrap();
+
+        let transaction = Transaction {
+            from: "Alice".to_string(),
+            to: "Bob".to_string(),
+            amount: 500.0,
+            currency_type: CurrencyType::BasicNeeds,
+            timestamp: 0,
+            signature: None,
+        };
+
+        manager.process_cross_shard_transaction(&transaction).await.unwrap();
+
+        // Give some time for the async operations to complete
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+        let alice_balance = manager.get_balance("Alice", &CurrencyType::BasicNeeds).await.unwrap();
+        let bob_balance = manager.get_balance("Bob", &CurrencyType::BasicNeeds).await.unwrap();
+
+        // The transaction should not have gone through due to insufficient balance
+        assert_eq!(alice_balance, 100.0);
+        assert_eq!(bob_balance, 0.0);
+    }
+}===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_sharding/src/cross_shard_transaction_manager.rs =====
+
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_sharding/src/lib.rs =====
 // File: crates/icn_sharding/src/lib.rs
 
 use icn_common::{IcnResult, IcnError, Transaction, CurrencyType};
@@ -11463,9 +11778,9 @@ mod tests {
         let manager = ShardingManager::new(2);
         manager.get_shard_transactions(2).unwrap();
     }
-}===== END OF /home/matt/InterCooperative-Network/crates/icn_sharding/src/lib.rs =====
+}===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_sharding/src/lib.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_smart_contracts/Cargo.toml =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_smart_contracts/Cargo.toml =====
 # File: /home/matt/InterCooperative-Network/crates/icn_smart_contracts/Cargo.toml
 
 [package]
@@ -11481,9 +11796,9 @@ serde = { workspace = true }
 thiserror = { workspace = true }
 log = { workspace = true }
 pest = "2.1"
-pest_derive = "2.1"===== END OF /home/matt/InterCooperative-Network/crates/icn_smart_contracts/Cargo.toml =====
+pest_derive = "2.1"===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_smart_contracts/Cargo.toml =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_smart_contracts/src/lib.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_smart_contracts/src/lib.rs =====
 // File: crates/icn_smart_contracts/src/lib.rs
 
 use pest::Parser;
@@ -11962,9 +12277,9 @@ mod tests {
         let state = executor.get_contract_state("test_contract").unwrap();
         assert_eq!(state.get("balance"), Some(&Value::Int(50)));
     }
-}===== END OF /home/matt/InterCooperative-Network/crates/icn_smart_contracts/src/lib.rs =====
+}===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_smart_contracts/src/lib.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_storage/Cargo.toml =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_storage/Cargo.toml =====
 [package]
 name = "icn_storage"
 version = "0.1.0"
@@ -11979,9 +12294,9 @@ thiserror = "1.0"
 sha2 = "0.9"
 
 [dev-dependencies]
-tokio-test = "0.4"===== END OF /home/matt/InterCooperative-Network/crates/icn_storage/Cargo.toml =====
+tokio-test = "0.4"===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_storage/Cargo.toml =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_storage/src/lib.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_storage/src/lib.rs =====
 // File: crates/icn_storage/src/lib.rs
 
 use icn_common::{IcnResult, IcnError};
@@ -12353,9 +12668,9 @@ mod tests {
             assert!(listed_keys.contains(&key.to_string()));
         }
     }
-}===== END OF /home/matt/InterCooperative-Network/crates/icn_storage/src/lib.rs =====
+}===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_storage/src/lib.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_storage/src/storage_manager.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_storage/src/storage_manager.rs =====
 use crate::storage_node::StorageNode;
 use icn_common::{IcnError, IcnResult};
 use std::sync::{Arc, RwLock};
@@ -12476,9 +12791,9 @@ mod tests {
         assert_eq!(retrieved_data, data);
     }
 }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_storage/src/storage_manager.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_storage/src/storage_manager.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_storage/src/storage_node.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_storage/src/storage_node.rs =====
 use icn_common::{IcnError, IcnResult};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
@@ -12562,9 +12877,9 @@ mod tests {
         assert!(node.retrieve("non_existent_data").is_err());
     }
 }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_storage/src/storage_node.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_storage/src/storage_node.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_testnet/Cargo.toml =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_testnet/Cargo.toml =====
 [package]
 name = "icn_testnet"
 version = "0.1.0"
@@ -12586,9 +12901,9 @@ icn_api = { path = "../icn_api" }
 tokio = { version = "1.0", features = ["full"] }
 log = "0.4"
 env_logger = "0.9"
-rand = "0.8"===== END OF /home/matt/InterCooperative-Network/crates/icn_testnet/Cargo.toml =====
+rand = "0.8"===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_testnet/Cargo.toml =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_testnet/src/main.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_testnet/src/main.rs =====
 // File: crates/icn_testnet/src/main.rs
 
 use icn_core::{IcnNode, Config};
@@ -12797,9 +13112,9 @@ fn get_proposal_category() -> Result<ProposalCategory, Box<dyn std::error::Error
         3 => Ok(ProposalCategory::Social),
         _ => Err("Invalid proposal category choice".into()),
     }
-}===== END OF /home/matt/InterCooperative-Network/crates/icn_testnet/src/main.rs =====
+}===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_testnet/src/main.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_utils/Cargo.toml =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_utils/Cargo.toml =====
 # File: icn_utils/Cargo.toml
 
 [package]
@@ -12821,9 +13136,9 @@ icn_common = { path = "../icn_common" }
 
 [dev-dependencies]
 serde_json = "1.0"
-===== END OF /home/matt/InterCooperative-Network/crates/icn_utils/Cargo.toml =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_utils/Cargo.toml =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_utils/src/error.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_utils/src/error.rs =====
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -12875,9 +13190,9 @@ pub enum IcnError {
 }
 
 pub type IcnResult<T> = std::result::Result<T, IcnError>;
-===== END OF /home/matt/InterCooperative-Network/crates/icn_utils/src/error.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_utils/src/error.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_utils/src/lib.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_utils/src/lib.rs =====
 // File: icn_utils/src/lib.rs
 
 // Import necessary modules and crates
@@ -13027,9 +13342,9 @@ mod tests {
         assert!(!crypto::verify(&keypair.public, wrong_message, &signature));
     }
 }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_utils/src/lib.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_utils/src/lib.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_utils/src/types/block.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_utils/src/types/block.rs =====
 // icn_utils/src/types/block.rs
 
 use serde::{Serialize, Deserialize};
@@ -13073,9 +13388,9 @@ impl Block {
         Block::new(0, vec![], String::from("0"))
     }
 }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_utils/src/types/block.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_utils/src/types/block.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_utils/src/types/mod.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_utils/src/types/mod.rs =====
 pub mod block;
 pub mod transaction;
 
@@ -13199,9 +13514,9 @@ mod tests {
         assert!(system.get_currency(&CurrencyType::Environmental).is_none());
     }
 }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_utils/src/types/mod.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_utils/src/types/mod.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_utils/src/types/transaction.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_utils/src/types/transaction.rs =====
 use serde::{Deserialize, Serialize};
 use ed25519_dalek::{Keypair, PublicKey, Signature, Signer, Verifier};
 use crate::types::CurrencyType; // Import CurrencyType from crate
@@ -13274,18 +13589,18 @@ impl Transaction {
         self.gas_limit as f64 * 0.0001
     }
 }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_utils/src/types/transaction.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_utils/src/types/transaction.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_utils/src/utils.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_utils/src/utils.rs =====
 // icn_utils/src/utils.rs
 
 // Placeholder for utility functions
 pub fn some_utility_function() {
     // Utility function implementation
 }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_utils/src/utils.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_utils/src/utils.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_vm/Cargo.toml =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_vm/Cargo.toml =====
 [package]
 name = "icn_vm"
 version = "0.1.0"
@@ -13300,9 +13615,9 @@ thiserror = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
 
 [dev-dependencies]
-tokio-test = "0.4"===== END OF /home/matt/InterCooperative-Network/crates/icn_vm/Cargo.toml =====
+tokio-test = "0.4"===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_vm/Cargo.toml =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_vm/src/compiler.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_vm/src/compiler.rs =====
 use crate::{Statement, Expression, Value};
 use icn_vm::{Opcode, Value as VMValue};
 
@@ -13429,9 +13744,9 @@ mod tests {
         assert!(opcodes.contains(&Opcode::MorphemicCall("econ-currency-mint".to_string(), 2)));
         assert!(opcodes.contains(&Opcode::MorphemicCall("gov-proposal-submit".to_string(), 1)));
     }
-}===== END OF /home/matt/InterCooperative-Network/crates/icn_vm/src/compiler.rs =====
+}===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_vm/src/compiler.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_vm/src/coop_vm.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_vm/src/coop_vm.rs =====
 use super::opcode::{Opcode, Value};
 use std::collections::HashMap;
 
@@ -13584,9 +13899,9 @@ impl CoopVM {
         &self.memory
     }
 }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_vm/src/coop_vm.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_vm/src/coop_vm.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_vm/src/lib.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_vm/src/lib.rs =====
 use icn_common::{IcnError, IcnResult};
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -13912,9 +14227,9 @@ mod tests {
         assert_eq!(vm.stack, vec![Value::Float(55.0)]);
     }
 }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_vm/src/lib.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_vm/src/lib.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_vm/src/opcode.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_vm/src/opcode.rs =====
 #[derive(Debug, Clone, PartialEq, PartialOrd)] // Add PartialOrd here
 pub enum Value {
     Int(i64),
@@ -13948,9 +14263,9 @@ pub enum Opcode {
     GetProposalStatus,
     Emit(String),
 }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_vm/src/opcode.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_vm/src/opcode.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_vm/src/smart_contract.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_vm/src/smart_contract.rs =====
 // File: icn_vm/src/smart_contract.rs
 
 use icn_common::{IcnResult, IcnError, Transaction, CurrencyType};
@@ -14139,12 +14454,12 @@ mod tests {
             IcnError::VM("Insufficient balance for transfer".into()).to_string()
         );
     }
-}===== END OF /home/matt/InterCooperative-Network/crates/icn_vm/src/smart_contract.rs =====
+}===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_vm/src/smart_contract.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_vm/src/templates.rs =====
-===== END OF /home/matt/InterCooperative-Network/crates/icn_vm/src/templates.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_vm/src/templates.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_vm/src/templates.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_vm/src/vm.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_vm/src/vm.rs =====
 // File: src/vm.rs
 
 use std::collections::HashMap;
@@ -14504,9 +14819,9 @@ mod tests {
         assert_eq!(vm.stack, vec![Value::String("new_proposal_id".to_string()), Value::String("Active".to_string())]);
     }
 }
-===== END OF /home/matt/InterCooperative-Network/crates/icn_vm/src/vm.rs =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_vm/src/vm.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_zkp/Cargo.toml =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_zkp/Cargo.toml =====
 # File: crates/icn_zkp/Cargo.toml
 [package]
 name = "icn_zkp"
@@ -14525,9 +14840,9 @@ serde = { version = "1.0", features = ["derive"] }
 thiserror = "1.0"
 
 [dev-dependencies]
-criterion = "0.3"===== END OF /home/matt/InterCooperative-Network/crates/icn_zkp/Cargo.toml =====
+criterion = "0.3"===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_zkp/Cargo.toml =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_zkp/src/circuits.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_zkp/src/circuits.rs =====
 // File: crates/icn_zkp/src/circuits.rs
 use bulletproofs::r1cs::{ConstraintSystem, R1CSProof, Verifier};
 use bulletproofs::{BulletproofGens, PedersenGens};
@@ -14622,9 +14937,9 @@ mod tests {
         let (proof, commitments) = circuit.prove();
         assert!(TransactionCircuit::verify(&proof, &commitments));
     }
-}===== END OF /home/matt/InterCooperative-Network/crates/icn_zkp/src/circuits.rs =====
+}===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_zkp/src/circuits.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/crates/icn_zkp/src/lib.rs =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/crates/icn_zkp/src/lib.rs =====
 // File: crates/icn_zkp/src/lib.rs
 
 use bulletproofs::{BulletproofGens, PedersenGens, RangeProof};
@@ -14782,9 +15097,9 @@ mod tests {
         let proof = zkp_manager.create_transaction_proof(&transaction).unwrap();
         assert!(zkp_manager.verify_transaction_proof(&proof, &transaction).unwrap());
     }
-}===== END OF /home/matt/InterCooperative-Network/crates/icn_zkp/src/lib.rs =====
+}===== END OF /home/fahertym/InterCooperative-Network-Node/crates/icn_zkp/src/lib.rs =====
 
-===== START OF /home/matt/InterCooperative-Network/Cargo.toml =====
+===== START OF /home/fahertym/InterCooperative-Network-Node/Cargo.toml =====
 [workspace]
 members = [
     "crates/icn_common",
@@ -14818,5 +15133,5 @@ chrono = { version = "0.4", features = ["serde"] }
 thiserror = "1.0"
 log = "0.4"
 env_logger = "0.9"
-===== END OF /home/matt/InterCooperative-Network/Cargo.toml =====
+===== END OF /home/fahertym/InterCooperative-Network-Node/Cargo.toml =====
 

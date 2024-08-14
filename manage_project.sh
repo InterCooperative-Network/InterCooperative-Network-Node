@@ -1,8 +1,9 @@
 #!/bin/bash
 
 # Constants
+PROJECT_ROOT="$HOME/InterCooperative-Network"
+PROJECT_DIR="$PROJECT_ROOT/InterCooperative-Network-Node"
 OUTPUT_FILE="PROJECT_STRUCTURE_AND_CODE_CONTENTS.txt"
-PROJECT_DIR="$HOME/InterCooperative-Network-Node"
 IGNORE_FILES="CHANGELOG.md cliff.toml"
 
 # Function to update changelog
@@ -68,6 +69,33 @@ generate_structure_file() {
     git add $OUTPUT_FILE
 }
 
+# Function to lint the project
+lint_project() {
+    echo "Linting the project..."
+    if ! cargo clippy --all-targets --all-features -- -D warnings; then
+        echo "Linting failed. Please check the error messages above."
+        exit 1
+    fi
+}
+
+# Function to build and test the project
+build_and_test_project() {
+    echo "Building the project..."
+    if cargo build; then
+        echo "Build successful. Running the tests..."
+        if cargo test; then
+            echo "Tests passed. Running the demo..."
+            cargo run --bin icn_demo
+        else
+            echo "Tests failed. Please check the error messages above."
+            exit 1
+        fi
+    else
+        echo "Build failed. Please check the error messages above."
+        exit 1
+    fi
+}
+
 # Function to prompt for a commit message
 get_commit_message() {
     echo "Enter your commit message (end with an empty line):"
@@ -84,42 +112,42 @@ main() {
     set -e
     echo "Starting script..."
 
-    # Check if PROJECT_DIR exists
-    if [ ! -d "$PROJECT_DIR" ]; then
-        echo "Project directory $PROJECT_DIR does not exist."
+    # Navigate to the project root
+    if [ ! -d "$PROJECT_ROOT" ]; then
+        echo "Project directory $PROJECT_ROOT does not exist."
         exit 1
     fi
+    cd $PROJECT_ROOT
 
-    echo "Navigating to project directory..."
-    # Navigate to the project directory
-    cd $PROJECT_DIR
+    # Clean previous build artifacts
+    cargo clean
 
     echo "Checking for changes to commit..."
-    # Check if there are any changes to co
-    
-        echo "No changes to commit."
-        exit 0
+    if ! git diff --quiet; then
+        echo "Changes detected. Proceeding with commit."
+
+        echo "Generating project structure and contents file..."
+        generate_structure_file
+
+        echo "Updating changelog..."
+        update_changelog
+
+        echo "Prompting for commit message..."
+        commit_message=$(get_commit_message)
+
+        echo "Committing changes..."
+        git add .
+        git commit -m "$commit_message"
+        git push origin main
+
+        echo "Linting, building, and testing the project..."
+        lint_project
+        build_and_test_project
+
+        echo "Changes have been committed, linted, built, and tested successfully."
+    else
+        echo "No changes detected. Exiting script."
     fi
-
-    echo "Prompting for commit message..."
-    # Prompt for commit message
-    commit_message=$(get_commit_message)
-
-    echo "Generating project structure and contents file..."
-    # Generate project structure and contents file
-    generate_structure_file
-
-    echo "Updating changelog..."
-    # Update changelog
-    update_changelog
-
-    echo "Committing changes..."
-    # Git operations
-    git add .
-    git commit -m "$commit_message"
-    git push origin main
-
-    echo "Changes have been committed and pushed to the repository."
 }
 
 # Execute the main function

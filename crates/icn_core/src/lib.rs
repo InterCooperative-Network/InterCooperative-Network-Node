@@ -4,13 +4,13 @@ use icn_common::{Config, Transaction, Proposal, ProposalStatus, Vote, CurrencyTy
 use icn_blockchain::Blockchain;
 use icn_consensus::PoCConsensus;
 use icn_currency::CurrencySystem;
-use icn_governance::GovernanceSystem;
+use icn_governance::{GovernanceSystem, ProposalType, ProposalCategory};
 use icn_identity::IdentityService;
 use icn_network::NetworkManager;
 use icn_sharding::ShardingManager;
 use icn_vm::SmartContractExecutor;
 use icn_storage::StorageManager;
-use icn_zkp::{ZKPManager, RangeProofWrapper};
+use icn_zkp::ZKPManager;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use std::collections::HashMap;
@@ -29,7 +29,6 @@ pub struct IcnNode {
     smart_contract_executor: Arc<RwLock<SmartContractExecutor>>,
     storage_manager: Arc<RwLock<StorageManager>>,
     zkp_manager: Arc<RwLock<ZKPManager>>,
-    proposals: Arc<RwLock<HashMap<String, Proposal>>>,
 }
 
 impl IcnNode {
@@ -44,7 +43,6 @@ impl IcnNode {
         let smart_contract_executor = Arc::new(RwLock::new(SmartContractExecutor::new()));
         let storage_manager = Arc::new(RwLock::new(StorageManager::new(3))); // Assuming a replication factor of 3
         let zkp_manager = Arc::new(RwLock::new(ZKPManager::new(64))); // Assuming a max bitsize of 64
-        let proposals = Arc::new(RwLock::new(HashMap::new()));
 
         Ok(Self {
             config,
@@ -58,7 +56,6 @@ impl IcnNode {
             smart_contract_executor,
             storage_manager,
             zkp_manager,
-            proposals,
         })
     }
 
@@ -122,6 +119,10 @@ impl IcnNode {
         self.governance.write().await.finalize_proposal(proposal_id)
     }
 
+    pub async fn execute_proposal(&self, proposal_id: &str) -> IcnResult<()> {
+        self.governance.write().await.execute_proposal(proposal_id)
+    }
+
     pub async fn mint_currency(&self, address: &str, currency_type: &CurrencyType, amount: f64) -> IcnResult<()> {
         self.currency_system.write().await.mint(address, currency_type, amount)
     }
@@ -135,15 +136,11 @@ impl IcnNode {
     }
 
     pub async fn execute_smart_contract(&self, contract_id: &str, function: &str, args: Vec<icn_vm::Value>) -> IcnResult<Option<icn_vm::Value>> {
-        // Retrieve the smart contract code from storage
         let contract_code = self.storage_manager.read().await.retrieve_data(contract_id)?;
-
-        // Pass the code and arguments to the VM for execution
         let mut executor = self.smart_contract_executor.write().await;
         executor.load_contract(contract_id, &String::from_utf8(contract_code)?)?;
         let result = executor.execute_contract(contract_id, function, args)?;
 
-        // Update the state based on the execution results
         if let Some(state_changes) = executor.get_state_changes(contract_id) {
             for (key, value) in state_changes {
                 self.storage_manager.write().await.store_data(&format!("{}:{}", contract_id, key), value.to_vec())?;
@@ -266,10 +263,21 @@ impl IcnNode {
             return Err(IcnError::Governance("Proposer does not exist".into()));
         }
 
-        // Additional checks can be added here, such as:
-        // - Checking if the proposal type is valid
-        // - Verifying the proposal's required quorum is within acceptable limits
-        // - Ensuring the voting period is reasonable
+        if !matches!(proposal.proposal_type, ProposalType::Constitutional | ProposalType::EconomicAdjustment | ProposalType::NetworkUpgrade | ProposalType::CommunityInitiative) {
+            return Err(IcnError::Governance("Invalid proposal type".into()));
+        }
+
+        if proposal.required_quorum < 0.0 || proposal.required_quorum > 1.0 {
+            return Err(IcnError::Governance("Invalid quorum value".into()));
+        }
+
+        if proposal.required_majority < 0.5 || proposal.required_majority > 1.0 {
+            return Err(IcnError::Governance("Invalid majority value".into()));
+        }
+
+        if proposal.voting_ends_at <= Utc::now() {
+            return Err(IcnError::Governance("Voting period has already ended".into()));
+        }
 
         Ok(())
     }
@@ -306,7 +314,7 @@ mod tests {
     #[tokio::test]
     async fn test_transaction_processing() {
         let node = create_test_node().await;
-        
+
         // Mint some currency for testing
         assert!(node.mint_currency("Alice", &CurrencyType::BasicNeeds, 1000.0).await.is_ok());
 
@@ -343,7 +351,9 @@ mod tests {
             proposal_type: ProposalType::Constitutional,
             category: ProposalCategory::Economic,
             required_quorum: 0.51,
-            execution_timestamp: None,
+            required_majority: 0.66,
+            execution_threshold: None,
+            execution_delay: None,
         };
 
         // Create proposal
@@ -368,6 +378,11 @@ mod tests {
         // Finalize proposal
         let final_status = node.finalize_proposal(&proposal_id).await.unwrap();
         assert_eq!(final_status, ProposalStatus::Passed);
+
+        // Execute proposal
+        assert!(node.execute_proposal(&proposal_id).await.is_ok());
+        let executed_proposal_status = node.get_proposal_status(&proposal_id).await.unwrap();
+        assert_eq!(executed_proposal_status, ProposalStatus::Executed);
     }
 
     #[tokio::test]
@@ -385,10 +400,16 @@ mod tests {
         // Execute the smart contract
         let result = node.execute_smart_contract(&contract_id, "add", vec![icn_vm::Value::Int(5), icn_vm::Value::Int(3)]).await.unwrap();
         assert_eq!(result, Some(icn_vm::Value::Int(8)));
+
+        // Test contract state persistence
+        let state_key = "last_result";
+        node.execute_smart_contract(&contract_id, "add", vec![icn_vm::Value::Int(10), icn_vm::Value::Int(15)]).await.unwrap();
+        let state_value = node.storage_manager.read().await.retrieve_data(&format!("{}:{}", contract_id, state_key)).unwrap();
+        assert_eq!(String::from_utf8(state_value).unwrap(), "25");
     }
 
     #[tokio::test]
-    async fn test_node_reputation_update() {
+    async fn test_node_reputation_management() {
         let node = create_test_node().await;
         let node_id = "test_node";
 
@@ -418,5 +439,21 @@ mod tests {
         assert_eq!(min_reputation, 0.0);
     }
 
-    // Add more tests as needed
+    #[tokio::test]
+    async fn test_zkp_creation() {
+        let node = create_test_node().await;
+
+        let transaction = Transaction {
+            from: "Alice".to_string(),
+            to: "Bob".to_string(),
+            amount: 50.0,
+            currency_type: CurrencyType::BasicNeeds,
+            timestamp: Utc::now().timestamp(),
+            signature: None,
+        };
+
+        let (proof, committed_values) = node.create_zkp(&transaction).await.unwrap();
+        assert!(!proof.is_empty());
+        assert!(!committed_values.is_empty());
+    }
 }
