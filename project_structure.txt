@@ -1,0 +1,73 @@
+.
+├── build_and_run_demo.sh
+├── Cargo.toml
+├── CHANGELOG.md
+├── cliff.toml
+├── crates
+│   ├── icn_api
+│   ├── icn_blockchain
+│   ├── icn_common
+│   ├── icn_consensus
+│   ├── icn_core
+│   ├── icn_currency
+│   ├── icn_dao
+│   ├── icn_demo
+│   ├── icn_federation
+│   ├── icn_governance
+│   ├── icn_identity
+│   ├── icn_incentives
+│   ├── icn_language
+│   ├── icn_market
+│   ├── icn_network
+│   ├── icn_node_management
+│   ├── icn_reputation
+│   ├── icn_sharding
+│   ├── icn_smart_contracts
+│   ├── icn_storage
+│   ├── icn_testnet
+│   ├── icn_utils
+│   ├── icn_vm
+│   └── icn_zkp
+├── docs
+│   ├── API.md
+│   ├── ARCHITECTURE.md
+│   ├── CONTRIBUTING.md
+│   ├── index.html
+│   ├── README.md
+│   ├── script.js
+│   ├── style.css
+│   └── temp_logo.png
+├── examples
+│   └── voting_contract.coop
+├── frontend
+│   ├── app.js
+│   └── index.html
+├── icn_repos
+│   ├── icn_blockchain
+│   ├── icn_consensus
+│   ├── icn_currency
+│   ├── icn_demo
+│   ├── icn_federation
+│   ├── icn_governance
+│   ├── icn_identity
+│   ├── icn_incentives
+│   ├── icn_language
+│   ├── icn_market
+│   ├── icn_network
+│   ├── icn_node_management
+│   ├── icn_reputation
+│   ├── icn_sharding
+│   ├── icn_smart_contracts
+│   ├── icn_storage
+│   ├── icn_testnet
+│   ├── icn_utils
+│   ├── icn_vm
+│   └── icn_zkp
+├── LICENSE.md
+├── manage_project.sh
+├── PROJECT_STRUCTURE_AND_CODE_CONTENTS.txt
+├── project_structure.txt
+├── README.md
+└── update_project.sh
+
+50 directories, 21 files
