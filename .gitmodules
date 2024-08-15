@@ -58,3 +58,6 @@
 [submodule "icn_repos/icn_zkp"]
 	path = icn_repos/icn_zkp
 	url = https://github.com/InterCooperative-Network/icn_zkp.git
+[submodule "icn_repos/icn_api"]
+	path = icn_repos/icn_api
+	url = https://github.com/InterCooperative-Network/icn_api.git
