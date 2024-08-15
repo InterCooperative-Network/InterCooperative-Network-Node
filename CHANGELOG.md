@@ -40,6 +40,12 @@ Implementation of cross-shard transactions.
 Integration of ZKP (Zero-Knowledge Proof) functionality.
 Extensive test suite covering various node operations. (21684fc)
 
+- Please enter your commit message below.
+Type your message and press Enter. To finish, enter a line with only a period (.):
+-------- BEGIN COMMIT MESSAGE --------
+-------- END COMMIT MESSAGE --------
+Commit message received. (8d18427)
+
 ## [de] - 2024-08-14
 
 ### Bug Fixes
