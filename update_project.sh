@@ -82,20 +82,59 @@ generate_structure_file() {
 # Function to update all submodules
 update_submodules() {
     echo "Updating submodules..."
-    git submodule update --init --recursive
+    
+    # Check if .gitmodules file exists
+    if [ ! -f ".gitmodules" ]; then
+        echo "Warning: .gitmodules file not found. Creating an empty one."
+        touch .gitmodules
+    fi
+
+    # Check for submodules without URLs
+    missing_urls=$(git config --file .gitmodules --get-regexp path | awk '{print $2}' | while read submodule; do
+        if ! git config --file .gitmodules --get "submodule.$submodule.url" > /dev/null; then
+            echo "$submodule"
+        fi
+    done)
+
+    if [ -n "$missing_urls" ]; then
+        echo "Warning: The following submodules are missing URLs in .gitmodules:"
+        echo "$missing_urls"
+        echo "Adding URLs for these submodules..."
+        echo "$missing_urls" | while read -r submodule; do
+            if [ "$submodule" == "icn_dao" ]; then
+                url="https://github.com/InterCooperative-Network/icn_dao"
+                git config --file .gitmodules submodule.$submodule.url "$url"
+                echo "URL added for $submodule: $url"
+            else
+                echo "Unknown submodule: $submodule. Please add its URL manually."
+            fi
+        done
+        git add .gitmodules
+        git commit -m "Updated .gitmodules with missing submodule URLs"
+    fi
+
+    # Now attempt to update submodules
+    if ! git submodule update --init --recursive; then
+        echo "Warning: Failed to update some submodules. You may need to initialize them manually."
+    fi
 }
 
 # Function to prompt for a commit message
 get_commit_message() {
-    echo "Enter your commit message (end with an empty line):"
+    echo "Please enter your commit message below."
+    echo "Type your message and press Enter. To finish, enter a line with only a period (.):"
+    echo "-------- BEGIN COMMIT MESSAGE --------"
     commit_message=""
     while IFS= read -r line; do
-        [[ $line ]] || break
+        if [ "$line" = "." ]; then
+            break
+        fi
         commit_message+="$line"$'\n'
     done
+    echo "-------- END COMMIT MESSAGE --------"
+    echo "Commit message received."
     echo "$commit_message"
 }
-
 # Main script execution
 main() {
     set -e
@@ -109,26 +148,31 @@ main() {
 
     update_submodules
 
-    if git diff-index --quiet HEAD --; then
-        echo "No changes to commit."
-        exit 0
-    fi
+    if [ -n "$(git status --porcelain)" ]; then
+        echo "Changes detected. Preparing to commit..."
+        
+        generate_structure_file
 
-    generate_structure_file
+        if check_git_cliff; then
+            update_changelog
+        else
+            echo "Skipping changelog update."
+        fi
 
-    if check_git_cliff; then
-        update_changelog
+        echo ""
+        echo "===================================="
+        echo "=  COMMIT MESSAGE INPUT REQUIRED   ="
+        echo "===================================="
+        commit_message=$(get_commit_message)
+        
+        git add .
+        git commit -m "$commit_message"
+        git push origin main
+
+        echo "Changes have been committed and pushed to the repository."
     else
-        echo "Skipping changelog update."
+        echo "No changes to commit."
     fi
-
-    commit_message=$(get_commit_message)
-
-    git add .
-    git commit -m "$commit_message"
-    git push origin main
-
-    echo "Changes have been committed and pushed to the repository."
 }
 
 # Execute the main function

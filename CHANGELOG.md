@@ -10,6 +10,8 @@ All notable changes to this project will be documented in this file.
 
 - Add icn_dao as submodule (d4463ee)
 
+- Enter your commit message (end with an empty line): (2315b1b)
+
 ## [de] - 2024-08-14
 
 ### Bug Fixes
