@@ -12,6 +12,13 @@ All notable changes to this project will be documented in this file.
 
 - Enter your commit message (end with an empty line): (2315b1b)
 
+- Please enter your commit message below.
+Type your message and press Enter. To finish, enter a line with only a period (.):
+-------- BEGIN COMMIT MESSAGE --------
+-------- END COMMIT MESSAGE --------
+Commit message received.
+test (05a547d)
+
 ## [de] - 2024-08-14
 
 ### Bug Fixes
