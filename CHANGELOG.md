@@ -46,6 +46,12 @@ Type your message and press Enter. To finish, enter a line with only a period (.
 -------- END COMMIT MESSAGE --------
 Commit message received. (8d18427)
 
+- Please enter your commit message below.
+Type your message and press Enter. To finish, enter a line with only a period (.):
+-------- BEGIN COMMIT MESSAGE --------
+-------- END COMMIT MESSAGE --------
+Commit message received. (edcfd20)
+
 ## [de] - 2024-08-14
 
 ### Bug Fixes
