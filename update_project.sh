@@ -2,15 +2,37 @@
 
 # Constants
 OUTPUT_FILE="PROJECT_STRUCTURE_AND_CODE_CONTENTS.txt"
-PROJECT_DIR="$HOME/InterCooperative-Network-Node"
+PROJECT_DIR=$(pwd)
 IGNORE_FILES="CHANGELOG.md cliff.toml"
+TREE_DEPTH=3
+
+# Function to check if git-cliff is installed
+check_git_cliff() {
+    if ! command -v git-cliff &> /dev/null; then
+        echo "git-cliff is not installed. Skipping changelog generation."
+        return 1
+    fi
+    return 0
+}
 
 # Function to update changelog
 update_changelog() {
     echo "Updating changelog..."
+    echo "Git status before changelog generation:"
+    git status
+    echo "Running git-cliff..."
     if ! git-cliff -o CHANGELOG.md; then
-        echo "Failed to update changelog."
-        exit 1
+        echo "Failed to update changelog. Error output:"
+        git-cliff -o CHANGELOG.md || true
+        echo "Skipping changelog update."
+        return 0
+    fi
+    echo "Changelog updated successfully."
+    if [ -f CHANGELOG.md ]; then
+        echo "CHANGELOG.md content:"
+        cat CHANGELOG.md
+    else
+        echo "CHANGELOG.md not found after generation."
     fi
     git add CHANGELOG.md
 }
@@ -18,19 +40,13 @@ update_changelog() {
 # Function to process files and append their contents to the output file
 process_files() {
     local dir="$1"
-    for file in "$dir"/*; do
-        if [[ "$IGNORE_FILES" =~ $(basename "$file") ]]; then
-            echo "Ignoring file: $file"
-            continue
-        fi
-        if [ -f "$file" ] && [[ "$file" == *.rs || "$file" == *.toml ]]; then
+    find "$dir" -type f \( -name "*.rs" -o -name "*.toml" -o -name "*.js" -o -name "*.html" -o -name "*.css" \) | while read -r file; do
+        if [[ ! "$IGNORE_FILES" =~ $(basename "$file") ]] && [[ "$file" != *"target"* && "$file" != *"node_modules"* && "$file" != *".git"* ]]; then
             echo "Processing file: $file"
-            echo "===== START OF $file =====" >> $OUTPUT_FILE
-            cat "$file" >> $OUTPUT_FILE
-            echo "===== END OF $file =====" >> $OUTPUT_FILE
-            echo >> $OUTPUT_FILE
-        elif [ -d "$file" ] && [[ "$file" != *"target"* ]]; then
-            process_files "$file"
+            echo "===== START OF $file =====" >> "$OUTPUT_FILE"
+            cat "$file" >> "$OUTPUT_FILE"
+            echo "===== END OF $file =====" >> "$OUTPUT_FILE"
+            echo >> "$OUTPUT_FILE"
         fi
     done
 }
@@ -38,34 +54,35 @@ process_files() {
 # Function to generate the project structure and contents file
 generate_structure_file() {
     echo "Generating project structure and contents file..."
+    > "$OUTPUT_FILE"
 
-    # Clear the output file if it already exists
-    > $OUTPUT_FILE
-
-    # Generate file structure tree
     echo "Generating file structure tree..."
-    echo "===== START OF FILE STRUCTURE =====" >> $OUTPUT_FILE
-    if ! tree -I 'target|node_modules' $PROJECT_DIR >> $OUTPUT_FILE; then
+    echo "===== START OF FILE STRUCTURE =====" >> "$OUTPUT_FILE"
+    if ! tree -I 'target|node_modules|.git' -L "$TREE_DEPTH" -a "$PROJECT_DIR" >> "$OUTPUT_FILE"; then
         echo "Failed to generate file structure tree."
-        exit 1
+        return 1
     fi
-    echo "===== END OF FILE STRUCTURE =====" >> $OUTPUT_FILE
-    echo >> $OUTPUT_FILE
+    echo "===== END OF FILE STRUCTURE =====" >> "$OUTPUT_FILE"
+    echo >> "$OUTPUT_FILE"
 
-    # Process files in the project directory
     process_files "$PROJECT_DIR"
 
-    # Include the workspace Cargo.toml file if it exists
     if [ -f "$PROJECT_DIR/Cargo.toml" ]; then
         echo "Processing workspace Cargo.toml..."
-        echo "===== START OF $PROJECT_DIR/Cargo.toml =====" >> $OUTPUT_FILE
-        cat "$PROJECT_DIR/Cargo.toml" >> $OUTPUT_FILE
-        echo "===== END OF $PROJECT_DIR/Cargo.toml =====" >> $OUTPUT_FILE
-        echo >> $OUTPUT_FILE
+        echo "===== START OF $PROJECT_DIR/Cargo.toml =====" >> "$OUTPUT_FILE"
+        cat "$PROJECT_DIR/Cargo.toml" >> "$OUTPUT_FILE"
+        echo "===== END OF $PROJECT_DIR/Cargo.toml =====" >> "$OUTPUT_FILE"
+        echo >> "$OUTPUT_FILE"
     fi
 
     echo "All relevant files have been processed and concatenated into $OUTPUT_FILE."
-    git add $OUTPUT_FILE
+    git add "$OUTPUT_FILE"
+}
+
+# Function to update all submodules
+update_submodules() {
+    echo "Updating submodules..."
+    git submodule update --init --recursive
 }
 
 # Function to prompt for a commit message
@@ -83,38 +100,30 @@ get_commit_message() {
 main() {
     set -e
     echo "Starting script..."
+    echo "Current directory: $PROJECT_DIR"
 
-    # Check if PROJECT_DIR exists
-    if [ ! -d "$PROJECT_DIR" ]; then
-        echo "Project directory $PROJECT_DIR does not exist."
+    if [ ! -d "$PROJECT_DIR/.git" ]; then
+        echo "Not a git repository. Please run this script from the root of your git project."
         exit 1
     fi
 
-    echo "Navigating to project directory..."
-    # Navigate to the project directory
-    cd $PROJECT_DIR
+    update_submodules
 
-    echo "Checking for changes to commit..."
-    # Check if there are any changes to co
-    
+    if git diff-index --quiet HEAD --; then
         echo "No changes to commit."
         exit 0
     fi
 
-    echo "Prompting for commit message..."
-    # Prompt for commit message
-    commit_message=$(get_commit_message)
-
-    echo "Generating project structure and contents file..."
-    # Generate project structure and contents file
     generate_structure_file
 
-    echo "Updating changelog..."
-    # Update changelog
-    update_changelog
+    if check_git_cliff; then
+        update_changelog
+    else
+        echo "Skipping changelog update."
+    fi
 
-    echo "Committing changes..."
-    # Git operations
+    commit_message=$(get_commit_message)
+
     git add .
     git commit -m "$commit_message"
     git push origin main
