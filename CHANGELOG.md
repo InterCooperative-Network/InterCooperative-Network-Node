@@ -19,6 +19,12 @@ Type your message and press Enter. To finish, enter a line with only a period (.
 Commit message received.
 test (05a547d)
 
+- Please enter your commit message below.
+Type your message and press Enter. To finish, enter a line with only a period (.):
+-------- BEGIN COMMIT MESSAGE --------
+-------- END COMMIT MESSAGE --------
+Commit message received. (1d5d06f)
+
 ## [de] - 2024-08-14
 
 ### Bug Fixes

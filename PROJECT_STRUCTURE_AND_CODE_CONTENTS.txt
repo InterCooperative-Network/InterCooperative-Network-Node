@@ -7302,7 +7302,7 @@ use icn_common::{Config, Transaction, Proposal, ProposalStatus, Vote, CurrencyTy
 use icn_blockchain::Blockchain;
 use icn_consensus::PoCConsensus;
 use icn_currency::CurrencySystem;
-use icn_governance::{GovernanceSystem, ProposalType, ProposalCategory};
+use icn_governance::GovernanceSystem;
 use icn_identity::IdentityService;
 use icn_network::NetworkManager;
 use icn_sharding::ShardingManager;
@@ -7358,30 +7358,36 @@ impl IcnNode {
     }
 
     pub async fn start(&self) -> IcnResult<()> {
+        info!("Starting ICN Node");
         self.consensus.write().await.start()?;
-        self.network_manager.write().await.start()?;
+        self.network_manager.write().await.start().await?;
+        self.sharding_manager.write().await.start()?;
         Ok(())
     }
 
     pub async fn stop(&self) -> IcnResult<()> {
+        info!("Stopping ICN Node");
         self.consensus.write().await.stop()?;
-        self.network_manager.write().await.stop()?;
+        self.network_manager.write().await.stop().await?;
+        self.sharding_manager.write().await.stop()?;
         Ok(())
     }
 
     pub async fn process_transaction(&self, transaction: Transaction) -> IcnResult<()> {
+        info!("Processing transaction: {:?}", transaction);
         self.verify_transaction(&transaction).await?;
         let shard_id = self.sharding_manager.read().await.get_shard_for_address(&transaction.from);
         self.blockchain.write().await.add_transaction(transaction.clone())?;
         self.currency_system.write().await.process_transaction(&transaction)?;
-        self.sharding_manager.write().await.process_transaction(shard_id, &transaction)?;
+        self.sharding_manager.write().await.process_transaction(shard_id, &transaction).await?;
         Ok(())
     }
 
     pub async fn create_proposal(&self, proposal: Proposal) -> IcnResult<String> {
+        info!("Creating proposal: {:?}", proposal);
         self.verify_proposal(&proposal).await?;
         let proposal_id = self.governance.write().await.create_proposal(proposal)?;
-        self.network_manager.read().await.broadcast_proposal(&proposal_id)?;
+        self.network_manager.read().await.broadcast_proposal(&proposal_id).await?;
         Ok(proposal_id)
     }
 
@@ -7398,7 +7404,7 @@ impl IcnNode {
     }
 
     pub async fn get_network_stats(&self) -> IcnResult<NetworkStats> {
-        self.network_manager.read().await.get_stats()
+        self.network_manager.read().await.get_stats().await
     }
 
     pub async fn get_proposal(&self, proposal_id: &str) -> IcnResult<Option<Proposal>> {
@@ -7569,10 +7575,6 @@ impl IcnNode {
             return Err(IcnError::Governance("Invalid quorum value".into()));
         }
 
-        if proposal.required_majority < 0.5 || proposal.required_majority > 1.0 {
-            return Err(IcnError::Governance("Invalid majority value".into()));
-        }
-
         if proposal.voting_ends_at <= Utc::now() {
             return Err(IcnError::Governance("Voting period has already ended".into()));
         }
@@ -7584,7 +7586,7 @@ impl IcnNode {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::Duration;
+    use icn_common::CurrencyType;
 
     async fn create_test_node() -> IcnNode {
         let config = Config {
@@ -7644,14 +7646,12 @@ mod tests {
             description: "This is a test proposal".to_string(),
             proposer: "Alice".to_string(),
             created_at: Utc::now(),
-            voting_ends_at: Utc::now() + Duration::days(7),
+            voting_ends_at: Utc::now() + chrono::Duration::days(7),
             status: ProposalStatus::Active,
             proposal_type: ProposalType::Constitutional,
             category: ProposalCategory::Economic,
             required_quorum: 0.51,
-            required_majority: 0.66,
-            execution_threshold: None,
-            execution_delay: None,
+            execution_timestamp: None,
         };
 
         // Create proposal
@@ -7731,31 +7731,100 @@ mod tests {
         let max_reputation = node.get_node_reputation(node_id).await.unwrap();
         assert_eq!(max_reputation, 1.0);
 
-        // Test lower bound
-        node.update_node_reputation(node_id, -2.0).await.unwrap();
-        let min_reputation = node.get_node_reputation(node_id).await.unwrap();
-        assert_eq!(min_reputation, 0.0);
-    }
+       // Test lower bound
+       node.update_node_reputation(node_id, -2.0).await.unwrap();
+       let min_reputation = node.get_node_reputation(node_id).await.unwrap();
+       assert_eq!(min_reputation, 0.0);
+   }
 
-    #[tokio::test]
-    async fn test_zkp_creation() {
-        let node = create_test_node().await;
+   #[tokio::test]
+   async fn test_zkp_creation() {
+       let node = create_test_node().await;
 
-        let transaction = Transaction {
-            from: "Alice".to_string(),
-            to: "Bob".to_string(),
-            amount: 50.0,
-            currency_type: CurrencyType::BasicNeeds,
-            timestamp: Utc::now().timestamp(),
-            signature: None,
-        };
+       let transaction = Transaction {
+           from: "Alice".to_string(),
+           to: "Bob".to_string(),
+           amount: 50.0,
+           currency_type: CurrencyType::BasicNeeds,
+           timestamp: Utc::now().timestamp(),
+           signature: None,
+       };
 
-        let (proof, committed_values) = node.create_zkp(&transaction).await.unwrap();
-        assert!(!proof.is_empty());
-        assert!(!committed_values.is_empty());
-    }
-}
-===== END OF /opt/InterCooperative-Network-Node/icn_repos/icn_core/src/lib.rs =====
+       let (proof, committed_values) = node.create_zkp(&transaction).await.unwrap();
+       assert!(!proof.is_empty());
+       assert!(!committed_values.is_empty());
+   }
+
+   #[tokio::test]
+   async fn test_sharding() {
+       let node = create_test_node().await;
+
+       // Test shard assignment
+       let address1 = "Alice".to_string();
+       let address2 = "Bob".to_string();
+
+       let shard1 = node.get_shard_for_address(&address1).await;
+       let shard2 = node.get_shard_for_address(&address2).await;
+
+       assert!(shard1 < node.config.shard_count);
+       assert!(shard2 < node.config.shard_count);
+
+       // Test cross-shard transaction
+       node.mint_currency(&address1, &CurrencyType::BasicNeeds, 1000.0).await.unwrap();
+
+       let transaction = Transaction {
+           from: address1.clone(),
+           to: address2.clone(),
+           amount: 100.0,
+           currency_type: CurrencyType::BasicNeeds,
+           timestamp: Utc::now().timestamp(),
+           signature: None,
+       };
+
+       assert!(node.process_transaction(transaction).await.is_ok());
+
+       // Check balances across shards
+       let alice_balance = node.get_total_balance(&address1, &CurrencyType::BasicNeeds).await.unwrap();
+       let bob_balance = node.get_total_balance(&address2, &CurrencyType::BasicNeeds).await.unwrap();
+
+       assert_eq!(alice_balance, 900.0);
+       assert_eq!(bob_balance, 100.0);
+   }
+
+   #[tokio::test]
+   async fn test_network_stats() {
+       let node = create_test_node().await;
+
+       // Simulate some network activity
+       node.process_transaction(Transaction {
+           from: "Alice".to_string(),
+           to: "Bob".to_string(),
+           amount: 50.0,
+           currency_type: CurrencyType::BasicNeeds,
+           timestamp: Utc::now().timestamp(),
+           signature: None,
+       }).await.unwrap();
+
+       node.create_proposal(Proposal {
+           id: "test_proposal".to_string(),
+           title: "Test Proposal".to_string(),
+           description: "This is a test proposal".to_string(),
+           proposer: "Alice".to_string(),
+           created_at: Utc::now(),
+           voting_ends_at: Utc::now() + chrono::Duration::days(7),
+           status: ProposalStatus::Active,
+           proposal_type: ProposalType::Constitutional,
+           category: ProposalCategory::Economic,
+           required_quorum: 0.51,
+           execution_timestamp: None,
+       }).await.unwrap();
+
+       let stats = node.get_network_stats().await.unwrap();
+       assert!(stats.node_count > 0);
+       assert_eq!(stats.total_transactions, 1);
+       assert_eq!(stats.active_proposals, 1);
+   }
+}===== END OF /opt/InterCooperative-Network-Node/icn_repos/icn_core/src/lib.rs =====
 
 ===== START OF /opt/InterCooperative-Network-Node/icn_repos/icn_core/src/config.rs =====
 // icn_core/src/config.rs
