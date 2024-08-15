@@ -62,6 +62,19 @@ Integration with Consensus: The blockchain is now fully integrated with the Proo
 Updated Tests: Test cases have been updated to reflect the removal of PoW and to test the new PoC-based blockchain operations.
 Network Updates: The network module has been revised to work with the new consensus model and maintain efficient peer-to-peer communication and gossip protocol. (1031884)
 
+- Please enter your commit message below.
+Type your message and press Enter. To finish, enter a line with only a period (.):
+-------- BEGIN COMMIT MESSAGE --------
+-------- END COMMIT MESSAGE --------
+Commit message received.
+Enhance blockchain integration with consensus and improve documentation
+
+    Improved interaction between blockchain and consensus module.
+    Added comprehensive comments and documentation throughout the code.
+    Prepared the code for future implementation of signature verification.
+    Refined block and transaction validation processes.
+    Verified functionality through updated and comprehensive tests. (c760a6a)
+
 ## [de] - 2024-08-14
 
 ### Bug Fixes
