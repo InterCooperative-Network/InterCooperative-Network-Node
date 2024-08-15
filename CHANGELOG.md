@@ -52,6 +52,16 @@ Type your message and press Enter. To finish, enter a line with only a period (.
 -------- END COMMIT MESSAGE --------
 Commit message received. (edcfd20)
 
+- Please enter your commit message below.
+Type your message and press Enter. To finish, enter a line with only a period (.):
+-------- BEGIN COMMIT MESSAGE --------
+-------- END COMMIT MESSAGE --------
+Commit message received.
+Proof of Work Removal: All references to PoW, including mining difficulty and related methods, have been removed from the blockchain implementation.
+Integration with Consensus: The blockchain is now fully integrated with the Proof of Cooperation (PoC) consensus mechanism, which is energy-efficient and better suited to the project's goals.
+Updated Tests: Test cases have been updated to reflect the removal of PoW and to test the new PoC-based blockchain operations.
+Network Updates: The network module has been revised to work with the new consensus model and maintain efficient peer-to-peer communication and gossip protocol. (1031884)
+
 ## [de] - 2024-08-14
 
 ### Bug Fixes
