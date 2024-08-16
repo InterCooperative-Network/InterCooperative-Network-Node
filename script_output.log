@@ -868,3 +868,8 @@ Type your message and press Enter. To finish, enter a line with only a period (.
 -------- BEGIN COMMIT MESSAGE --------
 -------- END COMMIT MESSAGE --------
 Commit message received.
+[main bf45e64] added mock and simulation files to blockchain
+ 3 files changed, 1603 insertions(+), 16 deletions(-)
+To github.com:InterCooperative-Network/InterCooperative-Network-Node.git
+   9f9f55f..bf45e64  main -> main
+Changes have been committed and pushed to the repository.

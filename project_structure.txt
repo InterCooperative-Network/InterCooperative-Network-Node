@@ -3,7 +3,21 @@
 ├── Cargo.toml
 ├── CHANGELOG.md
 ├── cliff.toml
-├── crates
+├── docs
+│   ├── API.md
+│   ├── ARCHITECTURE.md
+│   ├── CONTRIBUTING.md
+│   ├── index.html
+│   ├── README.md
+│   ├── script.js
+│   ├── style.css
+│   └── temp_logo.png
+├── examples
+│   └── voting_contract.coop
+├── frontend
+│   ├── app.js
+│   └── index.html
+├── icn_repos
 │   ├── icn_api
 │   ├── icn_blockchain
 │   ├── icn_common
@@ -28,46 +42,85 @@
 │   ├── icn_utils
 │   ├── icn_vm
 │   └── icn_zkp
-├── docs
-│   ├── API.md
-│   ├── ARCHITECTURE.md
-│   ├── CONTRIBUTING.md
-│   ├── index.html
-│   ├── README.md
-│   ├── script.js
-│   ├── style.css
-│   └── temp_logo.png
-├── examples
-│   └── voting_contract.coop
-├── frontend
-│   ├── app.js
-│   └── index.html
-├── icn_repos
-│   ├── icn_blockchain
-│   ├── icn_consensus
-│   ├── icn_currency
-│   ├── icn_demo
-│   ├── icn_federation
-│   ├── icn_governance
-│   ├── icn_identity
-│   ├── icn_incentives
-│   ├── icn_language
-│   ├── icn_market
-│   ├── icn_network
-│   ├── icn_node_management
-│   ├── icn_reputation
-│   ├── icn_sharding
-│   ├── icn_smart_contracts
-│   ├── icn_storage
-│   ├── icn_testnet
-│   ├── icn_utils
-│   ├── icn_vm
-│   └── icn_zkp
 ├── LICENSE.md
 ├── manage_project.sh
+├── NEW_PROJECT_STRUCTURE.txt
 ├── PROJECT_STRUCTURE_AND_CODE_CONTENTS.txt
 ├── project_structure.txt
 ├── README.md
+├── script_output.log
 └── update_project.sh
 
-50 directories, 21 files
+29 directories, 23 files
+ e60f843961482106b29217407f94ea9910e269ed icn_repos/icn_api (heads/main)
+ 889b6ffec84577f4a606e4cf570209f7661669e9 icn_repos/icn_blockchain (heads/main)
+ bf40eb8b57a1b8aeb7f0251fedc62222df70e79d icn_repos/icn_common (heads/main)
+ bf70c925140b2667f7f7ad4691fb74dc8ff2b064 icn_repos/icn_consensus (heads/main)
+ c1803865ac697488a4581680ca835302c01d2260 icn_repos/icn_core (heads/main)
+ 1db2b6e511aaa45700708c4e42fb0732d1255fda icn_repos/icn_currency (heads/main)
+ 6d3cc0d21dcd5208bcdff4edf6ab7805fce864a6 icn_repos/icn_dao (heads/main)
+ a3e31d7d4e2e229e49b17407078d6a09c76be03d icn_repos/icn_demo (heads/main)
+ e75e4ff5733f7511e5fa9a877ac9c1897c917fd5 icn_repos/icn_federation (heads/main)
+ 11d82355821aefd0d4bd342df214788e8c31723f icn_repos/icn_governance (heads/main)
+ 87ce81e85bb743d5ba8ea32be611a52ab632b1e5 icn_repos/icn_identity (heads/main)
+ d98343df093c0c3303c50919cde995fa088dc63a icn_repos/icn_incentives (heads/main)
+ ce153977197077ecd3dbbb2b7b81ea89e06ebfa3 icn_repos/icn_language (heads/main)
+ 1d84b3a4425c9d0f04dc22a8cb9a87ef6a745a5a icn_repos/icn_market (heads/main)
+ 11dabdf2de708132a4fd5d0e307caae97646a5db icn_repos/icn_network (heads/main)
+ 55d5bdd31f274949d6be997a44d2234833cbee3d icn_repos/icn_node_management (heads/main)
+ 93e1cd54f25241a8c5f01f61aa46fe82777edf6a icn_repos/icn_reputation (heads/main)
+ d91612b62268eedbc1de3c968b0e5b9a9d37269a icn_repos/icn_sharding (heads/main)
+ 5b287e36a6f077aff0b91fa2fff4f917ed8e5cb8 icn_repos/icn_smart_contracts (heads/main)
+ e427a7c1eacbf41c94912cb4bef4e3a9c6d8564e icn_repos/icn_storage (heads/main)
+ 5c88499839843266b300b5b7367cd3bb4978c7fe icn_repos/icn_testnet (heads/main)
+ 1c5313a991c86ea894cd7e078dae066e1e9fcb94 icn_repos/icn_utils (heads/main)
+ 47732a0aa7092b1c26d26242df9a496ac268952e icn_repos/icn_vm (heads/main)
+ 57561b507bbbc5809f56f4ec8340bf69a9dcc614 icn_repos/icn_zkp (heads/main)
+submodule.icn_repos/icn_identity.path
+submodule.icn_repos/icn_blockchain.path
+submodule.icn_repos/icn_consensus.path
+submodule.icn_repos/icn_currency.path
+submodule.icn_repos/icn_demo.path
+submodule.icn_repos/icn_federation.path
+submodule.icn_repos/icn_governance.path
+submodule.icn_repos/icn_incentives.path
+submodule.icn_repos/icn_language.path
+submodule.icn_repos/icn_market.path
+submodule.icn_repos/icn_network.path
+submodule.icn_repos/icn_node_management.path
+submodule.icn_repos/icn_reputation.path
+submodule.icn_repos/icn_sharding.path
+submodule.icn_repos/icn_smart_contracts.path
+submodule.icn_repos/icn_storage.path
+submodule.icn_repos/icn_testnet.path
+submodule.icn_repos/icn_utils.path
+submodule.icn_repos/icn_vm.path
+submodule.icn_repos/icn_zkp.path
+submodule.icn_repos/icn_api.path
+submodule.icn_repos/icn_dao.path
+submodule.icn_repos/icn_common.path
+submodule.icn_repos/icn_core.path
+submodule.icn_repos/icn_identity.url https://github.com/InterCooperative-Network/icn_identity.git
+submodule.icn_repos/icn_blockchain.url https://github.com/InterCooperative-Network/icn_blockchain.git
+submodule.icn_repos/icn_consensus.url https://github.com/InterCooperative-Network/icn_consensus.git
+submodule.icn_repos/icn_currency.url https://github.com/InterCooperative-Network/icn_currency.git
+submodule.icn_repos/icn_demo.url https://github.com/InterCooperative-Network/icn_demo.git
+submodule.icn_repos/icn_federation.url https://github.com/InterCooperative-Network/icn_federation.git
+submodule.icn_repos/icn_governance.url https://github.com/InterCooperative-Network/icn_governance.git
+submodule.icn_repos/icn_incentives.url https://github.com/InterCooperative-Network/icn_incentives.git
+submodule.icn_repos/icn_language.url https://github.com/InterCooperative-Network/icn_language.git
+submodule.icn_repos/icn_market.url https://github.com/InterCooperative-Network/icn_market.git
+submodule.icn_repos/icn_network.url https://github.com/InterCooperative-Network/icn_network.git
+submodule.icn_repos/icn_node_management.url https://github.com/InterCooperative-Network/icn_node_management.git
+submodule.icn_repos/icn_reputation.url https://github.com/InterCooperative-Network/icn_reputation.git
+submodule.icn_repos/icn_sharding.url https://github.com/InterCooperative-Network/icn_sharding.git
+submodule.icn_repos/icn_smart_contracts.url https://github.com/InterCooperative-Network/icn_smart_contracts.git
+submodule.icn_repos/icn_storage.url https://github.com/InterCooperative-Network/icn_storage.git
+submodule.icn_repos/icn_testnet.url https://github.com/InterCooperative-Network/icn_testnet.git
+submodule.icn_repos/icn_utils.url https://github.com/InterCooperative-Network/icn_utils.git
+submodule.icn_repos/icn_vm.url https://github.com/InterCooperative-Network/icn_vm.git
+submodule.icn_repos/icn_zkp.url https://github.com/InterCooperative-Network/icn_zkp.git
+submodule.icn_repos/icn_api.url https://github.com/InterCooperative-Network/icn_api.git
+submodule.icn_repos/icn_dao.url git@github.com:InterCooperative-Network/icn_dao.git
+submodule.icn_repos/icn_common.url https://github.com/InterCooperative-Network/icn_common
+submodule.icn_repos/icn_core.url https://github.com/InterCooperative-Network/icn_core
