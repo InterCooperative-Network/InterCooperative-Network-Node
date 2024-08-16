@@ -856,3 +856,12 @@ Type your message and press Enter. To finish, enter a line with only a period (.
 -------- BEGIN COMMIT MESSAGE --------
 -------- END COMMIT MESSAGE --------
 Commit message received.
+[main 9c64c6c] moving some code to common
+ 3 files changed, 149 insertions(+), 10 deletions(-)
+remote: 
+remote: GitHub found 1 vulnerability on InterCooperative-Network/InterCooperative-Network-Node's default branch (1 moderate). To find out more, visit:        
+remote:      https://github.com/InterCooperative-Network/InterCooperative-Network-Node/security/dependabot/7        
+remote: 
+To github.com:InterCooperative-Network/InterCooperative-Network-Node.git
+   254428d..9c64c6c  main -> main
+Changes have been committed and pushed to the repository.
