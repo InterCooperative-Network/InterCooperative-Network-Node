@@ -69,20 +69,6 @@ Processing file: /opt/InterCooperative-Network-Node/icn_repos/icn_common/src/tra
 Processing file: /opt/InterCooperative-Network-Node/icn_repos/icn_common/src/blockchain_interface.rs
 Processing file: /opt/InterCooperative-Network-Node/icn_repos/icn_common/src/bit_utils.rs
 Processing file: /opt/InterCooperative-Network-Node/icn_repos/icn_common/src/lib.rs
-Processing file: /opt/InterCooperative-Network-Node/icn_repos/icn_core/Cargo.toml
-Processing file: /opt/InterCooperative-Network-Node/icn_repos/icn_core/tests/mod.rs
-Processing file: /opt/InterCooperative-Network-Node/icn_repos/icn_core/tests/integration_tests.rs
-Processing file: /opt/InterCooperative-Network-Node/icn_repos/icn_core/tests/icn_node_tests.rs
-Processing file: /opt/InterCooperative-Network-Node/icn_repos/icn_core/tests/smart_contract_tests.rs
-Processing file: /opt/InterCooperative-Network-Node/icn_repos/icn_core/tests/blockchain_and_consensus_tests.rs
-Processing file: /opt/InterCooperative-Network-Node/icn_repos/icn_core/tests/blockchain_tests.rs
-Processing file: /opt/InterCooperative-Network-Node/icn_repos/icn_core/src/cli/mod.rs
-Processing file: /opt/InterCooperative-Network-Node/icn_repos/icn_core/src/error.rs
-Processing file: /opt/InterCooperative-Network-Node/icn_repos/icn_core/src/security/mod.rs
-Processing file: /opt/InterCooperative-Network-Node/icn_repos/icn_core/src/main.rs
-Processing file: /opt/InterCooperative-Network-Node/icn_repos/icn_core/src/logging/mod.rs
-Processing file: /opt/InterCooperative-Network-Node/icn_repos/icn_core/src/lib.rs
-Processing file: /opt/InterCooperative-Network-Node/icn_repos/icn_core/src/config.rs
 Processing file: /opt/InterCooperative-Network-Node/icn_repos/icn_storage/Cargo.toml
 Processing file: /opt/InterCooperative-Network-Node/icn_repos/icn_storage/src/storage_node.rs
 Processing file: /opt/InterCooperative-Network-Node/icn_repos/icn_storage/src/lib.rs
@@ -135,10 +121,12 @@ All relevant files have been processed and concatenated into PROJECT_STRUCTURE_A
 Updating changelog...
 Git status before changelog generation:
 On branch main
-Your branch is up to date with 'origin/main'.
+Your branch is ahead of 'origin/main' by 1 commit.
+  (use "git push" to publish your local commits)
 
 Changes to be committed:
   (use "git restore --staged <file>..." to unstage)
+	modified:   CHANGELOG.md
 	modified:   PROJECT_STRUCTURE_AND_CODE_CONTENTS.txt
 	modified:   script_output.log
 
@@ -300,6 +288,10 @@ Type your message and press Enter. To finish, enter a line with only a period (.
 -------- BEGIN COMMIT MESSAGE --------
 -------- END COMMIT MESSAGE --------
 test (32a980e)
+
+- moving some code to common (9c64c6c)
+
+- Remove incorrect submodule clone for icn_core (a4ba1b0)
 
 
 ### Testing
@@ -856,12 +848,3 @@ Type your message and press Enter. To finish, enter a line with only a period (.
 -------- BEGIN COMMIT MESSAGE --------
 -------- END COMMIT MESSAGE --------
 Commit message received.
-[main 9c64c6c] moving some code to common
- 3 files changed, 149 insertions(+), 10 deletions(-)
-remote: 
-remote: GitHub found 1 vulnerability on InterCooperative-Network/InterCooperative-Network-Node's default branch (1 moderate). To find out more, visit:        
-remote:      https://github.com/InterCooperative-Network/InterCooperative-Network-Node/security/dependabot/7        
-remote: 
-To github.com:InterCooperative-Network/InterCooperative-Network-Node.git
-   254428d..9c64c6c  main -> main
-Changes have been committed and pushed to the repository.

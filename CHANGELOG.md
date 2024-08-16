@@ -127,6 +127,10 @@ Type your message and press Enter. To finish, enter a line with only a period (.
 -------- END COMMIT MESSAGE --------
 test (32a980e)
 
+- moving some code to common (9c64c6c)
+
+- Remove incorrect submodule clone for icn_core (a4ba1b0)
+
 
 ### Testing
 
