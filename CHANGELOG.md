@@ -121,6 +121,12 @@ Breaking change: The structure of the blockchain module has been significantly
 refactored. This will require updates to any dependent modules or external
 references to the blockchain functionality. (2c3b9e2)
 
+- Please enter your commit message below.
+Type your message and press Enter. To finish, enter a line with only a period (.) or just press Enter:
+-------- BEGIN COMMIT MESSAGE --------
+-------- END COMMIT MESSAGE --------
+test (32a980e)
+
 ## [de] - 2024-08-14
 
 ### Bug Fixes

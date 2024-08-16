@@ -133,10 +133,6 @@ Git status before changelog generation:
 On branch main
 Your branch is up to date with 'origin/main'.
 
-Changes to be committed:
-  (use "git restore --staged <file>..." to unstage)
-	modified:   PROJECT_STRUCTURE_AND_CODE_CONTENTS.txt
-
 Changes not staged for commit:
   (use "git add <file>..." to update what will be committed)
   (use "git restore <file>..." to discard changes in working directory)
@@ -162,12 +158,10 @@ Changes not staged for commit:
 	modified:   icn_repos/icn_utils (modified content)
 	modified:   icn_repos/icn_vm (modified content)
 	modified:   icn_repos/icn_zkp (modified content)
+	modified:   script_output.log
 	modified:   update_project.sh
 
-Untracked files:
-  (use "git add <file>..." to include in what will be committed)
-	script_output.log
-
+no changes added to commit (use "git add" and/or "git commit -a")
 Running git-cliff...
 Changelog updated successfully.
 CHANGELOG.md content:
@@ -293,6 +287,12 @@ Refactor blockchain implementation and improve modularity
 Breaking change: The structure of the blockchain module has been significantly
 refactored. This will require updates to any dependent modules or external
 references to the blockchain functionality. (2c3b9e2)
+
+- Please enter your commit message below.
+Type your message and press Enter. To finish, enter a line with only a period (.) or just press Enter:
+-------- BEGIN COMMIT MESSAGE --------
+-------- END COMMIT MESSAGE --------
+test (32a980e)
 
 ## [de] - 2024-08-14
 
@@ -839,9 +839,8 @@ Implement gossip protocol in NetworkManager- Add GossipMessage enum and NetworkU
 ====================================
 =  COMMIT MESSAGE INPUT REQUIRED   =
 ====================================
-Commit message:
 Please enter your commit message below.
 Type your message and press Enter. To finish, enter a line with only a period (.) or just press Enter:
 -------- BEGIN COMMIT MESSAGE --------
 -------- END COMMIT MESSAGE --------
-test
+Commit message received.

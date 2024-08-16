@@ -98,6 +98,7 @@ get_commit_message() {
     echo "Please enter your commit message below."
     echo "Type your message and press Enter. To finish, enter a line with only a period (.) or just press Enter:"
     echo "-------- BEGIN COMMIT MESSAGE --------"
+
     commit_message=""
     while IFS= read -r line; do
         if [ -z "$line" ] || [ "$line" = "." ]; then
@@ -105,8 +106,8 @@ get_commit_message() {
         fi
         commit_message+="$line"$'\n'
     done
+
     echo "-------- END COMMIT MESSAGE --------"
-    echo "$commit_message"
 }
 
 # Main script execution
@@ -124,7 +125,7 @@ main() {
 
     if [ -n "$(git status --porcelain)" ]; then
         echo "Changes detected. Preparing to commit..."
-        
+
         generate_structure_file
 
         if check_git_cliff; then
@@ -137,10 +138,9 @@ main() {
         echo "===================================="
         echo "=  COMMIT MESSAGE INPUT REQUIRED   ="
         echo "===================================="
-        commit_message=$(get_commit_message)
-        
-        echo "Commit message:"
-        echo "$commit_message"
+
+        get_commit_message
+        echo "Commit message received."
 
         git add .
         git commit -m "$commit_message"
