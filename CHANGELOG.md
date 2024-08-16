@@ -92,6 +92,13 @@ Enhance consensus mechanism with improved blockchain integration and documentati
 
 - Removed icn_dao submodule from /opt/InterCooperative-Network-Node/icn_dao (5632303)
 
+- Please enter your commit message below.
+Type your message and press Enter. To finish, enter a line with only a period (.):
+-------- BEGIN COMMIT MESSAGE --------
+-------- END COMMIT MESSAGE --------
+Commit message received.
+added common back (9eaab70)
+
 ## [de] - 2024-08-14
 
 ### Bug Fixes

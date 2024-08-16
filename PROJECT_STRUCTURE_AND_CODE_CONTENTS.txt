@@ -154,15 +154,18 @@ tokio = { version = "1.0", features = ["full"] }
 ===== END OF /opt/InterCooperative-Network-Node/icn_repos/icn_blockchain/Cargo.toml =====
 
 ===== START OF /opt/InterCooperative-Network-Node/icn_repos/icn_blockchain/src/blockchain.rs =====
-// File: crates/icn_blockchain/src/lib.rs
+// File: icn_repos/icn_blockchain/src/blockchain.rs
 
 use chrono::{DateTime, Utc};
 use icn_common::{IcnResult, IcnError, CurrencyType};
 use icn_currency::CurrencySystem;
+use icn_consensus::ProofOfCooperation;
 use serde::{Serialize, Deserialize};
 use sha2::{Sha256, Digest};
 use std::collections::HashMap;
+use std::sync::Arc;
 
+/// Represents a block in the blockchain.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Block {
     pub index: u64,
@@ -170,7 +173,6 @@ pub struct Block {
     pub transactions: Vec<Transaction>,
     pub previous_hash: String,
     pub hash: String,
-    pub nonce: u64,
     pub merkle_root: String,
 }
 
@@ -182,7 +184,6 @@ impl Block {
             transactions,
             previous_hash: previous_hash.to_string(),
             hash: String::new(),
-            nonce: 0,
             merkle_root: String::new(),
         };
         block.merkle_root = block.calculate_merkle_root();
@@ -196,7 +197,6 @@ impl Block {
         hasher.update(&self.timestamp.to_string());
         hasher.update(&self.merkle_root);
         hasher.update(&self.previous_hash);
-        hasher.update(&self.nonce.to_string());
         format!("{:x}", hasher.finalize())
     }
 
@@ -232,16 +232,9 @@ impl Block {
 
         merkle_tree[0].clone()
     }
-
-    pub fn mine(&mut self, difficulty: usize) {
-        let target = "0".repeat(difficulty);
-        while &self.hash[..difficulty] != target {
-            self.nonce += 1;
-            self.hash = self.calculate_hash();
-        }
-    }
 }
 
+/// Represents a transaction within the blockchain.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Transaction {
     pub from: String,
@@ -252,20 +245,56 @@ pub struct Transaction {
     pub signature: Option<Vec<u8>>,
 }
 
+impl Transaction {
+    pub fn new(from: String, to: String, amount: f64, currency_type: CurrencyType, timestamp: i64) -> Self {
+        Transaction {
+            from,
+            to,
+            amount,
+            currency_type,
+            timestamp,
+            signature: None,
+        }
+    }
+
+    pub fn sign(&mut self, keypair: &ed25519_dalek::Keypair) -> Result<(), ed25519_dalek::SignatureError> {
+        let message = self.hash_message();
+        let signature = keypair.sign(message.as_bytes());
+        self.signature = Some(signature.to_bytes().to_vec());
+        Ok(())
+    }
+
+    pub fn verify(&self) -> Result<bool, ed25519_dalek::SignatureError> {
+        if let Some(signature) = &self.signature {
+            let public_key = ed25519_dalek::PublicKey::from_bytes(&self.from.as_bytes())?;
+            let signature = ed25519_dalek::Signature::from_bytes(signature)?;
+            public_key.verify(self.hash_message().as_bytes(), &signature)?;
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
+
+    fn hash_message(&self) -> String {
+        format!("{}{}{}{}", self.from, self.to, self.amount, self.timestamp)
+    }
+}
+
+/// Represents the blockchain, integrating with the currency system and consensus mechanism.
 pub struct Blockchain {
     pub chain: Vec<Block>,
     pub pending_transactions: Vec<Transaction>,
-    pub difficulty: usize,
     currency_system: CurrencySystem,
+    consensus: Arc<ProofOfCooperation>, // Consensus mechanism to validate and propose new blocks.
 }
 
 impl Blockchain {
-    pub fn new(difficulty: usize) -> Self {
+    pub fn new(consensus: Arc<ProofOfCooperation>) -> Self {
         let mut blockchain = Blockchain {
             chain: Vec::new(),
             pending_transactions: Vec::new(),
-            difficulty,
             currency_system: CurrencySystem::new(),
+            consensus,
         };
         blockchain.create_genesis_block();
         blockchain
@@ -285,30 +314,34 @@ impl Blockchain {
         }
     }
 
-    pub fn mine_pending_transactions(&mut self, miner_address: &str) -> IcnResult<()> {
-        let reward_transaction = Transaction {
-            from: "Network".to_string(),
-            to: miner_address.to_string(),
-            amount: 1.0, // Mining reward
-            currency_type: CurrencyType::BasicNeeds,
-            timestamp: Utc::now().timestamp(),
-            signature: None,
-        };
-        self.pending_transactions.push(reward_transaction);
-
-        let mut new_block = Block::new(
-            self.chain.len() as u64,
-            self.pending_transactions.clone(),
-            &self.get_latest_block().hash,
-        );
-        new_block.mine(self.difficulty);
-        self.add_block(new_block)?;
-
-        self.pending_transactions.clear();
+    pub async fn propose_and_add_block(&mut self, proposer: String) -> IcnResult<()> {
+        let block_hash = self
+            .consensus
+            .propose_block(proposer, self.pending_transactions.clone())
+            .await?;
+        let is_valid = self.consensus.validate_proposed_block(&block_hash)?;
+        if is_valid {
+            let block = self.consensus.get_block_by_hash(&block_hash)?;
+            self.add_block(block)?;
+            self.pending_transactions.clear();
+        }
         Ok(())
     }
 
     fn add_block(&mut self, block: Block) -> IcnResult<()> {
+        for transaction in &block.transactions {
+            if !self.validate_transaction(transaction)? {
+                return Err(IcnError::Blockchain(
+                    "Invalid transaction in block".into(),
+                ));
+            }
+        }
+
+        let calculated_merkle_root = block.calculate_merkle_root();
+        if block.merkle_root != calculated_merkle_root {
+            return Err(IcnError::Blockchain("Invalid Merkle root".into()));
+        }
+
         self.chain.push(block);
         self.update_balances()?;
         Ok(())
@@ -353,20 +386,22 @@ impl Blockchain {
 
     fn validate_transaction(&self, transaction: &Transaction) -> IcnResult<bool> {
         if transaction.from == "Network" {
-            return Ok(true); // Allow mining rewards
+            return Ok(true); // Allow network-based transactions
         }
 
-        let sender_balance = self.currency_system.get_balance(&transaction.from, &transaction.currency_type)?;
+        let sender_balance = self
+            .currency_system
+            .get_balance(&transaction.from, &transaction.currency_type)?;
         if sender_balance < transaction.amount {
             return Ok(false);
         }
 
-        // Additional validation logic can be added here (e.g., signature verification)
         if let Some(signature) = &transaction.signature {
-            // Implement signature verification logic here
-            // For now, we'll assume all signatures are valid
-            // In a real implementation, you would verify the signature against the transaction data
-            // using the sender's public key
+            // Implement signature verification logic here using the public key
+            // Placeholder logic for now
+            if !transaction.verify()? {
+                return Ok(false);
+            }
         }
 
         Ok(true)
@@ -403,58 +438,75 @@ impl Blockchain {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use icn_consensus::ProofOfCooperation;
+    use ed25519_dalek::Keypair;
+    use rand::rngs::OsRng;
 
-    #[test]
-    fn test_blockchain_creation() {
-        let blockchain = Blockchain::new(2);
+    fn create_signed_transaction(from: &str, to: &str, amount: f64) -> Transaction {
+        let mut tx = Transaction::new(
+            from.to_string(),
+            to.to_string(),
+            amount,
+            CurrencyType::BasicNeeds,
+            1000,
+        );
+        let mut csprng = OsRng{};
+        let keypair: Keypair = Keypair::generate(&mut csprng);
+        tx.sign(&keypair).unwrap();
+        tx
+    }
+
+    #[tokio::test]
+    async fn test_blockchain_creation() {
+        let consensus = Arc::new(ProofOfCooperation::new());
+        let blockchain = Blockchain::new(consensus);
         assert_eq!(blockchain.chain.len(), 1);
         assert_eq!(blockchain.chain[0].index, 0);
     }
 
-    #[test]
-    fn test_add_transaction_and_mine() {
-        let mut blockchain = Blockchain::new(2);
-        let transaction = Transaction {
-            from: "Alice".to_string(),
-            to: "Bob".to_string(),
-            amount: 50.0,
-            currency_type: CurrencyType::BasicNeeds,
-            timestamp: Utc::now().timestamp(),
-            signature: None,
-        };
+    #[tokio::test]
+    async fn test_add_transaction_and_propose_block() {
+        let consensus = Arc::new(ProofOfCooperation::new());
+        let mut blockchain = Blockchain::new(consensus);
+        let tx = create_signed_transaction("Alice", "Bob", 50.0);
 
-        // Add initial balance for Alice
-        blockchain.currency_system.mint("Alice", &CurrencyType::BasicNeeds, 100.0).unwrap();
+        blockchain
+            .currency_system
+            .mint("Alice", &CurrencyType::BasicNeeds, 100.0)
+            .unwrap();
 
-        assert!(blockchain.add_transaction(transaction).is_ok());
+        assert!(blockchain.add_transaction(tx.clone()).is_ok());
         assert_eq!(blockchain.pending_transactions.len(), 1);
 
-        assert!(blockchain.mine_pending_transactions("Miner").is_ok());
+        assert!(blockchain.propose_and_add_block("Miner".to_string()).await.is_ok());
         assert_eq!(blockchain.chain.len(), 2);
         assert_eq!(blockchain.pending_transactions.len(), 0);
 
-        // Check balances after mining
-        assert_eq!(blockchain.get_balance("Alice", &CurrencyType::BasicNeeds).unwrap(), 50.0);
-        assert_eq!(blockchain.get_balance("Bob", &CurrencyType::BasicNeeds).unwrap(), 50.0);
-        assert_eq!(blockchain.get_balance("Miner", &CurrencyType::BasicNeeds).unwrap(), 1.0);
+        assert_eq!(
+            blockchain
+                .get_balance("Alice", &CurrencyType::BasicNeeds)
+                .unwrap(),
+            50.0
+        );
+        assert_eq!(
+            blockchain.get_balance("Bob", &CurrencyType::BasicNeeds).unwrap(),
+            50.0
+        );
     }
 
-    #[test]
-    fn test_blockchain_validity() {
-        let mut blockchain = Blockchain::new(2);
-        let transaction = Transaction {
-            from: "Alice".to_string(),
-            to: "Bob".to_string(),
-            amount: 50.0,
-            currency_type: CurrencyType::BasicNeeds,
-            timestamp: Utc::now().timestamp(),
-            signature: None,
-        };
+    #[tokio::test]
+    async fn test_blockchain_validity() {
+        let consensus = Arc::new(ProofOfCooperation::new());
+        let mut blockchain = Blockchain::new(consensus);
+        let tx = create_signed_transaction("Alice", "Bob", 50.0);
 
-        blockchain.currency_system.mint("Alice", &CurrencyType::BasicNeeds, 100.0).unwrap();
+        blockchain
+            .currency_system
+            .mint("Alice", &CurrencyType::BasicNeeds, 100.0)
+            .unwrap();
 
-        assert!(blockchain.add_transaction(transaction).is_ok());
-        assert!(blockchain.mine_pending_transactions("Miner").is_ok());
+        assert!(blockchain.add_transaction(tx.clone()).is_ok());
+        assert!(blockchain.propose_and_add_block("Miner".to_string()).await.is_ok());
 
         assert!(blockchain.is_chain_valid());
 
@@ -463,32 +515,25 @@ mod tests {
         assert!(!blockchain.is_chain_valid());
     }
 
-    #[test]
-    fn test_get_transactions() {
-        let mut blockchain = Blockchain::new(2);
-        let transaction1 = Transaction {
-            from: "Alice".to_string(),
-            to: "Bob".to_string(),
-            amount: 50.0,
-            currency_type: CurrencyType::BasicNeeds,
-            timestamp: Utc::now().timestamp(),
-            signature: None,
-        };
-        let transaction2 = Transaction {
-            from: "Bob".to_string(),
-            to: "Charlie".to_string(),
-            amount: 25.0,
-            currency_type: CurrencyType::BasicNeeds,
-            timestamp: Utc::now().timestamp(),
-            signature: None,
-        };
+    #[tokio::test]
+    async fn test_get_transactions() {
+        let consensus = Arc::new(ProofOfCooperation::new());
+        let mut blockchain = Blockchain::new(consensus);
+        let tx1 = create_signed_transaction("Alice", "Bob", 50.0);
+        let tx2 = create_signed_transaction("Bob", "Charlie", 25.0);
 
-        blockchain.currency_system.mint("Alice", &CurrencyType::BasicNeeds, 100.0).unwrap();
-        blockchain.currency_system.mint("Bob", &CurrencyType::BasicNeeds, 50.0).unwrap();
+        blockchain
+            .currency_system
+            .mint("Alice", &CurrencyType::BasicNeeds, 100.0)
+            .unwrap();
+        blockchain
+            .currency_system
+            .mint("Bob", &CurrencyType::BasicNeeds, 50.0)
+            .unwrap();
 
-        assert!(blockchain.add_transaction(transaction1).is_ok());
-        assert!(blockchain.add_transaction(transaction2).is_ok());
-        assert!(blockchain.mine_pending_transactions("Miner").is_ok());
+        assert!(blockchain.add_transaction(tx1.clone()).is_ok());
+        assert!(blockchain.add_transaction(tx2.clone()).is_ok());
+        assert!(blockchain.propose_and_add_block("Miner".to_string()).await.is_ok());
 
         let alice_transactions = blockchain.get_transactions("Alice");
         assert_eq!(alice_transactions.len(), 1);
@@ -501,25 +546,15 @@ mod tests {
 ===== END OF /opt/InterCooperative-Network-Node/icn_repos/icn_blockchain/src/blockchain.rs =====
 
 ===== START OF /opt/InterCooperative-Network-Node/icn_repos/icn_blockchain/src/transaction_validator.rs =====
-// File: icn_blockchain/src/transaction_validator.rs
+// File: icn_repos/icn_blockchain/src/transaction_validator.rs
 
-use icn_common::error::{IcnError, IcnResult};
 use crate::{Transaction, Blockchain};
+use icn_common::error::{IcnError, IcnResult};
 
-/// A struct for validating transactions.
+/// A struct for validating transactions within the blockchain.
 pub struct TransactionValidator;
 
 impl TransactionValidator {
-    /// Validates a transaction within the context of a blockchain.
-    ///
-    /// # Arguments
-    ///
-    /// * `transaction` - The transaction to validate.
-    /// * `blockchain` - The blockchain context.
-    ///
-    /// # Returns
-    ///
-    /// `IcnResult<()>` indicating whether the transaction is valid.
     pub fn validate_transaction(transaction: &Transaction, blockchain: &Blockchain) -> IcnResult<()> {
         if Self::is_double_spend(transaction, blockchain)? {
             return Err(IcnError::Currency("Double spend detected".to_string()));
@@ -550,7 +585,7 @@ impl TransactionValidator {
 
     fn check_sufficient_balance(transaction: &Transaction, blockchain: &Blockchain) -> IcnResult<()> {
         let balance = blockchain.get_balance(&transaction.from, &transaction.currency_type)?;
-        if balance < transaction.amount + transaction.get_fee() {
+        if balance < transaction.amount {
             return Err(IcnError::Currency("Insufficient balance".to_string()));
         }
         Ok(())
@@ -567,7 +602,6 @@ impl TransactionValidator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Blockchain;
     use icn_common::CurrencyType;
     use ed25519_dalek::Keypair;
     use rand::rngs::OsRng;
@@ -588,7 +622,8 @@ mod tests {
 
     #[test]
     fn test_validate_transaction() {
-        let mut blockchain = Blockchain::new(Arc::new(MockTransactionValidator::new()), Arc::new(RwLock::new(MockConsensus::new())));
+        let consensus = Arc::new(ProofOfCooperation::new());
+        let mut blockchain = Blockchain::new(consensus);
         let tx = create_signed_transaction("Alice", "Bob", 50.0);
 
         blockchain.add_transaction(create_signed_transaction("Genesis", "Alice", 100.0)).unwrap();
@@ -599,7 +634,8 @@ mod tests {
 
     #[test]
     fn test_insufficient_balance() {
-        let mut blockchain = Blockchain::new(Arc::new(MockTransactionValidator::new()), Arc::new(RwLock::new(MockConsensus::new())));
+        let consensus = Arc::new(ProofOfCooperation::new());
+        let mut blockchain = Blockchain::new(consensus);
         let tx = create_signed_transaction("Alice", "Bob", 150.0);
 
         blockchain.add_transaction(create_signed_transaction("Genesis", "Alice", 100.0)).unwrap();
@@ -610,7 +646,8 @@ mod tests {
 
     #[test]
     fn test_double_spend() {
-        let mut blockchain = Blockchain::new(Arc::new(MockTransactionValidator::new()), Arc::new(RwLock::new(MockConsensus::new())));
+        let consensus = Arc::new(ProofOfCooperation::new());
+        let mut blockchain = Blockchain::new(consensus);
         let tx = create_signed_transaction("Alice", "Bob", 50.0);
 
         blockchain.add_transaction(create_signed_transaction("Genesis", "Alice", 100.0)).unwrap();
@@ -625,87 +662,35 @@ mod tests {
 ===== END OF /opt/InterCooperative-Network-Node/icn_repos/icn_blockchain/src/transaction_validator.rs =====
 
 ===== START OF /opt/InterCooperative-Network-Node/icn_repos/icn_blockchain/src/asset_tokenization.rs =====
-// File: icn_blockchain/src/asset_tokenization.rs
+// File: icn_repos/icn_blockchain/src/asset_tokenization.rs
 
-use icn_common::bit_utils::{BitVec, set_bit, clear_bit, toggle_bit, rotate_left, rotate_right};
 use crate::{Transaction, Blockchain};
 use icn_common::error::{IcnError, IcnResult};
 
-/// A struct for validating transactions.
-pub struct TransactionValidator;
+/// A struct for managing asset tokenization within the blockchain.
+pub struct AssetTokenization;
 
-impl TransactionValidator {
-    /// Validates a transaction within the context of a blockchain.
+impl AssetTokenization {
+    /// Tokenizes an asset and adds it as a transaction in the blockchain.
     ///
     /// # Arguments
     ///
-    /// * `transaction` - The transaction to validate.
-    /// * `blockchain` - The blockchain context.
+    /// * `transaction` - The transaction representing the asset to be tokenized.
+    /// * `blockchain` - The blockchain where the transaction will be recorded.
     ///
     /// # Returns
     ///
-    /// `IcnResult<()>` indicating whether the transaction is valid.
-    pub fn validate_transaction(transaction: &Transaction, blockchain: &Blockchain) -> IcnResult<()> {
-        Self::is_double_spend(transaction, blockchain)?;
-        Self::validate_currency_and_amount(transaction)?;
-        Self::check_sufficient_balance(transaction, blockchain)?;
-        Self::validate_signature(transaction)?;
+    /// `IcnResult<()>` indicating whether the asset was successfully tokenized.
+    pub fn tokenize_asset(transaction: &Transaction, blockchain: &mut Blockchain) -> IcnResult<()> {
+        blockchain.add_transaction(transaction.clone())?;
         Ok(())
-    }
-
-    fn is_double_spend(transaction: &Transaction, blockchain: &Blockchain) -> IcnResult<bool> {
-        for block in &blockchain.chain {
-            for tx in &block.transactions {
-                if tx == transaction {
-                    return Ok(true);
-                }
-            }
-        }
-        Ok(false)
-    }
-
-    fn validate_currency_and_amount(transaction: &Transaction) -> IcnResult<()> {
-        if transaction.amount <= 0.0 {
-            return Err(IcnError::Currency("Invalid currency or amount".to_string()));
-        }
-        Ok(())
-    }
-
-    fn check_sufficient_balance(transaction: &Transaction, blockchain: &Blockchain) -> IcnResult<()> {
-        let balance = blockchain.get_balance(&transaction.from, &transaction.currency_type)?;
-        if balance < transaction.amount + transaction.get_fee() {
-            return Err(IcnError::Currency("Insufficient balance".to_string()));
-        }
-        Ok(())
-    }
-
-    fn validate_signature(transaction: &Transaction) -> IcnResult<()> {
-        if !transaction.verify().map_err(|e| IcnError::Identity(format!("Signature verification failed: {}", e)))? {
-            return Err(IcnError::Identity("Invalid signature".to_string()));
-        }
-        Ok(())
-    }
-
-    /// Checks if a transaction can be processed by the blockchain.
-    ///
-    /// # Arguments
-    ///
-    /// * `transaction` - The transaction to check.
-    /// * `blockchain` - The blockchain context.
-    ///
-    /// # Returns
-    ///
-    /// `IcnResult<()>` indicating whether the transaction can be processed.
-    pub fn can_process_transaction(transaction: &Transaction, blockchain: &Blockchain) -> IcnResult<()> {
-        Self::validate_transaction(transaction, blockchain)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::currency::CurrencyType;
-    use icn_common::{Transaction, Blockchain};
+    use icn_common::CurrencyType;
     use ed25519_dalek::Keypair;
     use rand::rngs::OsRng;
 
@@ -724,39 +709,12 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_transaction() {
-        let mut blockchain = Blockchain::new(Box::new(MockTransactionValidator));
+    fn test_tokenize_asset() {
+        let consensus = Arc::new(ProofOfCooperation::new());
+        let mut blockchain = Blockchain::new(consensus);
         let tx = create_signed_transaction("Alice", "Bob", 50.0);
 
-        blockchain.add_transaction(create_signed_transaction("Genesis", "Alice", 100.0)).unwrap();
-        blockchain.create_block().unwrap();
-
-        assert!(TransactionValidator::validate_transaction(&tx, &blockchain).is_ok());
-    }
-
-    #[test]
-    fn test_insufficient_balance() {
-        let mut blockchain = Blockchain::new(Box::new(MockTransactionValidator));
-        let tx = create_signed_transaction("Alice", "Bob", 150.0);
-
-        blockchain.add_transaction(create_signed_transaction("Genesis", "Alice", 100.0)).unwrap();
-        blockchain.create_block().unwrap();
-
-        assert!(TransactionValidator::validate_transaction(&tx, &blockchain).is_err());
-    }
-
-    #[test]
-    fn test_double_spend() {
-        let mut blockchain = Blockchain::new(Box::new(MockTransactionValidator));
-        let tx = create_signed_transaction("Alice", "Bob", 50.0);
-
-        blockchain.add_transaction(create_signed_transaction("Genesis", "Alice", 100.0)).unwrap();
-        blockchain.create_block().unwrap();
-
-        blockchain.add_transaction(tx.clone()).unwrap();
-        blockchain.create_block().unwrap();
-
-        assert!(TransactionValidator::validate_transaction(&tx, &blockchain).is_err());
+        assert!(AssetTokenization::tokenize_asset(&tx, &mut blockchain).is_ok());
     }
 }
 ===== END OF /opt/InterCooperative-Network-Node/icn_repos/icn_blockchain/src/asset_tokenization.rs =====
@@ -764,568 +722,30 @@ mod tests {
 ===== START OF /opt/InterCooperative-Network-Node/icn_repos/icn_blockchain/src/lib.rs =====
 // File: icn_repos/icn_blockchain/src/lib.rs
 
-use chrono::{DateTime, Utc};
-use icn_common::{IcnError, IcnResult, CurrencyType};
-use icn_currency::CurrencySystem;
+mod blockchain;
+mod asset_tokenization;
+mod transaction_validator;
+
+use blockchain::{Blockchain, Block, Transaction};
 use icn_consensus::ProofOfCooperation;
-use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
-use std::collections::HashMap;
+use std::sync::Arc;
 
-/// Represents a block in the blockchain.
-/// Each block contains an index, timestamp, list of transactions, 
-/// the hash of the previous block, its own hash, and a Merkle root for transaction verification.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Block {
-    pub index: u64,
-    pub timestamp: i64,
-    pub transactions: Vec<Transaction>,
-    pub previous_hash: String,
-    pub hash: String,
-    pub merkle_root: String,
+pub struct IcnBlockchain {
+    pub blockchain: Blockchain,
+    pub consensus: Arc<ProofOfCooperation>,
 }
 
-impl Block {
-    /// Creates a new block with the given index, transactions, and the previous block's hash.
-    /// The block's hash and Merkle root are automatically calculated.
-    pub fn new(index: u64, transactions: Vec<Transaction>, previous_hash: &str) -> Self {
-        let mut block = Block {
-            index,
-            timestamp: Utc::now().timestamp(),
-            transactions,
-            previous_hash: previous_hash.to_string(),
-            hash: String::new(),
-            merkle_root: String::new(),
-        };
-        block.merkle_root = block.calculate_merkle_root();
-        block.hash = block.calculate_hash();
-        block
-    }
-
-    /// Calculates the hash of the block by hashing its index, timestamp, Merkle root, and previous hash.
-    /// This ensures the block's data integrity and linkage to the previous block.
-    pub fn calculate_hash(&self) -> String {
-        let mut hasher = Sha256::new();
-        hasher.update(self.index.to_string());
-        hasher.update(&self.timestamp.to_string());
-        hasher.update(&self.merkle_root);
-        hasher.update(&self.previous_hash);
-        format!("{:x}", hasher.finalize())
-    }
-
-    /// Calculates the Merkle root for the block's transactions.
-    /// The Merkle root provides a compact representation of all transactions in the block.
-    pub fn calculate_merkle_root(&self) -> String {
-        let transaction_hashes: Vec<String> = self.transactions
-            .iter()
-            .map(|tx| {
-                let mut hasher = Sha256::new();
-                hasher.update(serde_json::to_string(tx).unwrap().as_bytes());
-                format!("{:x}", hasher.finalize())
-            })
-            .collect();
-
-        if transaction_hashes.is_empty() {
-            return String::from(
-                "0000000000000000000000000000000000000000000000000000000000000000",
-            );
-        }
-
-        let mut merkle_tree = transaction_hashes;
-        while merkle_tree.len() > 1 {
-            let mut new_level = Vec::new();
-            for chunk in merkle_tree.chunks(2) {
-                let mut hasher = Sha256::new();
-                hasher.update(chunk[0].as_bytes());
-                if chunk.len() > 1 {
-                    hasher.update(chunk[1].as_bytes());
-                } else {
-                    hasher.update(chunk[0].as_bytes());
-                }
-                new_level.push(format!("{:x}", hasher.finalize()));
-            }
-            merkle_tree = new_level;
-        }
-
-        merkle_tree[0].clone()
-    }
-}
-
-/// Represents a transaction within the blockchain.
-/// A transaction includes the sender's address, recipient's address, the amount transferred,
-/// the currency type, a timestamp, and an optional signature.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Transaction {
-    pub from: String,
-    pub to: String,
-    pub amount: f64,
-    pub currency_type: CurrencyType,
-    pub timestamp: i64,
-    pub signature: Option<Vec<u8>>,
-}
-
-/// Represents the blockchain, which consists of a chain of blocks and pending transactions.
-/// The blockchain also integrates with a currency system and a consensus mechanism for block validation.
-pub struct Blockchain {
-    pub chain: Vec<Block>,
-    pub pending_transactions: Vec<Transaction>,
-    currency_system: CurrencySystem,
-    consensus: ProofOfCooperation, // Consensus mechanism to validate and propose new blocks.
-}
-
-impl Blockchain {
-    /// Creates a new blockchain instance with the given consensus mechanism.
-    /// The genesis block is automatically created and added to the chain.
-    pub fn new(consensus: ProofOfCooperation) -> Self {
-        let mut blockchain = Blockchain {
-            chain: Vec::new(),
-            pending_transactions: Vec::new(),
-            currency_system: CurrencySystem::new(),
+impl IcnBlockchain {
+    pub fn new() -> Self {
+        let consensus = Arc::new(ProofOfCooperation::new());
+        let blockchain = Blockchain::new(consensus.clone());
+        Self {
+            blockchain,
             consensus,
-        };
-        blockchain.create_genesis_block();
-        blockchain
-    }
-
-    /// Creates and adds the genesis block to the blockchain.
-    /// The genesis block is the first block in the blockchain with index 0.
-    fn create_genesis_block(&mut self) {
-        let genesis_block = Block::new(0, Vec::new(), "0");
-        self.chain.push(genesis_block);
-    }
-
-    /// Adds a transaction to the list of pending transactions if it's valid.
-    /// The transaction is validated using the `validate_transaction` method.
-    /// Returns an error if the transaction is invalid.
-    pub fn add_transaction(&mut self, transaction: Transaction) -> IcnResult<()> {
-        if self.validate_transaction(&transaction)? {
-            self.pending_transactions.push(transaction);
-            Ok(())
-        } else {
-            Err(IcnError::Blockchain("Invalid transaction".into()))
         }
     }
 
-    /// Proposes a new block using the consensus mechanism and adds it to the blockchain if valid.
-    /// The block is validated using the consensus mechanism before being added.
-    /// After adding the block, the list of pending transactions is cleared.
-    pub async fn propose_and_add_block(&mut self, proposer: String) -> IcnResult<()> {
-        let block_hash = self
-            .consensus
-            .propose_block(proposer, self.pending_transactions.clone())
-            .await?;
-        let is_valid = self.consensus.validate_proposed_block(&block_hash)?;
-        if is_valid {
-            let block = self.consensus.get_block_by_hash(&block_hash)?;
-            self.add_block(block)?;
-            self.pending_transactions.clear();
-        }
-        Ok(())
-    }
-
-    /// Adds a new block to the blockchain after validating all its transactions and its Merkle root.
-    /// Ensures that the block is valid before adding it to the chain.
-    /// Returns an error if any validation fails.
-    pub fn add_block(&mut self, block: Block) -> IcnResult<()> {
-        for transaction in &block.transactions {
-            if !self.validate_transaction(transaction)? {
-                return Err(IcnError::Blockchain(
-                    "Invalid transaction in block".into(),
-                ));
-            }
-        }
-
-        let calculated_merkle_root = block.calculate_merkle_root();
-        if block.merkle_root != calculated_merkle_root {
-            return Err(IcnError::Blockchain("Invalid Merkle root".into()));
-        }
-
-        self.chain.push(block);
-        self.update_balances()?;
-        Ok(())
-    }
-
-    /// Returns a reference to the latest block in the blockchain.
-    /// The latest block is the one most recently added to the chain.
-    pub fn get_latest_block(&self) -> &Block {
-        self.chain.last().unwrap()
-    }
-
-    /// Validates the entire blockchain to ensure its integrity.
-    /// Checks the hash, previous hash, and Merkle root of each block.
-    /// Also validates all transactions in the blocks.
-    /// Returns `true` if the chain is valid, `false` otherwise.
-    pub fn is_chain_valid(&self) -> bool {
-        for i in 1..self.chain.len() {
-            let current_block = &self.chain[i];
-            let previous_block = &self.chain[i - 1];
-
-            if current_block.hash != current_block.calculate_hash() {
-                return false;
-            }
-
-            if current_block.previous_hash != previous_block.hash {
-                return false;
-            }
-
-            if current_block.merkle_root != current_block.calculate_merkle_root() {
-                return false;
-            }
-
-            if !self.validate_block_transactions(current_block) {
-                return false;
-            }
-        }
-        true
-    }
-
-    /// Validates all transactions within a block.
-    /// Returns `true` if all transactions are valid, `false` otherwise.
-    fn validate_block_transactions(&self, block: &Block) -> bool {
-        for transaction in &block.transactions {
-            if !self.validate_transaction(transaction).unwrap_or(false) {
-                return false;
-            }
-        }
-        true
-    }
-
-    /// Validates a single transaction.
-    /// Ensures that the sender has sufficient balance and that any provided signature is valid.
-    /// Returns `true` if the transaction is valid, `false` otherwise.
-    fn validate_transaction(&self, transaction: &Transaction) -> IcnResult<bool> {
-        if transaction.from == "Network" {
-            return Ok(true); // Allow network-based transactions
-        }
-
-        let sender_balance = self
-            .currency_system
-            .get_balance(&transaction.from, &transaction.currency_type)?;
-        if sender_balance < transaction.amount {
-            return Ok(false);
-        }
-
-        if let Some(signature) = &transaction.signature {
-            // Implement signature verification logic here using the public key
-            // For now, this is a placeholder. Proper cryptographic verification should be added.
-        }
-
-        Ok(true)
-    }
-
-    /// Updates the balances of all accounts based on the transactions in the latest block.
-    /// This function processes each transaction in the latest block.
-    fn update_balances(&mut self) -> IcnResult<()> {
-        for transaction in &self.get_latest_block().transactions {
-            self.currency_system.process_transaction(transaction)?;
-        }
-        Ok(())
-    }
-
-    /// Retrieves the balance for a given address and currency type.
-    /// The balance is fetched from the currency system associated with the blockchain.
-    pub fn get_balance(&self, address: &str, currency_type: &CurrencyType) -> IcnResult<f64> {
-        self.currency_system.get_balance(address, currency_type)
-    }
-
-    /// Retrieves all transactions associated with a given address.
-    /// This includes transactions where the address is either the sender or the recipient.
-    pub fn get_transactions(&self, address: &str) -> Vec<&Transaction> {
-        self.chain
-            .iter()
-            .flat_map(|block| block.transactions.iter())
-            .filter(|tx| tx.from == address || tx.to == address)
-            .collect()
-    }
-
-    /// Retrieves a block by its hash if it exists in the blockchain.
-    pub fn get_block_by_hash(&self, hash: &str) -> Option<&Block> {
-        self.chain.iter().find(|block| block.hash == hash)
-    }
-
-    /// Retrieves a block by its index if it exists in the blockchain.
-    pub fn get_block_by_index(&self, index: u64) -> Option<&Block> {
-        self.chain.get(index as usize)
-    }
-
-    /// Handles a fork in the blockchain by replacing the current chain with a longer valid chain.
-    /// This involves rolling back transactions from the current chain and applying transactions from the new chain.
-    /// Returns an error if the new chain is not valid or not longer than the current chain.
-    pub fn handle_fork(&mut self, new_chain: Vec<Block>) -> IcnResult<()> {
-        if new_chain.len() <= self.chain.len() || !self.is_valid_chain(&new_chain) {
-            return Err(IcnError::Blockchain("Invalid fork chain".into()));
-        }
-
-        let fork_point = self.find_fork_point(&new_chain)?;
-
-        // Roll back transactions from the current chain
-        for block in self
-            .chain
-            .iter()
-            .rev()
-            .take(self.chain.len() - fork_point)
-        {
-            self.rollback_transactions(block)?;
-        }
-
-        // Apply transactions from the new chain
-        for block in new_chain.iter().skip(fork_point) {
-            self.apply_transactions(block)?;
-        }
-
-        // Replace the current chain with the new chain
-        self.chain = new_chain;
-
-        Ok(())
-    }
-
-    /// Validates an entire chain to ensure that it can be considered as a valid fork.
-    /// The function checks each block's hash, previous hash, Merkle root, and transactions.
-    /// Returns `true` if the chain is valid, `false` otherwise.
-    fn is_valid_chain(&self, chain: &[Block]) -> bool {
-        for i in 1..chain.len() {
-            let current_block = &chain[i];
-            let previous_block = &chain[i - 1];
-
-            if current_block.hash != current_block.calculate_hash() {
-                return false;
-            }
-
-            if current_block.previous_hash != previous_block.hash {
-                return false;
-            }
-
-            if current_block.merkle_root != current_block.calculate_merkle_root() {
-                return false;
-            }
-
-            if !self.validate_block_transactions(current_block) {
-                return false;
-            }
-        }
-        true
-    }
-
-    /// Finds the point at which two chains diverge, known as the fork point.
-    /// The fork point is the index of the first differing block between the current and new chains.
-    /// Returns the fork point index or an error if no fork point is found.
-    fn find_fork_point(&self, new_chain: &[Block]) -> IcnResult<usize> {
-        for (i, (old_block, new_block)) in self.chain.iter().zip(new_chain.iter()).enumerate() {
-            if old_block.hash != new_block.hash {
-                return Ok(i);
-            }
-        }
-        Err(IcnError::Blockchain("No fork point found".into()))
-    }
-
-    /// Rolls back all transactions in a given block.
-    /// This is used when undoing blocks during a fork.
-    fn rollback_transactions(&mut self, block: &Block) -> IcnResult<()> {
-        for transaction in &block.transactions {
-            self.currency_system.reverse_transaction(transaction)?;
-        }
-        Ok(())
-    }
-
-    /// Applies all transactions in a given block.
-    /// This is used when adding blocks during a fork.
-    fn apply_transactions(&mut self, block: &Block) -> IcnResult<()> {
-        for transaction in &block.transactions {
-            self.currency_system.process_transaction(transaction)?;
-        }
-        Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use icn_consensus::ProofOfCooperation;
-    use std::sync::Arc;
-
-    /// Tests the creation of a new blockchain and the genesis block.
-    #[tokio::test]
-    async fn test_blockchain_creation() {
-        let consensus = ProofOfCooperation::new();
-        let blockchain = Blockchain::new(consensus);
-        assert_eq!(blockchain.chain.len(), 1);
-        assert_eq!(blockchain.chain[0].index, 0);
-    }
-
-    /// Tests adding a transaction and proposing a new block.
-    #[tokio::test]
-    async fn test_add_transaction_and_propose_block() {
-        let consensus = ProofOfCooperation::new();
-        let mut blockchain = Blockchain::new(consensus);
-        let transaction = Transaction {
-            from: "Alice".to_string(),
-            to: "Bob".to_string(),
-            amount: 50.0,
-            currency_type: CurrencyType::BasicNeeds,
-            timestamp: Utc::now().timestamp(),
-            signature: None,
-        };
-
-        blockchain
-            .currency_system
-            .mint("Alice", &CurrencyType::BasicNeeds, 100.0)
-            .unwrap();
-
-        assert!(blockchain.add_transaction(transaction).is_ok());
-        assert_eq!(blockchain.pending_transactions.len(), 1);
-
-        assert!(blockchain.propose_and_add_block("Miner".to_string()).await.is_ok());
-        assert_eq!(blockchain.chain.len(), 2);
-        assert_eq!(blockchain.pending_transactions.len(), 0);
-
-        assert_eq!(
-            blockchain
-                .get_balance("Alice", &CurrencyType::BasicNeeds)
-                .unwrap(),
-            50.0
-        );
-        assert_eq!(
-            blockchain.get_balance("Bob", &CurrencyType::BasicNeeds).unwrap(),
-            50.0
-        );
-    }
-
-    /// Tests the validity of the blockchain by tampering with a transaction and ensuring detection.
-    #[tokio::test]
-    async fn test_blockchain_validity() {
-        let consensus = ProofOfCooperation::new();
-        let mut blockchain = Blockchain::new(consensus);
-        let transaction = Transaction {
-            from: "Alice".to_string(),
-            to: "Bob".to_string(),
-            amount: 50.0,
-            currency_type: CurrencyType::BasicNeeds,
-            timestamp: Utc::now().timestamp(),
-            signature: None,
-        };
-
-        blockchain
-            .currency_system
-            .mint("Alice", &CurrencyType::BasicNeeds, 100.0)
-            .unwrap();
-
-        assert!(blockchain.add_transaction(transaction).is_ok());
-        assert!(blockchain.propose_and_add_block("Miner".to_string()).await.is_ok());
-
-        assert!(blockchain.is_chain_valid());
-
-        // Tamper with a block to test invalid chain
-        blockchain.chain[1].transactions[0].amount = 100.0;
-        assert!(!blockchain.is_chain_valid());
-    }
-
-    /// Tests retrieving transactions by address.
-    #[tokio::test]
-    async fn test_get_transactions() {
-        let consensus = ProofOfCooperation::new();
-        let mut blockchain = Blockchain::new(consensus);
-        let transaction1 = Transaction {
-            from: "Alice".to_string(),
-            to: "Bob".to_string(),
-            amount: 50.0,
-            currency_type: CurrencyType::BasicNeeds,
-            timestamp: Utc::now().timestamp(),
-            signature: None,
-        };
-        let transaction2 = Transaction {
-            from: "Bob".to_string(),
-            to: "Charlie".to_string(),
-            amount: 25.0,
-            currency_type: CurrencyType::BasicNeeds,
-            timestamp: Utc::now().timestamp(),
-            signature: None,
-        };
-
-        blockchain
-            .currency_system
-            .mint("Alice", &CurrencyType::BasicNeeds, 100.0)
-            .unwrap();
-        blockchain
-            .currency_system
-            .mint("Bob", &CurrencyType::BasicNeeds, 50.0)
-            .unwrap();
-
-        assert!(blockchain.add_transaction(transaction1).is_ok());
-        assert!(blockchain.add_transaction(transaction2).is_ok());
-        assert!(blockchain.propose_and_add_block("Miner".to_string()).await.is_ok());
-
-        let alice_transactions = blockchain.get_transactions("Alice");
-        assert_eq!(alice_transactions.len(), 1);
-        assert_eq!(alice_transactions[0].from, "Alice");
-
-        let bob_transactions = blockchain.get_transactions("Bob");
-        assert_eq!(bob_transactions.len(), 2);
-    }
-
-    /// Tests handling a fork in the blockchain and validating the new chain.
-    #[tokio::test]
-    async fn test_handle_fork() {
-        let consensus = ProofOfCooperation::new();
-        let mut blockchain = Blockchain::new(consensus);
-
-        // Create the original chain
-        let transaction1 = Transaction {
-            from: "Alice".to_string(),
-            to: "Bob".to_string(),
-            amount: 50.0,
-            currency_type: CurrencyType::BasicNeeds,
-            timestamp: Utc::now().timestamp(),
-            signature: None,
-        };
-
-        blockchain
-            .currency_system
-            .mint("Alice", &CurrencyType::BasicNeeds, 100.0)
-            .unwrap();
-        assert!(blockchain.add_transaction(transaction1).is_ok());
-        assert!(blockchain.propose_and_add_block("Miner".to_string()).await.is_ok());
-
-        // Create a forked chain
-        let mut forked_chain = blockchain.chain.clone();
-        let transaction2 = Transaction {
-            from: "Charlie".to_string(),
-            to: "David".to_string(),
-            amount: 30.0,
-            currency_type: CurrencyType::BasicNeeds,
-            timestamp: Utc::now().timestamp(),
-            signature: None,
-        };
-
-        let transaction3 = Transaction {
-            from: "Eve".to_string(),
-            to: "Frank".to_string(),
-            amount: 20.0,
-            currency_type: CurrencyType::BasicNeeds,
-            timestamp: Utc::now().timestamp(),
-            signature: None,
-        };
-
-        let new_block = Block::new(2, vec![transaction2, transaction3], &forked_chain.last().unwrap().hash);
-        forked_chain.push(new_block);
-
-        // Handle the fork
-        assert!(blockchain.handle_fork(forked_chain).is_ok());
-
-        // Verify the blockchain state after handling the fork
-        assert_eq!(blockchain.chain.len(), 3);
-        assert_eq!(
-            blockchain.get_balance("Bob", &CurrencyType::BasicNeeds).unwrap(),
-            50.0
-        );
-        assert_eq!(
-            blockchain.get_balance("David", &CurrencyType::BasicNeeds).unwrap(),
-            30.0
-        );
-        assert_eq!(
-            blockchain.get_balance("Frank", &CurrencyType::BasicNeeds).unwrap(),
-            20.0
-        );
-    }
+    // Additional methods to expose functionality or integrate with other modules.
 }
 ===== END OF /opt/InterCooperative-Network-Node/icn_repos/icn_blockchain/src/lib.rs =====
 
