@@ -82,38 +82,12 @@ generate_structure_file() {
 # Function to update all submodules
 update_submodules() {
     echo "Updating submodules..."
-    
-    # Check if .gitmodules file exists
+
     if [ ! -f ".gitmodules" ]; then
-        echo "Warning: .gitmodules file not found. Creating an empty one."
-        touch .gitmodules
+        echo "Warning: .gitmodules file not found. Skipping submodule update."
+        return
     fi
 
-    # Check for submodules without URLs
-    missing_urls=$(git config --file .gitmodules --get-regexp path | awk '{print $2}' | while read submodule; do
-        if ! git config --file .gitmodules --get "submodule.$submodule.url" > /dev/null; then
-            echo "$submodule"
-        fi
-    done)
-
-    if [ -n "$missing_urls" ]; then
-        echo "Warning: The following submodules are missing URLs in .gitmodules:"
-        echo "$missing_urls"
-        echo "Adding URLs for these submodules..."
-        echo "$missing_urls" | while read -r submodule; do
-            if [ "$submodule" == "icn_dao" ]; then
-                url="https://github.com/InterCooperative-Network/icn_dao"
-                git config --file .gitmodules submodule.$submodule.url "$url"
-                echo "URL added for $submodule: $url"
-            else
-                echo "Unknown submodule: $submodule. Please add its URL manually."
-            fi
-        done
-        git add .gitmodules
-        git commit -m "Updated .gitmodules with missing submodule URLs"
-    fi
-
-    # Now attempt to update submodules
     if ! git submodule update --init --recursive; then
         echo "Warning: Failed to update some submodules. You may need to initialize them manually."
     fi
@@ -122,19 +96,19 @@ update_submodules() {
 # Function to prompt for a commit message
 get_commit_message() {
     echo "Please enter your commit message below."
-    echo "Type your message and press Enter. To finish, enter a line with only a period (.):"
+    echo "Type your message and press Enter. To finish, enter a line with only a period (.) or just press Enter:"
     echo "-------- BEGIN COMMIT MESSAGE --------"
     commit_message=""
     while IFS= read -r line; do
-        if [ "$line" = "." ]; then
+        if [ -z "$line" ] || [ "$line" = "." ]; then
             break
         fi
         commit_message+="$line"$'\n'
     done
     echo "-------- END COMMIT MESSAGE --------"
-    echo "Commit message received."
     echo "$commit_message"
 }
+
 # Main script execution
 main() {
     set -e
@@ -165,6 +139,9 @@ main() {
         echo "===================================="
         commit_message=$(get_commit_message)
         
+        echo "Commit message:"
+        echo "$commit_message"
+
         git add .
         git commit -m "$commit_message"
         git push origin main
@@ -176,4 +153,4 @@ main() {
 }
 
 # Execute the main function
-main
+main 2>&1 | tee script_output.log
