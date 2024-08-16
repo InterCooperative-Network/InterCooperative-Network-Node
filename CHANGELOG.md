@@ -131,6 +131,10 @@ test (32a980e)
 
 - Remove incorrect submodule clone for icn_core (a4ba1b0)
 
+- commit (8855f88)
+
+- Correctly add icn_core as a submodule (9f9f55f)
+
 
 ### Testing
 
