@@ -69,4 +69,4 @@
 	url = https://github.com/InterCooperative-Network/icn_common
 [submodule "icn_repos/icn_core"]
 	path = icn_repos/icn_core
-	url = https://github.com/InterCooperative-Network/InterCooperative-Network-Node
+	url = https://github.com/InterCooperative-Network/icn_core
