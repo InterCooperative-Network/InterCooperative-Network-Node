@@ -64,9 +64,6 @@
 [submodule "icn_repos/icn_dao"]
 	path = icn_repos/icn_dao
 	url = git@github.com:InterCooperative-Network/icn_dao.git
-[submodule "icn_dao"]
-	url = https://github.com/InterCooperative-Network/icn_dao
-	path = icn_dao
 [submodule "icn_repos/icn_common"]
 	path = icn_repos/icn_common
 	url = https://github.com/InterCooperative-Network/icn_common
