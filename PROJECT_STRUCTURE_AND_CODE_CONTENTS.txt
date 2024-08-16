@@ -25,8 +25,6 @@
 │       └── static.yml
 ├── .gitignore
 ├── .gitmodules
-├── icn_dao
-│   └── README.md
 ├── icn_repos
 │   ├── icn_api
 │   │   ├── Cargo.toml
@@ -34,6 +32,10 @@
 │   │   └── src
 │   ├── icn_blockchain
 │   │   ├── Cargo.toml
+│   │   ├── README.md
+│   │   └── src
+│   ├── icn_common
+│   │   ├── cargo.toml
 │   │   ├── README.md
 │   │   └── src
 │   ├── icn_consensus
@@ -127,7 +129,7 @@
 └── .vscode
     └── settings.json
 
-55 directories, 72 files
+56 directories, 73 files
 ===== END OF FILE STRUCTURE =====
 
 ===== START OF /opt/InterCooperative-Network-Node/icn_repos/icn_blockchain/Cargo.toml =====
@@ -138,6 +140,8 @@ edition = "2021"
 
 [dependencies]
 icn_common = { path = "../icn_common" }
+icn_currency = { path = "../icn_currency" }
+icn_consensus = { path = "../icn_consensus" }
 serde = { version = "1.0", features = ["derive"] }
 chrono = { version = "0.4", features = ["serde"] }
 sha2 = "0.10"
@@ -146,7 +150,7 @@ thiserror = "1.0"
 serde_json = "1.0"
 
 [dev-dependencies]
-tokio-test = "0.4"
+tokio = { version = "1.0", features = ["full"] }
 ===== END OF /opt/InterCooperative-Network-Node/icn_repos/icn_blockchain/Cargo.toml =====
 
 ===== START OF /opt/InterCooperative-Network-Node/icn_repos/icn_blockchain/src/blockchain.rs =====
@@ -3224,7 +3228,8 @@ chrono = { version = "0.4", features = ["serde"] }
 rand = "0.8"
 
 [dev-dependencies]
-tokio = { version = "1.0", features = ["full"] }===== END OF /opt/InterCooperative-Network-Node/icn_repos/icn_consensus/Cargo.toml =====
+tokio = { version = "1.0", features = ["full"] }
+===== END OF /opt/InterCooperative-Network-Node/icn_repos/icn_consensus/Cargo.toml =====
 
 ===== START OF /opt/InterCooperative-Network-Node/icn_repos/icn_consensus/src/consensus.rs =====
 // File: icn_consensus/src/consensus.rs
@@ -6617,6 +6622,1082 @@ mod tests {
         assert!(zkp_manager.verify_transaction_proof(&proof, &transaction).unwrap());
     }
 }===== END OF /opt/InterCooperative-Network-Node/icn_repos/icn_zkp/src/lib.rs =====
+
+===== START OF /opt/InterCooperative-Network-Node/icn_repos/icn_common/cargo.toml =====
+[package]
+name = "icn_common"
+version = "0.1.0"
+authors = ["Your Name <your.email@example.com>"]
+edition = "2018"
+
+[dependencies]
+chrono = { version = "0.4", features = ["serde"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.9"
+rand = "0.8"
+rand_chacha = "0.3"
+ed25519-dalek = "1.0"
+thiserror = "1.0"
+tokio = { version = "1.0", features = ["full"] }
+log = "0.4"
+uuid = "0.8"
+
+[dev-dependencies]
+rand = "0.8"
+rand_chacha = "0.3"===== END OF /opt/InterCooperative-Network-Node/icn_repos/icn_common/cargo.toml =====
+
+===== START OF /opt/InterCooperative-Network-Node/icn_repos/icn_common/src/error.rs =====
+// File: icn_repos/icn_governance/src/lib.rs
+
+use icn_common::{IcnResult, IcnError};
+use chrono::{DateTime, Utc, Duration};
+use serde::{Serialize, Deserialize};
+use std::collections::HashMap;
+use std::sync::{Arc, RwLock};
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum ProposalStatus {
+    Active,
+    Passed,
+    Rejected,
+    Executed,
+    Expired,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum ProposalType {
+    Constitutional,
+    EconomicAdjustment,
+    NetworkUpgrade,
+    CommunityInitiative,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum ProposalCategory {
+    Economic,
+    Technical,
+    Social,
+    Environmental,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Proposal {
+    pub id: String,
+    pub title: String,
+    pub description: String,
+    pub proposer: String,
+    pub created_at: DateTime<Utc>,
+    pub voting_ends_at: DateTime<Utc>,
+    pub execution_deadline: Option<DateTime<Utc>>,
+    pub status: ProposalStatus,
+    pub proposal_type: ProposalType,
+    pub category: ProposalCategory,
+    pub required_quorum: f64,
+    pub required_majority: f64,
+    pub execution_threshold: Option<f64>,
+    pub execution_delay: Option<Duration>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Vote {
+    pub voter: String,
+    pub weight: f64,
+    pub in_favor: bool,
+    pub timestamp: DateTime<Utc>,
+}
+
+pub struct GovernanceSystem {
+    proposals: Arc<RwLock<HashMap<String, Proposal>>>,
+    votes: Arc<RwLock<HashMap<String, Vec<Vote>>>>,
+}
+
+impl GovernanceSystem {
+    pub fn new() -> Self {
+        GovernanceSystem {
+            proposals: Arc::new(RwLock::new(HashMap::new())),
+            votes: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+
+    pub fn create_proposal(&self, proposal: Proposal) -> IcnResult<String> {
+        let mut proposals = self.proposals.write().map_err(|_| IcnError::Governance("Failed to acquire write lock for proposals".into()))?;
+        
+        if proposals.contains_key(&proposal.id) {
+            return Err(IcnError::Governance("Proposal ID already exists".into()));
+        }
+
+        let proposal_id = proposal.id.clone();
+        proposals.insert(proposal_id.clone(), proposal);
+        self.votes.write().map_err(|_| IcnError::Governance("Failed to acquire write lock for votes".into()))?.insert(proposal_id.clone(), Vec::new());
+
+        Ok(proposal_id)
+    }
+
+    pub fn get_proposal(&self, proposal_id: &str) -> IcnResult<Proposal> {
+        let proposals = self.proposals.read().map_err(|_| IcnError::Governance("Failed to acquire read lock for proposals".into()))?;
+        proposals.get(proposal_id).cloned().ok_or_else(|| IcnError::Governance("Proposal not found".into()))
+    }
+
+    pub fn vote_on_proposal(&self, proposal_id: &str, voter: String, in_favor: bool, weight: f64) -> IcnResult<()> {
+        let mut proposals = self.proposals.write().map_err(|_| IcnError::Governance("Failed to acquire write lock for proposals".into()))?;
+        let proposal = proposals.get_mut(proposal_id).ok_or_else(|| IcnError::Governance("Proposal not found".into()))?;
+
+        if proposal.status != ProposalStatus::Active {
+            return Err(IcnError::Governance("Proposal is not active".into()));
+        }
+
+        if Utc::now() > proposal.voting_ends_at {
+            return Err(IcnError::Governance("Voting period has ended".into()));
+        }
+
+        let mut votes = self.votes.write().map_err(|_| IcnError::Governance("Failed to acquire write lock for votes".into()))?;
+        let proposal_votes = votes.get_mut(proposal_id).ok_or_else(|| IcnError::Governance("Votes not found for proposal".into()))?;
+
+        if proposal_votes.iter().any(|v| v.voter == voter) {
+            return Err(IcnError::Governance("Voter has already voted on this proposal".into()));
+        }
+
+        proposal_votes.push(Vote {
+            voter,
+            weight,
+            in_favor,
+            timestamp: Utc::now(),
+        });
+
+        Ok(())
+    }
+
+    pub fn finalize_proposal(&self, proposal_id: &str) -> IcnResult<ProposalStatus> {
+        let mut proposals = self.proposals.write().map_err(|_| IcnError::Governance("Failed to acquire write lock for proposals".into()))?;
+        let proposal = proposals.get_mut(proposal_id).ok_or_else(|| IcnError::Governance("Proposal not found".into()))?;
+
+        if proposal.status != ProposalStatus::Active {
+            return Err(IcnError::Governance("Proposal is not active".into()));
+        }
+
+        let now = Utc::now();
+        if now < proposal.voting_ends_at {
+            return Err(IcnError::Governance("Voting period has not ended yet".into()));
+        }
+
+        let votes = self.votes.read().map_err(|_| IcnError::Governance("Failed to acquire read lock for votes".into()))?;
+        let proposal_votes = votes.get(proposal_id).ok_or_else(|| IcnError::Governance("Votes not found for proposal".into()))?;
+
+        let total_votes: f64 = proposal_votes.iter().map(|v| v.weight).sum();
+        let votes_in_favor: f64 = proposal_votes.iter().filter(|v| v.in_favor).map(|v| v.weight).sum();
+
+        if total_votes < proposal.required_quorum {
+            proposal.status = ProposalStatus::Rejected;
+        } else if votes_in_favor / total_votes > proposal.required_majority {
+            proposal.status = ProposalStatus::Passed;
+            if let Some(delay) = proposal.execution_delay {
+                proposal.execution_deadline = Some(now + delay);
+            }
+        } else {
+            proposal.status = ProposalStatus::Rejected;
+        }
+
+        Ok(proposal.status.clone())
+    }
+
+    pub fn execute_proposal(&self, proposal_id: &str) -> IcnResult<()> {
+        let mut proposals = self.proposals.write().map_err(|_| IcnError::Governance("Failed to acquire write lock for proposals".into()))?;
+        let proposal = proposals.get_mut(proposal_id).ok_or_else(|| IcnError::Governance("Proposal not found".into()))?;
+
+        if proposal.status != ProposalStatus::Passed {
+            return Err(IcnError::Governance("Proposal has not passed".into()));
+        }
+
+        if let Some(deadline) = proposal.execution_deadline {
+            if Utc::now() > deadline {
+                proposal.status = ProposalStatus::Expired;
+                return Err(IcnError::Governance("Proposal execution deadline has passed".into()));
+            }
+        }
+
+        if let Some(threshold) = proposal.execution_threshold {
+            let votes = self.votes.read().map_err(|_| IcnError::Governance("Failed to acquire read lock for votes".into()))?;
+            let proposal_votes = votes.get(proposal_id).ok_or_else(|| IcnError::Governance("Votes not found for proposal".into()))?;
+            let total_votes: f64 = proposal_votes.iter().map(|v| v.weight).sum();
+            let votes_in_favor: f64 = proposal_votes.iter().filter(|v| v.in_favor).map(|v| v.weight).sum();
+
+            if votes_in_favor / total_votes < threshold {
+                return Err(IcnError::Governance("Execution threshold not met".into()));
+            }
+        }
+
+        // Here you would implement the actual execution logic based on the proposal type
+        match proposal.proposal_type {
+            ProposalType::Constitutional => {
+                // Implement constitutional change logic
+            }
+            ProposalType::EconomicAdjustment => {
+                // Implement economic adjustment logic
+            }
+            ProposalType::NetworkUpgrade => {
+                // Implement network upgrade logic
+            }
+            ProposalType::CommunityInitiative => {
+                // Implement community initiative logic
+            }
+        }
+
+        proposal.status = ProposalStatus::Executed;
+        Ok(())
+    }
+
+    pub fn list_active_proposals(&self) -> IcnResult<Vec<Proposal>> {
+        let proposals = self.proposals.read().map_err(|_| IcnError::Governance("Failed to acquire read lock for proposals".into()))?;
+        Ok(proposals.values().filter(|p| p.status == ProposalStatus::Active).cloned().collect())
+    }
+
+    pub fn get_proposal_results(&self, proposal_id: &str) -> IcnResult<(f64, f64)> {
+        let votes = self.votes.read().map_err(|_| IcnError::Governance("Failed to acquire read lock for votes".into()))?;
+        let proposal_votes = votes.get(proposal_id).ok_or_else(|| IcnError::Governance("Votes not found for proposal".into()))?;
+
+        let total_votes: f64 = proposal_votes.iter().map(|v| v.weight).sum();
+        let votes_in_favor: f64 = proposal_votes.iter().filter(|v| v.in_favor).map(|v| v.weight).sum();
+
+        Ok((votes_in_favor, total_votes))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn create_test_proposal() -> Proposal {
+        Proposal {
+            id: "test_proposal".to_string(),
+            title: "Test Proposal".to_string(),
+            description: "This is a test proposal".to_string(),
+            proposer: "Alice".to_string(),
+            created_at: Utc::now(),
+            voting_ends_at: Utc::now() + Duration::days(7),
+            execution_deadline: Some(Utc::now() + Duration::days(14)),
+            status: ProposalStatus::Active,
+            proposal_type: ProposalType::Constitutional,
+            category: ProposalCategory::Technical,
+            required_quorum: 0.5,
+            required_majority: 0.66,
+            execution_threshold: Some(0.75),
+            execution_delay: Some(Duration::days(1)),
+        }
+    }
+
+    #[test]
+    fn test_create_and_get_proposal() {
+        let governance = GovernanceSystem::new();
+        let proposal = create_test_proposal();
+        let proposal_id = governance.create_proposal(proposal.clone()).unwrap();
+
+        let retrieved_proposal = governance.get_proposal(&proposal_id).unwrap();
+        assert_eq!(retrieved_proposal.id, proposal.id);
+        assert_eq!(retrieved_proposal.title, proposal.title);
+    }
+
+    #[test]
+    fn test_vote_on_proposal() {
+        let governance = GovernanceSystem::new();
+        let proposal = create_test_proposal();
+        let proposal_id = governance.create_proposal(proposal).unwrap();
+
+        assert!(governance.vote_on_proposal(&proposal_id, "Bob".to_string(), true, 1.0).is_ok());
+        assert!(governance.vote_on_proposal(&proposal_id, "Charlie".to_string(), false, 1.0).is_ok());
+
+        // Test duplicate vote
+        assert!(governance.vote_on_proposal(&proposal_id, "Bob".to_string(), false, 1.0).is_err());
+    }
+
+    #[test]
+    fn test_finalize_proposal() {
+        let governance = GovernanceSystem::new();
+        let mut proposal = create_test_proposal();
+        proposal.voting_ends_at = Utc::now() - Duration::hours(1);
+        let proposal_id = governance.create_proposal(proposal).unwrap();
+
+        governance.vote_on_proposal(&proposal_id, "Bob".to_string(), true, 3.0).unwrap();
+        governance.vote_on_proposal(&proposal_id, "Charlie".to_string(), false, 1.0).unwrap();
+
+        let status = governance.finalize_proposal(&proposal_id).unwrap();
+        assert_eq!(status, ProposalStatus::Passed);
+
+        let finalized_proposal = governance.get_proposal(&proposal_id).unwrap();
+        assert!(finalized_proposal.execution_deadline.is_some());
+    }
+
+    #[test]
+    fn test_execute_proposal() {
+        let governance = GovernanceSystem::new();
+        let mut proposal = create_test_proposal();
+        proposal.voting_ends_at = Utc::now() - Duration::hours(2);
+        proposal.status = ProposalStatus::Passed;
+        let proposal_id = governance.create_proposal(proposal).unwrap();
+
+        governance.vote_on_proposal(&proposal_id, "Bob".to_string(), true, 4.0).unwrap();
+        governance.vote_on_proposal(&proposal_id, "Charlie".to_string(), true, 3.0).unwrap();
+        governance.vote_on_proposal(&proposal_id, "David".to_string(), false, 2.0).unwrap();
+
+        assert!(governance.execute_proposal(&proposal_id).is_ok());
+
+        let executed_proposal = governance.get_proposal(&proposal_id).unwrap();
+        assert_eq!(executed_proposal.status, ProposalStatus::Executed);
+    }
+
+    #[test]
+    fn test_list_active_proposals() {
+        let governance = GovernanceSystem::new();
+        let active_proposal = create_test_proposal();
+        let mut passed_proposal = create_test_proposal();
+        passed_proposal.id = "passed_proposal".to_string();
+        passed_proposal.status = ProposalStatus::Passed;
+
+        governance.create_proposal(active_proposal).unwrap();
+        governance.create_proposal(passed_proposal).unwrap();
+
+        let active_proposals = governance.list_active_proposals().unwrap();
+        assert_eq!(active_proposals.len(), 1);
+        assert_eq!(active_proposals[0].status, ProposalStatus::Active);
+    }
+
+    #[test]
+    fn test_get_proposal_results() {
+        let governance = GovernanceSystem::new();
+        let proposal = create_test_proposal();
+        let proposal_id = governance.create_proposal(proposal).unwrap();
+
+        governance.vote_on_proposal(&proposal_id, "Bob".to_string(), true, 3.0).unwrap();
+        governance.vote_on_proposal(&proposal_id, "Charlie".to_string(), false, 2.0).unwrap();
+        governance.vote_on_proposal(&proposal_id, "David".to_string(), true, 1.0).unwrap();
+
+        let (votes_in_favor, total_votes) = governance.get_proposal_results(&proposal_id).unwrap();
+        assert_eq!(votes_in_favor, 4.0);
+        assert_eq!(total_votes, 6.0);
+    }
+
+    #[test]
+    fn test_proposal_expiration() {
+        let governance = GovernanceSystem::new();
+        let mut proposal = create_test_proposal();
+        proposal.voting_ends_at = Utc::now() - Duration::days(8);
+        proposal.execution_deadline = Some(Utc::now() - Duration::days(1));
+        proposal.status = ProposalStatus::Passed;
+        let proposal_id = governance.create_proposal(proposal).unwrap();
+
+        let result = governance.execute_proposal(&proposal_id);
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert_eq!(error.to_string(), "Governance error: Proposal execution deadline has passed");
+
+        let expired_proposal = governance.get_proposal(&proposal_id).unwrap();
+        assert_eq!(expired_proposal.status, ProposalStatus::Expired);
+    }
+}===== END OF /opt/InterCooperative-Network-Node/icn_repos/icn_common/src/error.rs =====
+
+===== START OF /opt/InterCooperative-Network-Node/icn_repos/icn_common/src/bit_utils.rs =====
+// File: icn_repos/icn_common/src/bit_utils.rs
+
+/// A custom bit vector implementation.
+#[derive(Clone, Debug)]
+pub struct BitVec {
+    storage: Vec<u64>,
+    len: usize,
+}
+
+impl BitVec {
+    /// Creates a new `BitVec` with the specified length, initialized to all zeros.
+    pub fn new(len: usize) -> Self {
+        let storage_len = (len + 63) / 64;
+        BitVec {
+            storage: vec![0; storage_len],
+            len,
+        }
+    }
+
+    /// Returns the length of the bit vector.
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    /// Returns whether the bit vector is empty.
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    /// Sets the bit at the specified index.
+    pub fn set(&mut self, index: usize) {
+        assert!(index < self.len, "Index out of bounds");
+        let (word_index, bit_index) = (index / 64, index % 64);
+        self.storage[word_index] |= 1 << bit_index;
+    }
+
+    /// Clears the bit at the specified index.
+    pub fn clear(&mut self, index: usize) {
+        assert!(index < self.len, "Index out of bounds");
+        let (word_index, bit_index) = (index / 64, index % 64);
+        self.storage[word_index] &= !(1 << bit_index);
+    }
+
+    /// Toggles the bit at the specified index.
+    pub fn toggle(&mut self, index: usize) {
+        assert!(index < self.len, "Index out of bounds");
+        let (word_index, bit_index) = (index / 64, index % 64);
+        self.storage[word_index] ^= 1 << bit_index;
+    }
+
+    /// Returns the value of the bit at the specified index.
+    pub fn get(&self, index: usize) -> bool {
+        assert!(index < self.len, "Index out of bounds");
+        let (word_index, bit_index) = (index / 64, index % 64);
+        (self.storage[word_index] & (1 << bit_index)) != 0
+    }
+
+    /// Sets a range of bits to 1.
+    pub fn set_range(&mut self, start: usize, end: usize) {
+        assert!(start <= end && end < self.len, "Index out of bounds");
+        for index in start..=end {
+            self.set(index);
+        }
+    }
+
+    /// Clears a range of bits.
+    pub fn clear_range(&mut self, start: usize, end: usize) {
+        assert!(start <= end && end < self.len, "Index out of bounds");
+        for index in start..=end {
+            self.clear(index);
+        }
+    }
+
+    /// Counts the number of set bits in the bit vector.
+    pub fn count_ones(&self) -> u32 {
+        self.storage.iter().map(|&x| x.count_ones()).sum()
+    }
+}
+
+/// Sets the nth bit of a u64 value.
+pub fn set_bit(value: u64, n: u8) -> u64 {
+    debug_assert!(n < 64, "Bit index out of bounds");
+    value | (1 << n)
+}
+
+/// Clears the nth bit of a u64 value.
+pub fn clear_bit(value: u64, n: u8) -> u64 {
+    debug_assert!(n < 64, "Bit index out of bounds");
+    value & !(1 << n)
+}
+
+/// Toggles the nth bit of a u64 value.
+pub fn toggle_bit(value: u64, n: u8) -> u64 {
+    debug_assert!(n < 64, "Bit index out of bounds");
+    value ^ (1 << n)
+}
+
+/// Rotates the bits of a u64 value left by a specified amount.
+pub fn rotate_left(value: u64, n: u8) -> u64 {
+    value.rotate_left(n as u32)
+}
+
+/// Rotates the bits of a u64 value right by a specified amount.
+pub fn rotate_right(value: u64, n: u8) -> u64 {
+    value.rotate_right(n as u32)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_bit_vec_operations() {
+        let mut bv = BitVec::new(100);
+        assert_eq!(bv.len(), 100);
+        assert!(!bv.is_empty());
+
+        bv.set(5);
+        bv.set(50);
+        assert!(bv.get(5));
+        assert!(bv.get(50));
+        assert!(!bv.get(0));
+
+        bv.toggle(5);
+        assert!(!bv.get(5));
+
+        bv.clear(50);
+        assert!(!bv.get(50));
+
+        bv.set_range(10, 20);
+        for i in 10..=20 {
+            assert!(bv.get(i));
+        }
+
+        bv.clear_range(15, 18);
+        for i in 15..=18 {
+            assert!(!bv.get(i));
+        }
+
+        assert_eq!(bv.count_ones(), 10);
+
+        bv.set(10);
+        bv.set(20);
+        bv.set(30);
+        assert_eq!(bv.count_ones(), 12);
+    }
+
+    #[test]
+    fn test_bit_operations() {
+        assert_eq!(set_bit(0, 3), 8);
+        assert_eq!(clear_bit(15, 2), 11);
+        assert_eq!(toggle_bit(5, 1), 7);
+        assert_eq!(rotate_left(0b1101, 2), 0b110100);
+        assert_eq!(rotate_right(0b110100, 2), 0b1101);
+    }
+
+    #[test]
+    #[should_panic(expected = "Index out of bounds")]
+    fn test_bit_vec_out_of_bounds() {
+        let mut bv = BitVec::new(10);
+        bv.set(10);
+    }
+}===== END OF /opt/InterCooperative-Network-Node/icn_repos/icn_common/src/bit_utils.rs =====
+
+===== START OF /opt/InterCooperative-Network-Node/icn_repos/icn_common/src/lib.rs =====
+// File: icn_repos/icn_common/src/lib.rs
+
+pub mod error;
+pub mod bit_utils;
+
+use serde::{Serialize, Deserialize};
+use chrono::{DateTime, Utc};
+use ed25519_dalek::{Keypair, PublicKey, Signature, Signer, Verifier};
+use rand::rngs::OsRng;
+use std::collections::HashMap;
+
+pub use crate::error::{IcnError, IcnResult};
+
+/// Configuration for the InterCooperative Network
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Config {
+    pub shard_count: u64,
+    pub consensus_threshold: f64,
+    pub consensus_quorum: f64,
+    pub network_port: u16,
+}
+
+/// Represents a transaction in the network
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Transaction {
+    pub from: String,
+    pub to: String,
+    pub amount: f64,
+    pub currency_type: CurrencyType,
+    pub timestamp: i64,
+    pub signature: Option<Vec<u8>>,
+}
+
+impl Transaction {
+    /// Creates a new transaction
+    pub fn new(from: String, to: String, amount: f64, currency_type: CurrencyType, timestamp: i64) -> Self {
+        Transaction {
+            from,
+            to,
+            amount,
+            currency_type,
+            timestamp,
+            signature: None,
+        }
+    }
+
+    /// Signs the transaction with the given keypair
+    pub fn sign(&mut self, keypair: &Keypair) -> IcnResult<()> {
+        let message = self.to_bytes();
+        let signature = keypair.sign(&message).to_bytes().to_vec();
+        self.signature = Some(signature);
+        Ok(())
+    }
+
+    /// Verifies the transaction signature
+    pub fn verify(&self) -> IcnResult<bool> {
+        let signature = self.signature.as_ref().ok_or(IcnError::Identity("Missing signature".into()))?;
+        let public_key = PublicKey::from_bytes(&hex::decode(&self.from)?)
+            .map_er// File: crates/icn_common/src/lib.rs
+
+            pub mod error;
+            pub mod bit_utils;
+            
+            use serde::{Serialize, Deserialize};
+            use chrono::{DateTime, Utc};
+            use ed25519_dalek::{Keypair, PublicKey, Signature, Signer, Verifier};
+            use rand::rngs::OsRng;
+            use std::collections::HashMap;
+            
+            pub use crate::error::{IcnError, IcnResult};
+            
+            /// Configuration for the InterCooperative Network
+            #[derive(Debug, Clone, Serialize, Deserialize)]
+            pub struct Config {
+                pub shard_count: u64,
+                pub consensus_threshold: f64,
+                pub consensus_quorum: f64,
+                pub network_port: u16,
+            }
+            
+            /// Represents a transaction in the network
+            #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+            pub struct Transaction {
+                pub from: String,
+                pub to: String,
+                pub amount: f64,
+                pub currency_type: CurrencyType,
+                pub timestamp: i64,
+                pub signature: Option<Vec<u8>>,
+            }
+            
+            impl Transaction {
+                /// Creates a new transaction
+                pub fn new(from: String, to: String, amount: f64, currency_type: CurrencyType, timestamp: i64) -> Self {
+                    Transaction {
+                        from,
+                        to,
+                        amount,
+                        currency_type,
+                        timestamp,
+                        signature: None,
+                    }
+                }
+            
+                /// Signs the transaction with the given keypair
+                pub fn sign(&mut self, keypair: &Keypair) -> IcnResult<()> {
+                    let message = self.to_bytes();
+                    let signature = keypair.sign(&message).to_bytes().to_vec();
+                    self.signature = Some(signature);
+                    Ok(())
+                }
+            
+                /// Verifies the transaction signature
+                pub fn verify(&self) -> IcnResult<bool> {
+                    let signature = self.signature.as_ref().ok_or(IcnError::Identity("Missing signature".into()))?;
+                    let public_key = PublicKey::from_bytes(&hex::decode(&self.from)?)
+                        .map_err(|e| IcnError::Identity(format!("Invalid public key: {}", e)))?;
+                    let message = self.to_bytes();
+                    let signature = Signature::from_bytes(signature)
+                        .map_err(|e| IcnError::Identity(format!("Invalid signature: {}", e)))?;
+                    Ok(public_key.verify(&message, &signature).is_ok())
+                }
+            
+                /// Converts the transaction to bytes for signing
+                fn to_bytes(&self) -> Vec<u8> {
+                    let mut bytes = Vec::new();
+                    bytes.extend_from_slice(self.from.as_bytes());
+                    bytes.extend_from_slice(self.to.as_bytes());
+                    bytes.extend_from_slice(&self.amount.to_le_bytes());
+                    bytes.extend_from_slice(&self.timestamp.to_le_bytes());
+                    bytes
+                }
+            
+                /// Calculates the transaction fee
+                pub fn get_fee(&self) -> f64 {
+                    // Implement a more sophisticated fee calculation here
+                    0.001 * self.amount
+                }
+            }
+            
+            /// Represents a proposal in the network
+            #[derive(Debug, Clone, Serialize, Deserialize)]
+            pub struct Proposal {
+                pub id: String,
+                pub title: String,
+                pub description: String,
+                pub proposer: String,
+                pub created_at: DateTime<Utc>,
+                pub voting_ends_at: DateTime<Utc>,
+                pub status: ProposalStatus,
+                pub proposal_type: ProposalType,
+                pub category: ProposalCategory,
+                pub required_quorum: f64,
+                pub execution_timestamp: Option<DateTime<Utc>>,
+            }
+            
+            /// Represents a vote on a proposal
+            #[derive(Debug, Clone, Serialize, Deserialize)]
+            pub struct Vote {
+                pub voter: String,
+                pub proposal_id: String,
+                pub in_favor: bool,
+                pub weight: f64,
+                pub timestamp: i64,
+                pub zkp: Option<Vec<u8>>,
+            }
+            
+            /// Status of a proposal
+            #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+            pub enum ProposalStatus {
+                Active,
+                Passed,
+                Rejected,
+                Executed,
+            }
+            
+            /// Type of a proposal
+            #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+            pub enum ProposalType {
+                Constitutional,
+                EconomicAdjustment,
+                NetworkUpgrade,
+            }
+            
+            /// Category of a proposal
+            #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+            pub enum ProposalCategory {
+                Economic,
+                Technical,
+                Social,
+            }
+            
+            /// Types of currency in the network
+            #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+            pub enum CurrencyType {
+                BasicNeeds,
+                Education,
+                Environmental,
+                Community,
+                Custom(String),
+            }
+            
+            /// Statistics about the network
+            #[derive(Debug, Serialize, Deserialize)]
+            pub struct NetworkStats {
+                pub node_count: usize,
+                pub total_transactions: usize,
+                pub active_proposals: usize,
+            }
+            
+            #[cfg(test)]
+            mod tests {
+                use super::*;
+            
+                #[test]
+                fn test_transaction_signing_and_verification() {
+                    let mut rng = OsRng {};
+                    let keypair: Keypair = Keypair::generate(&mut rng);
+                    let public_key = keypair.public;
+            
+                    let mut tx = Transaction::new(
+                        hex::encode(public_key.as_bytes()),
+                        "recipient".to_string(),
+                        100.0,
+                        CurrencyType::BasicNeeds,
+                        Utc::now().timestamp(),
+                    );
+            
+                    tx.sign(&keypair).expect("Failed to sign transaction");
+                    assert!(tx.verify().expect("Failed to verify transaction"));
+            
+                    // Test invalid signature
+                    tx.amount = 200.0;
+                    assert!(!tx.verify().expect("Verification should fail for tampered transaction"));
+                }
+            
+                #[test]
+                fn test_currency_type_equality() {
+                    assert_eq!(CurrencyType::BasicNeeds, CurrencyType::BasicNeeds);
+                    assert_ne!(CurrencyType::BasicNeeds, CurrencyType::Education);
+                    assert_eq!(CurrencyType::Custom("Test".to_string()), CurrencyType::Custom("Test".to_string()));
+                    assert_ne!(CurrencyType::Custom("Test1".to_string()), CurrencyType::Custom("Test2".to_string()));
+                }
+            
+                #[test]
+                fn test_proposal_lifecycle() {
+                    let proposal = Proposal {
+                        id: "test_proposal".to_string(),
+                        title: "Test Proposal".to_string(),
+                        description: "This is a test proposal".to_string(),
+                        proposer: "test_proposer".to_string(),
+                        created_at: Utc::now(),
+                        voting_ends_at: Utc::now() + chrono::Duration::days(7),
+                        status: ProposalStatus::Active,
+                        proposal_type: ProposalType::Constitutional,
+                        category: ProposalCategory::Economic,
+                        required_quorum: 0.51,
+                        execution_timestamp: None,
+                    };
+            
+                    assert_eq!(proposal.status, ProposalStatus::Active);
+                    
+                    // Simulate proposal passing
+                    let passed_proposal = Proposal {
+                        status: ProposalStatus::Passed,
+                        ..proposal
+                    };
+                    assert_eq!(passed_proposal.status, ProposalStatus::Passed);
+            
+                    // Simulate proposal execution
+                    let executed_proposal = Proposal {
+                        status: ProposalStatus::Executed,
+                        execution_timestamp: Some(Utc::now()),
+                        ..passed_proposal
+                    };
+                    assert_eq!(executed_proposal.status, ProposalStatus::Executed);
+                    assert!(executed_proposal.execution_timestamp.is_some());
+                }
+            
+                #[test]
+                fn test_network_stats() {
+                    let stats = NetworkStats {
+                        node_count: 5,
+                        total_transactions: 100,
+                        active_proposals: 3,
+                    };
+                    assert_eq!(stats.node_count, 5);
+                    assert_eq!(stats.total_transactions, 100);
+                    assert_eq!(stats.active_proposals, 3);
+                }
+            }
+            
+            // Additional utility functions
+            
+            /// Generates a new keypair for use in the network
+            pub fn generate_keypair() -> Keypair {
+                let mut csprng = OsRng{};
+                Keypair::generate(&mut csprng)
+            }
+            
+            /// Converts a public key to its string representation
+            pub fn public_key_to_string(public_key: &PublicKey) -> String {
+                hex::encode(public_key.as_bytes())
+            }
+            
+            /// Converts a string representation back to a public key
+            pub fn string_to_public_key(s: &str) -> IcnResult<PublicKey> {
+                let bytes = hex::decode(s).map_err(|e| IcnError::Identity(format!("Invalid public key string: {}", e)))?;
+                PublicKey::from_bytes(&bytes).map_err(|e| IcnError::Identity(format!("Invalid public key bytes: {}", e)))
+            }
+            
+            /// Validates a proposal's parameters
+            pub fn validate_proposal(proposal: &Proposal) -> IcnResult<()> {
+                if proposal.title.is_empty() {
+                    return Err(IcnError::Governance("Proposal title cannot be empty".into()));
+                }
+                if proposal.description.is_empty() {
+                    return Err(IcnError::Governance("Proposal description cannot be empty".into()));
+                }
+                if proposal.required_quorum <= 0.0 || proposal.required_quorum > 1.0 {
+                    return Err(IcnError::Governance("Invalid required quorum".into()));
+                }
+                if proposal.voting_ends_at <= proposal.created_at {
+                    return Err(IcnError::Governance("Voting end time must be after creation time".into()));
+                }
+                Ok(())
+            }r(|e| IcnError::Identity(format!("Invalid public key: {}", e)))?;
+        let message = self.to_bytes();
+        let signature = Signature::from_bytes(signature)
+            .map_err(|e| IcnError::Identity(format!("Invalid signature: {}", e)))?;
+        Ok(public_key.verify(&message, &signature).is_ok())
+    }
+
+    /// Converts the transaction to bytes for signing
+    fn to_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(self.from.as_bytes());
+        bytes.extend_from_slice(self.to.as_bytes());
+        bytes.extend_from_slice(&self.amount.to_le_bytes());
+        bytes.extend_from_slice(&self.timestamp.to_le_bytes());
+        bytes
+    }
+
+    /// Calculates the transaction fee
+    pub fn get_fee(&self) -> f64 {
+        // Implement a more sophisticated fee calculation here
+        0.001 * self.amount
+    }
+}
+
+/// Represents a proposal in the network
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Proposal {
+    pub id: String,
+    pub title: String,
+    pub description: String,
+    pub proposer: String,
+    pub created_at: DateTime<Utc>,
+    pub voting_ends_at: DateTime<Utc>,
+    pub status: ProposalStatus,
+    pub proposal_type: ProposalType,
+    pub category: ProposalCategory,
+    pub required_quorum: f64,
+    pub execution_timestamp: Option<DateTime<Utc>>,
+}
+
+/// Represents a vote on a proposal
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Vote {
+    pub voter: String,
+    pub proposal_id: String,
+    pub in_favor: bool,
+    pub weight: f64,
+    pub timestamp: i64,
+    pub zkp: Option<Vec<u8>>,
+}
+
+/// Status of a proposal
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum ProposalStatus {
+    Active,
+    Passed,
+    Rejected,
+    Executed,
+}
+
+/// Type of a proposal
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum ProposalType {
+    Constitutional,
+    EconomicAdjustment,
+    NetworkUpgrade,
+}
+
+/// Category of a proposal
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum ProposalCategory {
+    Economic,
+    Technical,
+    Social,
+}
+
+/// Types of currency in the network
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub enum CurrencyType {
+    BasicNeeds,
+    Education,
+    Environmental,
+    Community,
+    Custom(String),
+}
+
+/// Statistics about the network
+#[derive(Debug, Serialize, Deserialize)]
+pub struct NetworkStats {
+    pub node_count: usize,
+    pub total_transactions: usize,
+    pub active_proposals: usize,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_transaction_signing_and_verification() {
+        let mut rng = OsRng {};
+        let keypair: Keypair = Keypair::generate(&mut rng);
+        let public_key = keypair.public;
+
+        let mut tx = Transaction::new(
+            hex::encode(public_key.as_bytes()),
+            "recipient".to_string(),
+            100.0,
+            CurrencyType::BasicNeeds,
+            Utc::now().timestamp(),
+        );
+
+        tx.sign(&keypair).expect("Failed to sign transaction");
+        assert!(tx.verify().expect("Failed to verify transaction"));
+
+        // Test invalid signature
+        tx.amount = 200.0;
+        assert!(!tx.verify().expect("Verification should fail for tampered transaction"));
+    }
+
+    #[test]
+    fn test_currency_type_equality() {
+        assert_eq!(CurrencyType::BasicNeeds, CurrencyType::BasicNeeds);
+        assert_ne!(CurrencyType::BasicNeeds, CurrencyType::Education);
+        assert_eq!(CurrencyType::Custom("Test".to_string()), CurrencyType::Custom("Test".to_string()));
+        assert_ne!(CurrencyType::Custom("Test1".to_string()), CurrencyType::Custom("Test2".to_string()));
+    }
+
+    #[test]
+    fn test_proposal_lifecycle() {
+        let proposal = Proposal {
+            id: "test_proposal".to_string(),
+            title: "Test Proposal".to_string(),
+            description: "This is a test proposal".to_string(),
+            proposer: "test_proposer".to_string(),
+            created_at: Utc::now(),
+            voting_ends_at: Utc::now() + chrono::Duration::days(7),
+            status: ProposalStatus::Active,
+            proposal_type: ProposalType::Constitutional,
+            category: ProposalCategory::Economic,
+            required_quorum: 0.51,
+            execution_timestamp: None,
+        };
+
+        assert_eq!(proposal.status, ProposalStatus::Active);
+        
+        // Simulate proposal passing
+        let passed_proposal = Proposal {
+            status: ProposalStatus::Passed,
+            ..proposal
+        };
+        assert_eq!(passed_proposal.status, ProposalStatus::Passed);
+
+        // Simulate proposal execution
+        let executed_proposal = Proposal {
+            status: ProposalStatus::Executed,
+            execution_timestamp: Some(Utc::now()),
+            ..passed_proposal
+        };
+        assert_eq!(executed_proposal.status, ProposalStatus::Executed);
+        assert!(executed_proposal.execution_timestamp.is_some());
+    }
+
+    #[test]
+    fn test_network_stats() {
+        let stats = NetworkStats {
+            node_count: 5,
+            total_transactions: 100,
+            active_proposals: 3,
+        };
+        assert_eq!(stats.node_count, 5);
+        assert_eq!(stats.total_transactions, 100);
+        assert_eq!(stats.active_proposals, 3);
+    }
+}
+
+// Additional utility functions
+
+/// Generates a new keypair for use in the network
+pub fn generate_keypair() -> Keypair {
+    let mut csprng = OsRng{};
+    Keypair::generate(&mut csprng)
+}
+
+/// Converts a public key to its string representation
+pub fn public_key_to_string(public_key: &PublicKey) -> String {
+    hex::encode(public_key.as_bytes())
+}
+
+/// Converts a string representation back to a public key
+pub fn string_to_public_key(s: &str) -> IcnResult<PublicKey> {
+    let bytes = hex::decode(s).map_err(|e| IcnError::Identity(format!("Invalid public key string: {}", e)))?;
+    PublicKey::from_bytes(&bytes).map_err(|e| IcnError::Identity(format!("Invalid public key bytes: {}", e)))
+}
+
+/// Validates a proposal's parameters
+pub fn validate_proposal(proposal: &Proposal) -> IcnResult<()> {
+    if proposal.title.is_empty() {
+        return Err(IcnError::Governance("Proposal title cannot be empty".into()));
+    }
+    if proposal.description.is_empty() {
+        return Err(IcnError::Governance("Proposal description cannot be empty".into()));
+    }
+    if proposal.required_quorum <= 0.0 || proposal.required_quorum > 1.0 {
+        return Err(IcnError::Governance("Invalid required quorum".into()));
+    }
+    if proposal.voting_ends_at <= proposal.created_at {
+        return Err(IcnError::Governance("Voting end time must be after creation time".into()));
+    }
+    Ok(())
+}===== END OF /opt/InterCooperative-Network-Node/icn_repos/icn_common/src/lib.rs =====
 
 ===== START OF /opt/InterCooperative-Network-Node/icn_repos/icn_core/Cargo.toml =====
 [package]
@@ -13834,27 +14915,28 @@ mod tests {
 ===== START OF /opt/InterCooperative-Network-Node/Cargo.toml =====
 [workspace]
 members = [
-    "crates/icn_common",
-    "crates/icn_blockchain",
-    "crates/icn_consensus",
-    "crates/icn_currency",
-    "crates/icn_governance",
-    "crates/icn_identity",
-    "crates/icn_network",
-    "crates/icn_sharding",
-    "crates/icn_storage",
-    "crates/icn_vm",
-    "crates/icn_api",
-    "crates/icn_testnet",
-    "crates/icn_core",
-    "crates/icn_zkp",
-    "crates/icn_smart_contracts",
-    "crates/icn_reputation",
-    "crates/icn_market",
-    "crates/icn_incentives",
-    "crates/icn_language",
-    "crates/icn_demo"
-, "crates/icn_federation"]
+    "icn_repos/icn_common",
+    "icn_repos/icn_blockchain",
+    "icn_repos/icn_consensus",
+    "icn_repos/icn_currency",
+    "icn_repos/icn_governance",
+    "icn_repos/icn_identity",
+    "icn_repos/icn_network",
+    "icn_repos/icn_sharding",
+    "icn_repos/icn_storage",
+    "icn_repos/icn_vm",
+    "icn_repos/icn_api",
+    "icn_repos/icn_testnet",
+    "icn_repos/icn_core",
+    "icn_repos/icn_zkp",
+    "icn_repos/icn_smart_contracts",
+    "icn_repos/icn_reputation",
+    "icn_repos/icn_market",
+    "icn_repos/icn_incentives",
+    "icn_repos/icn_language",
+    "icn_repos/icn_demo",
+    "icn_repos/icn_federation"
+]
 
 resolver = "2"
 
@@ -14304,27 +15386,28 @@ document.getElementById('create-proposal-form').addEventListener('submit', async
 ===== START OF /opt/InterCooperative-Network-Node/Cargo.toml =====
 [workspace]
 members = [
-    "crates/icn_common",
-    "crates/icn_blockchain",
-    "crates/icn_consensus",
-    "crates/icn_currency",
-    "crates/icn_governance",
-    "crates/icn_identity",
-    "crates/icn_network",
-    "crates/icn_sharding",
-    "crates/icn_storage",
-    "crates/icn_vm",
-    "crates/icn_api",
-    "crates/icn_testnet",
-    "crates/icn_core",
-    "crates/icn_zkp",
-    "crates/icn_smart_contracts",
-    "crates/icn_reputation",
-    "crates/icn_market",
-    "crates/icn_incentives",
-    "crates/icn_language",
-    "crates/icn_demo"
-, "crates/icn_federation"]
+    "icn_repos/icn_common",
+    "icn_repos/icn_blockchain",
+    "icn_repos/icn_consensus",
+    "icn_repos/icn_currency",
+    "icn_repos/icn_governance",
+    "icn_repos/icn_identity",
+    "icn_repos/icn_network",
+    "icn_repos/icn_sharding",
+    "icn_repos/icn_storage",
+    "icn_repos/icn_vm",
+    "icn_repos/icn_api",
+    "icn_repos/icn_testnet",
+    "icn_repos/icn_core",
+    "icn_repos/icn_zkp",
+    "icn_repos/icn_smart_contracts",
+    "icn_repos/icn_reputation",
+    "icn_repos/icn_market",
+    "icn_repos/icn_incentives",
+    "icn_repos/icn_language",
+    "icn_repos/icn_demo",
+    "icn_repos/icn_federation"
+]
 
 resolver = "2"
 
