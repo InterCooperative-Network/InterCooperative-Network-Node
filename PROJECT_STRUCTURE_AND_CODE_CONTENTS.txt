@@ -35,7 +35,7 @@
 │   │   ├── README.md
 │   │   └── src
 │   ├── icn_common
-│   │   ├── cargo.toml
+│   │   ├── Cargo.toml
 │   │   ├── README.md
 │   │   └── src
 │   ├── icn_consensus
@@ -721,14 +721,13 @@ mod tests {
 ===== END OF /opt/InterCooperative-Network-Node/icn_repos/icn_blockchain/src/asset_tokenization.rs =====
 
 ===== START OF /opt/InterCooperative-Network-Node/icn_repos/icn_blockchain/src/lib.rs =====
-// File: icn_repos/icn_blockchain/src/lib.rs
-
 mod blockchain;
 mod asset_tokenization;
 mod transaction_validator;
 
 use blockchain::{Blockchain, Block, Transaction};
-use icn_consensus::ProofOfCooperation;
+use icn_common::Transaction;
+use icn_consensus::{ProofOfCooperation, Consensus};
 use std::sync::Arc;
 
 pub struct IcnBlockchain {
@@ -747,6 +746,116 @@ impl IcnBlockchain {
     }
 
     // Additional methods to expose functionality or integrate with other modules.
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use icn_common::CurrencyType;
+    use icn_consensus::ProofOfCooperation;
+    use ed25519_dalek::Keypair;
+    use rand::rngs::OsRng;
+
+    fn create_signed_transaction(from: &str, to: &str, amount: f64) -> Transaction {
+        let mut tx = Transaction::new(
+            from.to_string(),
+            to.to_string(),
+            amount,
+            CurrencyType::BasicNeeds,
+            1000,
+        );
+        let mut csprng = OsRng {};
+        let keypair: Keypair = Keypair::generate(&mut csprng);
+        tx.sign(&keypair).unwrap();
+        tx
+    }
+
+    #[tokio::test]
+    async fn test_blockchain_creation() {
+        let consensus = Arc::new(ProofOfCooperation::new());
+        let blockchain = Blockchain::new(consensus);
+        assert_eq!(blockchain.chain.len(), 1);
+        assert_eq!(blockchain.chain[0].index, 0);
+    }
+
+    #[tokio::test]
+    async fn test_add_transaction_and_propose_block() {
+        let consensus = Arc::new(ProofOfCooperation::new());
+        let mut blockchain = Blockchain::new(consensus);
+        let tx = create_signed_transaction("Alice", "Bob", 50.0);
+
+        blockchain
+            .currency_system
+            .mint("Alice", &CurrencyType::BasicNeeds, 100.0)
+            .unwrap();
+
+        assert!(blockchain.add_transaction(tx.clone()).is_ok());
+        assert_eq!(blockchain.pending_transactions.len(), 1);
+
+        assert!(blockchain.propose_and_add_block("Miner".to_string()).await.is_ok());
+        assert_eq!(blockchain.chain.len(), 2);
+        assert_eq!(blockchain.pending_transactions.len(), 0);
+
+        assert_eq!(
+            blockchain
+                .get_balance("Alice", &CurrencyType::BasicNeeds)
+                .unwrap(),
+            50.0
+        );
+        assert_eq!(
+            blockchain.get_balance("Bob", &CurrencyType::BasicNeeds).unwrap(),
+            50.0
+        );
+    }
+
+    #[tokio::test]
+    async fn test_blockchain_validity() {
+        let consensus = Arc::new(ProofOfCooperation::new());
+        let mut blockchain = Blockchain::new(consensus);
+        let tx = create_signed_transaction("Alice", "Bob", 50.0);
+
+        blockchain
+            .currency_system
+            .mint("Alice", &CurrencyType::BasicNeeds, 100.0)
+            .unwrap();
+
+        assert!(blockchain.add_transaction(tx.clone()).is_ok());
+        assert!(blockchain.propose_and_add_block("Miner".to_string()).await.is_ok());
+
+        assert!(blockchain.is_chain_valid());
+
+        // Tamper with a block to test invalid chain
+        blockchain.chain[1].transactions[0].amount = 100.0;
+        assert!(!blockchain.is_chain_valid());
+    }
+
+    #[tokio::test]
+    async fn test_get_transactions() {
+        let consensus = Arc::new(ProofOfCooperation::new());
+        let mut blockchain = Blockchain::new(consensus);
+        let tx1 = create_signed_transaction("Alice", "Bob", 50.0);
+        let tx2 = create_signed_transaction("Bob", "Charlie", 25.0);
+
+        blockchain
+            .currency_system
+            .mint("Alice", &CurrencyType::BasicNeeds, 100.0)
+            .unwrap();
+        blockchain
+            .currency_system
+            .mint("Bob", &CurrencyType::BasicNeeds, 50.0)
+            .unwrap();
+
+        assert!(blockchain.add_transaction(tx1.clone()).is_ok());
+        assert!(blockchain.add_transaction(tx2.clone()).is_ok());
+        assert!(blockchain.propose_and_add_block("Miner".to_string()).await.is_ok());
+
+        let alice_transactions = blockchain.get_transactions("Alice");
+        assert_eq!(alice_transactions.len(), 1);
+        assert_eq!(alice_transactions[0].from, "Alice");
+
+        let bob_transactions = blockchain.get_transactions("Bob");
+        assert_eq!(bob_transactions.len(), 2);
+    }
 }
 ===== END OF /opt/InterCooperative-Network-Node/icn_repos/icn_blockchain/src/lib.rs =====
 
@@ -6044,7 +6153,7 @@ mod tests {
     }
 }===== END OF /opt/InterCooperative-Network-Node/icn_repos/icn_zkp/src/lib.rs =====
 
-===== START OF /opt/InterCooperative-Network-Node/icn_repos/icn_common/cargo.toml =====
+===== START OF /opt/InterCooperative-Network-Node/icn_repos/icn_common/Cargo.toml =====
 [package]
 name = "icn_common"
 version = "0.1.0"
@@ -6066,7 +6175,8 @@ uuid = "0.8"
 
 [dev-dependencies]
 rand = "0.8"
-rand_chacha = "0.3"===== END OF /opt/InterCooperative-Network-Node/icn_repos/icn_common/cargo.toml =====
+rand_chacha = "0.3"
+===== END OF /opt/InterCooperative-Network-Node/icn_repos/icn_common/Cargo.toml =====
 
 ===== START OF /opt/InterCooperative-Network-Node/icn_repos/icn_common/src/error.rs =====
 // File: icn_repos/icn_governance/src/lib.rs
@@ -6415,6 +6525,18 @@ mod tests {
         assert_eq!(expired_proposal.status, ProposalStatus::Expired);
     }
 }===== END OF /opt/InterCooperative-Network-Node/icn_repos/icn_common/src/error.rs =====
+
+===== START OF /opt/InterCooperative-Network-Node/icn_repos/icn_common/src/block.rs =====
+===== END OF /opt/InterCooperative-Network-Node/icn_repos/icn_common/src/block.rs =====
+
+===== START OF /opt/InterCooperative-Network-Node/icn_repos/icn_common/src/currency_type.rs =====
+===== END OF /opt/InterCooperative-Network-Node/icn_repos/icn_common/src/currency_type.rs =====
+
+===== START OF /opt/InterCooperative-Network-Node/icn_repos/icn_common/src/transaction.rs =====
+===== END OF /opt/InterCooperative-Network-Node/icn_repos/icn_common/src/transaction.rs =====
+
+===== START OF /opt/InterCooperative-Network-Node/icn_repos/icn_common/src/blockchain_interface.rs =====
+===== END OF /opt/InterCooperative-Network-Node/icn_repos/icn_common/src/blockchain_interface.rs =====
 
 ===== START OF /opt/InterCooperative-Network-Node/icn_repos/icn_common/src/bit_utils.rs =====
 // File: icn_repos/icn_common/src/bit_utils.rs

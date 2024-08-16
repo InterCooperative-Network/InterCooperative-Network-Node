@@ -61,8 +61,12 @@ Processing file: /opt/InterCooperative-Network-Node/icn_repos/icn_reputation/src
 Processing file: /opt/InterCooperative-Network-Node/icn_repos/icn_zkp/Cargo.toml
 Processing file: /opt/InterCooperative-Network-Node/icn_repos/icn_zkp/src/circuits.rs
 Processing file: /opt/InterCooperative-Network-Node/icn_repos/icn_zkp/src/lib.rs
-Processing file: /opt/InterCooperative-Network-Node/icn_repos/icn_common/cargo.toml
+Processing file: /opt/InterCooperative-Network-Node/icn_repos/icn_common/Cargo.toml
 Processing file: /opt/InterCooperative-Network-Node/icn_repos/icn_common/src/error.rs
+Processing file: /opt/InterCooperative-Network-Node/icn_repos/icn_common/src/block.rs
+Processing file: /opt/InterCooperative-Network-Node/icn_repos/icn_common/src/currency_type.rs
+Processing file: /opt/InterCooperative-Network-Node/icn_repos/icn_common/src/transaction.rs
+Processing file: /opt/InterCooperative-Network-Node/icn_repos/icn_common/src/blockchain_interface.rs
 Processing file: /opt/InterCooperative-Network-Node/icn_repos/icn_common/src/bit_utils.rs
 Processing file: /opt/InterCooperative-Network-Node/icn_repos/icn_common/src/lib.rs
 Processing file: /opt/InterCooperative-Network-Node/icn_repos/icn_core/Cargo.toml
@@ -133,12 +137,17 @@ Git status before changelog generation:
 On branch main
 Your branch is up to date with 'origin/main'.
 
+Changes to be committed:
+  (use "git restore --staged <file>..." to unstage)
+	modified:   PROJECT_STRUCTURE_AND_CODE_CONTENTS.txt
+	modified:   script_output.log
+
 Changes not staged for commit:
   (use "git add <file>..." to update what will be committed)
   (use "git restore <file>..." to discard changes in working directory)
   (commit or discard the untracked or modified content in submodules)
 	modified:   icn_repos/icn_blockchain (modified content)
-	modified:   icn_repos/icn_common (untracked content)
+	modified:   icn_repos/icn_common (modified content, untracked content)
 	modified:   icn_repos/icn_consensus (modified content)
 	modified:   icn_repos/icn_currency (modified content)
 	modified:   icn_repos/icn_demo (modified content)
@@ -159,9 +168,7 @@ Changes not staged for commit:
 	modified:   icn_repos/icn_vm (modified content)
 	modified:   icn_repos/icn_zkp (modified content)
 	modified:   script_output.log
-	modified:   update_project.sh
 
-no changes added to commit (use "git add" and/or "git commit -a")
 Running git-cliff...
 Changelog updated successfully.
 CHANGELOG.md content:
@@ -293,6 +300,11 @@ Type your message and press Enter. To finish, enter a line with only a period (.
 -------- BEGIN COMMIT MESSAGE --------
 -------- END COMMIT MESSAGE --------
 test (32a980e)
+
+
+### Testing
+
+- test (254428d)
 
 ## [de] - 2024-08-14
 
