@@ -135,6 +135,180 @@ test (32a980e)
 
 - Correctly add icn_core as a submodule (9f9f55f)
 
+- added mock and simulation files to blockchain (bf45e64)
+
+- Update submodule references (5b378fb)
+
+- Removed submodule directories to prepare for subtree integration (7a916a8)
+
+- Squashed 'icn_repos/icn_identity/' content from commit 87ce81e
+
+git-subtree-dir: icn_repos/icn_identity
+git-subtree-split: 87ce81e85bb743d5ba8ea32be611a52ab632b1e5 (babf614)
+
+- Merge commit 'babf6148cb6ceb13916db9781880edc303b91a81' as 'icn_repos/icn_identity' (1c7aaaf)
+
+- Squashed 'icn_repos/icn_blockchain/' content from commit ab9edb1
+
+git-subtree-dir: icn_repos/icn_blockchain
+git-subtree-split: ab9edb10a4d06b6cca6fd0a1837bbf765695319f (1c3a511)
+
+- Merge commit '1c3a511835a773cb27a94d3ca7e1f7a355a3af2d' as 'icn_repos/icn_blockchain' (063c6b0)
+
+- Squashed 'icn_repos/icn_consensus/' content from commit bf70c92
+
+git-subtree-dir: icn_repos/icn_consensus
+git-subtree-split: bf70c925140b2667f7f7ad4691fb74dc8ff2b064 (e738434)
+
+- Merge commit 'e7384343530ee5fb93417c4909b6a1a6077d101d' as 'icn_repos/icn_consensus' (b553e58)
+
+- Squashed 'icn_repos/icn_currency/' content from commit 1db2b6e
+
+git-subtree-dir: icn_repos/icn_currency
+git-subtree-split: 1db2b6e511aaa45700708c4e42fb0732d1255fda (471f8c3)
+
+- Merge commit '471f8c3f8320c92fe71cc1e5b778a5421e1dd229' as 'icn_repos/icn_currency' (0be0cf9)
+
+- Squashed 'icn_repos/icn_demo/' content from commit a3e31d7
+
+git-subtree-dir: icn_repos/icn_demo
+git-subtree-split: a3e31d7d4e2e229e49b17407078d6a09c76be03d (c90e03b)
+
+- Merge commit 'c90e03be8efab31a54123db1eb2412101b0457da' as 'icn_repos/icn_demo' (749c2b8)
+
+- Squashed 'icn_repos/icn_federation/' content from commit e75e4ff
+
+git-subtree-dir: icn_repos/icn_federation
+git-subtree-split: e75e4ff5733f7511e5fa9a877ac9c1897c917fd5 (19a0486)
+
+- Merge commit '19a04866140c88c836cb2b25cf3abfc1c7a3ac98' as 'icn_repos/icn_federation' (05e0764)
+
+- Squashed 'icn_repos/icn_governance/' content from commit 11d8235
+
+git-subtree-dir: icn_repos/icn_governance
+git-subtree-split: 11d82355821aefd0d4bd342df214788e8c31723f (994c729)
+
+- Merge commit '994c7290c07bd0809f0d7575a2a67d032131bac3' as 'icn_repos/icn_governance' (ca686ce)
+
+- Squashed 'icn_repos/icn_incentives/' content from commit d98343d
+
+git-subtree-dir: icn_repos/icn_incentives
+git-subtree-split: d98343df093c0c3303c50919cde995fa088dc63a (61210fa)
+
+- Merge commit '61210fa6c62a6476986ffd2f5a084883f5ab45c5' as 'icn_repos/icn_incentives' (1f7a02b)
+
+- Squashed 'icn_repos/icn_language/' content from commit ce15397
+
+git-subtree-dir: icn_repos/icn_language
+git-subtree-split: ce153977197077ecd3dbbb2b7b81ea89e06ebfa3 (3b21cd0)
+
+- Merge commit '3b21cd0f2099bd727c1665f6745c3ae5856da546' as 'icn_repos/icn_language' (dee6528)
+
+- Squashed 'icn_repos/icn_market/' content from commit 1d84b3a
+
+git-subtree-dir: icn_repos/icn_market
+git-subtree-split: 1d84b3a4425c9d0f04dc22a8cb9a87ef6a745a5a (def1e45)
+
+- Merge commit 'def1e452b1c9a8bc87eb40cdab5e474cf19b6025' as 'icn_repos/icn_market' (c85e291)
+
+- Squashed 'icn_repos/icn_network/' content from commit 11dabdf
+
+git-subtree-dir: icn_repos/icn_network
+git-subtree-split: 11dabdf2de708132a4fd5d0e307caae97646a5db (fd7c9db)
+
+- Merge commit 'fd7c9dbd618f0df7b403cff53bdef7b99796e259' as 'icn_repos/icn_network' (f423859)
+
+- Squashed 'icn_repos/icn_node_management/' content from commit 55d5bdd
+
+git-subtree-dir: icn_repos/icn_node_management
+git-subtree-split: 55d5bdd31f274949d6be997a44d2234833cbee3d (89a39d2)
+
+- Merge commit '89a39d29706987454810573d67b2aa648f3a94c8' as 'icn_repos/icn_node_management' (bcf2591)
+
+- Squashed 'icn_repos/icn_reputation/' content from commit 93e1cd5
+
+git-subtree-dir: icn_repos/icn_reputation
+git-subtree-split: 93e1cd54f25241a8c5f01f61aa46fe82777edf6a (ad088cb)
+
+- Merge commit 'ad088cb9035407b9ed312ffd8d2a83950fb2d64d' as 'icn_repos/icn_reputation' (97862ea)
+
+- Squashed 'icn_repos/icn_sharding/' content from commit d91612b
+
+git-subtree-dir: icn_repos/icn_sharding
+git-subtree-split: d91612b62268eedbc1de3c968b0e5b9a9d37269a (179ac91)
+
+- Merge commit '179ac912b96163aa8507af9d805a15fb6a2788d9' as 'icn_repos/icn_sharding' (93b3946)
+
+- Squashed 'icn_repos/icn_smart_contracts/' content from commit 5b287e3
+
+git-subtree-dir: icn_repos/icn_smart_contracts
+git-subtree-split: 5b287e36a6f077aff0b91fa2fff4f917ed8e5cb8 (35cebc2)
+
+- Merge commit '35cebc241d3d38c60743d88216bd438ddd58791e' as 'icn_repos/icn_smart_contracts' (8a6bd32)
+
+- Squashed 'icn_repos/icn_storage/' content from commit e427a7c
+
+git-subtree-dir: icn_repos/icn_storage
+git-subtree-split: e427a7c1eacbf41c94912cb4bef4e3a9c6d8564e (58fc26f)
+
+- Merge commit '58fc26f8e8c52ec2d3e69f05201d76b82d8a213e' as 'icn_repos/icn_storage' (742a178)
+
+- Squashed 'icn_repos/icn_testnet/' content from commit 5c88499
+
+git-subtree-dir: icn_repos/icn_testnet
+git-subtree-split: 5c88499839843266b300b5b7367cd3bb4978c7fe (4097811)
+
+- Merge commit '40978115d114220469e14ff216cbc4e0cae74db1' as 'icn_repos/icn_testnet' (3f0a663)
+
+- Squashed 'icn_repos/icn_utils/' content from commit 1c5313a
+
+git-subtree-dir: icn_repos/icn_utils
+git-subtree-split: 1c5313a991c86ea894cd7e078dae066e1e9fcb94 (0478dff)
+
+- Merge commit '0478dff3130e7b2e85f56168cc58bdc3c7dde7b3' as 'icn_repos/icn_utils' (dba967c)
+
+- Squashed 'icn_repos/icn_vm/' content from commit 47732a0
+
+git-subtree-dir: icn_repos/icn_vm
+git-subtree-split: 47732a0aa7092b1c26d26242df9a496ac268952e (ff89fea)
+
+- Merge commit 'ff89fea7651fc9d4c72a6295f45cc5a17be39d15' as 'icn_repos/icn_vm' (0ba209e)
+
+- Squashed 'icn_repos/icn_zkp/' content from commit 57561b5
+
+git-subtree-dir: icn_repos/icn_zkp
+git-subtree-split: 57561b507bbbc5809f56f4ec8340bf69a9dcc614 (f53207c)
+
+- Merge commit 'f53207c199871644b00cfb6b1609e44300f2f689' as 'icn_repos/icn_zkp' (0de3734)
+
+- Squashed 'icn_repos/icn_api/' content from commit e60f843
+
+git-subtree-dir: icn_repos/icn_api
+git-subtree-split: e60f843961482106b29217407f94ea9910e269ed (d185923)
+
+- Merge commit 'd185923990b7cada193999677752ff28c443d743' as 'icn_repos/icn_api' (4d06a7e)
+
+- Squashed 'icn_repos/icn_dao/' content from commit 6d3cc0d
+
+git-subtree-dir: icn_repos/icn_dao
+git-subtree-split: 6d3cc0d21dcd5208bcdff4edf6ab7805fce864a6 (8aaca15)
+
+- Merge commit '8aaca1541bca43e1fe463b49e611aeb20709203e' as 'icn_repos/icn_dao' (5e2d0b6)
+
+- Squashed 'icn_repos/icn_common/' content from commit bf40eb8
+
+git-subtree-dir: icn_repos/icn_common
+git-subtree-split: bf40eb8b57a1b8aeb7f0251fedc62222df70e79d (5d0198d)
+
+- Merge commit '5d0198db6ced866d8548d764ebb6561d119bdd90' as 'icn_repos/icn_common' (aa78900)
+
+- Squashed 'icn_repos/icn_core/' content from commit c180386
+
+git-subtree-dir: icn_repos/icn_core
+git-subtree-split: c1803865ac697488a4581680ca835302c01d2260 (605ccf9)
+
+- Merge commit '605ccf9a77efbf323166de6208d1a7efefe66dac' as 'icn_repos/icn_core' (6e54d84)
+
 
 ### Testing
 
