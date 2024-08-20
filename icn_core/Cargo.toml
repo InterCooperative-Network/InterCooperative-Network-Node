@@ -6,7 +6,6 @@ edition = "2021"
 [dependencies]
 tokio = { version = "1.28", features = ["full"] }
 config = "0.13"
-env_logger = "0.10"
 icn_consensus = { path = "../icn_consensus" }
 icn_identity = { path = "../icn_identity" }
 icn_governance = { path = "../icn_governance" }
