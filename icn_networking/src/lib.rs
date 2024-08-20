@@ -11,7 +11,7 @@ pub struct Networking {
 impl Networking {
     pub fn new() -> Self {
         Networking {
-            peers: Arc<Mutex<Vec<TcpStream>>>::new(Mutex::new(vec![])),
+            peers: Arc::<Mutex<Vec<TcpStream>>>::new(Mutex::new(vec![])),
         }
     }
 
