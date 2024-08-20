@@ -1,14 +1,18 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
+pub struct SmartContract {
+    pub id: u32,
+    pub code: String,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+impl SmartContract {
+    pub fn new(id: u32, code: &str) -> Self {
+        SmartContract {
+            id,
+            code: code.to_string(),
+        }
+    }
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
+    pub fn execute(&self) -> String {
+        // Example execution logic
+        format!("Executing smart contract ID: {}", self.id)
     }
 }

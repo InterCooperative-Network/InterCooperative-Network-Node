@@ -1,7 +1,8 @@
 use icn_core::node::NodeManager;
 
-fn main() {
-    println!("Starting ICN Node...");
+#[tokio::main]
+async fn main() {
+    env_logger::init();
     let mut node = NodeManager::new();
-    node.start();
+    node.start().await;
 }

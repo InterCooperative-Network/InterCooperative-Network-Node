@@ -1,0 +1,9 @@
+[node]
+name = "ICN Node"
+port = 8080
+
+[blockchain]
+block_time = 10
+
+[consensus]
+algorithm = "proof_of_cooperation"

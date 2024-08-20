@@ -1,14 +1,25 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
+pub struct Proposal {
+    pub id: u32,
+    pub description: String,
+    pub votes_for: u32,
+    pub votes_against: u32,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+impl Proposal {
+    pub fn new(id: u32, description: &str) -> Self {
+        Proposal {
+            id,
+            description: description.to_string(),
+            votes_for: 0,
+            votes_against: 0,
+        }
+    }
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
+    pub fn vote_for(&mut self) {
+        self.votes_for += 1;
+    }
+
+    pub fn vote_against(&mut self) {
+        self.votes_against += 1;
     }
 }

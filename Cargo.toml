@@ -12,7 +12,4 @@ members = [
     "icn_storage"
 ]
 
-[workspace.dependencies]
-# Add common dependencies here
-
 resolver = "2"

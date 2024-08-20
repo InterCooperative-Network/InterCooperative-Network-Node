@@ -4,3 +4,4 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+icn_blockchain = { path = "../icn_blockchain" }
