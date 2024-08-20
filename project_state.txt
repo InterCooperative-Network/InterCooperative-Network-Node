@@ -743,63 +743,68 @@ use icn_shared::{IcnError, IcnResult};
 pub mod proof_of_cooperation;
 use proof_of_cooperation::ProofOfCooperation;
 
-/// The Consensus struct manages the consensus mechanism for the blockchain.
+/// The `Consensus` struct manages the consensus mechanism for the blockchain.
 pub struct Consensus {
     proof_of_cooperation: ProofOfCooperation,
 }
 
 impl Consensus {
-    /// Creates a new Consensus instance with a new ProofOfCooperation.
+    /// Creates a new `Consensus` instance with a new `ProofOfCooperation`.
     pub fn new() -> Self {
         Consensus {
             proof_of_cooperation: ProofOfCooperation::new(),
         }
     }
 
-    /// Validates a `Block` using the `ProofOfCooperation` algorithm
+    /// Validates a `Block` using the `ProofOfCooperation` algorithm.
     ///
     /// # Arguments
     ///
-    /// * `block` - The block to be validated
+    /// * `block` - The block to be validated.
     ///
     /// # Returns
     ///
-    /// * `IcnResult<bool>` - `true` if the block is valid, otherwise an `IcnError`
-    pub fn validate_block(&self, block: &Block) -> IcnResult<bool> {
+    /// * `IcnResult<bool>` - `true` if the block is valid, otherwise an `IcnError`.
+    pub fn validate_block(&mut self, block: &Block) -> IcnResult<bool> {
         let proposer_id = &block.proposer_id;
+        println!("Validating block with proposer_id: {}", proposer_id);
+
         if self.proof_of_cooperation.is_registered(proposer_id) {
+            println!("Proposer is registered, proceeding with validation.");
             self.proof_of_cooperation.validate(block)
         } else {
+            println!("Unknown proposer: {}", proposer_id);
             Err(IcnError::Consensus(format!("Unknown proposer: {}", proposer_id)))
         }
     }
 
     /// Handles a potential fork in the blockchain by selecting the most valid chain
-    /// according to the `ProofOfCooperation` algorithm
+    /// according to the `ProofOfCooperation` algorithm.
     ///
     /// # Arguments
     ///
-    /// * `chain_a` - The first chain to be compared
-    /// * `chain_b` - The second chain to be compared
+    /// * `chain_a` - The first chain to be compared.
+    /// * `chain_b` - The second chain to be compared.
     ///
     /// # Returns
     ///
-    /// * `IcnResult<Vec<Block>>` - The chosen chain as a vector of blocks, or an `IcnError`
+    /// * `IcnResult<Vec<Block>>` - The chosen chain as a vector of blocks, or an `IcnError`.
     pub fn handle_fork(&self, chain_a: &[Block], chain_b: &[Block]) -> IcnResult<Vec<Block>> {
         let chosen_chain = self.proof_of_cooperation.handle_fork(chain_a, chain_b);
         Ok(chosen_chain.to_vec())
     }
 
-    /// Registers a new peer in the `ProofOfCooperation` consensus mechanism
+    /// Registers a new peer in the `ProofOfCooperation` consensus mechanism.
     ///
     /// # Arguments
     ///
-    /// * `peer_id` - The ID of the peer to be registered
+    /// * `peer_id` - The ID of the peer to be registered.
     ///
     /// # Returns
     ///
-    /// * `IcnResult<()>` - An empty result indicating success or failure
+    /// * `IcnResult<()>` - An empty result indicating success or failure.
     pub fn register_peer(&mut self, peer_id: &str) -> IcnResult<()> {
+        println!("Registering peer with ID: {}", peer_id);
         self.proof_of_cooperation.register_peer(peer_id);
         Ok(())
     }
@@ -815,23 +820,27 @@ mod tests {
         let mut consensus = Consensus::new();
         let proposer_id = "peer1".to_string();
         
+        println!("Registering proposer_id: {}", proposer_id);
         consensus.register_peer(&proposer_id).unwrap();  // Ensure proposer is registered
-
-        let block = Block::new(0, 0, vec![], proposer_id.clone(), String::new(), String::new());
-
+    
+        // Create a block with the correct proposer_id
+        let block = Block::new(0, 0, vec![], proposer_id.clone(), String::new(), proposer_id.clone());
+        println!("Created block with proposer_id: {}", block.proposer_id);
+    
         // Validate the block
         let validation_result = consensus.validate_block(&block);
-
+    
         // Clone the result to avoid borrowing issues
         let is_valid = validation_result.as_ref().is_ok();
-
+    
         // Debugging output to understand why the validation might fail
         if let Err(e) = validation_result {
             println!("Validation failed: {:?}", e);
         }
-
+    
         assert!(is_valid);
     }
+    
 
     #[test]
     fn test_handle_fork() {
@@ -861,6 +870,7 @@ use icn_shared::{IcnError, IcnResult};
 use rand::Rng;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+/// The `ProofOfCooperation` struct implements the Proof of Cooperation consensus mechanism.
 pub struct ProofOfCooperation {
     known_peers: HashSet<String>,
     cooperation_scores: HashMap<String, f64>,
@@ -868,6 +878,7 @@ pub struct ProofOfCooperation {
 }
 
 impl ProofOfCooperation {
+    /// Creates a new `ProofOfCooperation` instance.
     pub fn new() -> Self {
         ProofOfCooperation {
             known_peers: HashSet::new(),
@@ -876,16 +887,39 @@ impl ProofOfCooperation {
         }
     }
 
+    /// Registers a peer in the consensus mechanism.
+    ///
+    /// # Arguments
+    ///
+    /// * `peer_id` - The ID of the peer to register.
     pub fn register_peer(&mut self, peer_id: &str) {
         self.known_peers.insert(peer_id.to_string());
         self.cooperation_scores.insert(peer_id.to_string(), 1.0);
     }
 
+    /// Checks if a peer is registered in the consensus mechanism.
+    ///
+    /// # Arguments
+    ///
+    /// * `peer_id` - The ID of the peer to check.
+    ///
+    /// # Returns
+    ///
+    /// * `bool` - `true` if the peer is registered, otherwise `false`.
     pub fn is_registered(&self, peer_id: &str) -> bool {
         self.known_peers.contains(peer_id)
     }
 
-    pub fn validate(&self, block: &Block) -> IcnResult<bool> {
+    /// Validates a block according to the Proof of Cooperation consensus mechanism.
+    ///
+    /// # Arguments
+    ///
+    /// * `block` - The block to validate.
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<bool>` - `true` if the block is valid, otherwise an `IcnError`.
+    pub fn validate(&mut self, block: &Block) -> IcnResult<bool> {
         if !self.is_registered(&block.proposer_id) {
             return Err(IcnError::Consensus(format!("Unknown proposer: {}", block.proposer_id)));
         }
@@ -899,10 +933,18 @@ impl ProofOfCooperation {
             return Err(IcnError::Consensus("Block proposed too soon".to_string()));
         }
 
+        // Update last block time
+        self.last_block_time = current_time;
+
         // Additional validation logic here (e.g., checking signatures, ensuring cooperation)
         Ok(true)
     }
 
+    /// Selects a proposer based on cooperation scores.
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<String>` - The selected proposer ID or an `IcnError` if selection fails.
     pub fn select_proposer(&self) -> IcnResult<String> {
         let mut rng = rand::thread_rng();
         let total_score: f64 = self.cooperation_scores.values().sum();
@@ -919,6 +961,16 @@ impl ProofOfCooperation {
         Err(IcnError::Consensus("Failed to select a proposer".to_string()))
     }
 
+    /// Updates the cooperation score of a peer.
+    ///
+    /// # Arguments
+    ///
+    /// * `peer_id` - The ID of the peer.
+    /// * `performance` - The performance factor to update the score with.
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<()>` - An empty result indicating success or an `IcnError` if the peer is unknown.
     pub fn update_cooperation_score(&mut self, peer_id: &str, performance: f64) -> IcnResult<()> {
         let score = self.cooperation_scores
             .get_mut(peer_id)
@@ -928,6 +980,16 @@ impl ProofOfCooperation {
         Ok(())
     }
 
+    /// Handles a blockchain fork by selecting the most valid chain.
+    ///
+    /// # Arguments
+    ///
+    /// * `chain_a` - The first chain to compare.
+    /// * `chain_b` - The second chain to compare.
+    ///
+    /// # Returns
+    ///
+    /// * `&[Block]` - The selected chain.
     pub fn handle_fork<'a>(&self, chain_a: &'a [Block], chain_b: &'a [Block]) -> &'a [Block] {
         // Simple longest chain rule for now
         if chain_a.len() >= chain_b.len() {
@@ -2452,6 +2514,8 @@ impl ConfigLoader {
 
 
 === ./icn_core/src/config/config_loader.rs ===
+// icn_core/src/config/config_loader.rs
+
 use std::fs;
 use toml::{Value, map::Map};
 use icn_shared::IcnError;
@@ -2462,6 +2526,15 @@ pub struct ConfigLoader {
 }
 
 impl ConfigLoader {
+    /// Creates a new ConfigLoader instance by loading a TOML configuration file.
+    ///
+    /// # Arguments
+    ///
+    /// * `config_path` - The path to the TOML configuration file
+    ///
+    /// # Returns
+    ///
+    /// * `Result<Self, IcnError>` - The ConfigLoader instance or an `IcnError` if loading fails
     pub fn new(config_path: &str) -> Result<Self, IcnError> {
         let config_content = fs::read_to_string(config_path)
             .map_err(|e| IcnError::Config(format!("Failed to read config file: {}", e)))?;
@@ -2472,10 +2545,24 @@ impl ConfigLoader {
         Ok(ConfigLoader { config })
     }
 
+    /// Retrieves the entire configuration map.
+    ///
+    /// # Returns
+    ///
+    /// * `&Map<String, Value>` - A reference to the configuration map
     pub fn get_config(&self) -> &Map<String, Value> {
         &self.config
     }
 
+    /// Retrieves a string value from the configuration.
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - The key of the string value to retrieve
+    ///
+    /// # Returns
+    ///
+    /// * `Result<String, IcnError>` - The string value or an `IcnError` if not found or invalid
     pub fn get_string(&self, key: &str) -> Result<String, IcnError> {
         self.get_nested_value(key)?
             .as_str()
@@ -2483,18 +2570,45 @@ impl ConfigLoader {
             .ok_or_else(|| IcnError::Config(format!("Value for key '{}' is not a string", key)))
     }
 
+    /// Retrieves an integer value from the configuration.
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - The key of the integer value to retrieve
+    ///
+    /// # Returns
+    ///
+    /// * `Result<i64, IcnError>` - The integer value or an `IcnError` if not found or invalid
     pub fn get_int(&self, key: &str) -> Result<i64, IcnError> {
         self.get_nested_value(key)?
             .as_integer()
             .ok_or_else(|| IcnError::Config(format!("Value for key '{}' is not an integer", key)))
     }
 
+    /// Retrieves a boolean value from the configuration.
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - The key of the boolean value to retrieve
+    ///
+    /// # Returns
+    ///
+    /// * `Result<bool, IcnError>` - The boolean value or an `IcnError` if not found or invalid
     pub fn get_bool(&self, key: &str) -> Result<bool, IcnError> {
         self.get_nested_value(key)?
             .as_bool()
             .ok_or_else(|| IcnError::Config(format!("Value for key '{}' is not a boolean", key)))
     }
 
+    /// Retrieves a nested value from the configuration using a dot-separated key.
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - The dot-separated key of the value to retrieve
+    ///
+    /// # Returns
+    ///
+    /// * `Result<&Value, IcnError>` - The nested value or an `IcnError` if not found or invalid
     fn get_nested_value(&self, key: &str) -> Result<&Value, IcnError> {
         let parts: Vec<&str> = key.split('.').collect();
         let mut current = &self.config;

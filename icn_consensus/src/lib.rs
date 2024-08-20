@@ -5,63 +5,68 @@ use icn_shared::{IcnError, IcnResult};
 pub mod proof_of_cooperation;
 use proof_of_cooperation::ProofOfCooperation;
 
-/// The Consensus struct manages the consensus mechanism for the blockchain.
+/// The `Consensus` struct manages the consensus mechanism for the blockchain.
 pub struct Consensus {
     proof_of_cooperation: ProofOfCooperation,
 }
 
 impl Consensus {
-    /// Creates a new Consensus instance with a new ProofOfCooperation.
+    /// Creates a new `Consensus` instance with a new `ProofOfCooperation`.
     pub fn new() -> Self {
         Consensus {
             proof_of_cooperation: ProofOfCooperation::new(),
         }
     }
 
-    /// Validates a `Block` using the `ProofOfCooperation` algorithm
+    /// Validates a `Block` using the `ProofOfCooperation` algorithm.
     ///
     /// # Arguments
     ///
-    /// * `block` - The block to be validated
+    /// * `block` - The block to be validated.
     ///
     /// # Returns
     ///
-    /// * `IcnResult<bool>` - `true` if the block is valid, otherwise an `IcnError`
-    pub fn validate_block(&self, block: &Block) -> IcnResult<bool> {
+    /// * `IcnResult<bool>` - `true` if the block is valid, otherwise an `IcnError`.
+    pub fn validate_block(&mut self, block: &Block) -> IcnResult<bool> {
         let proposer_id = &block.proposer_id;
+        println!("Validating block with proposer_id: {}", proposer_id);
+
         if self.proof_of_cooperation.is_registered(proposer_id) {
+            println!("Proposer is registered, proceeding with validation.");
             self.proof_of_cooperation.validate(block)
         } else {
+            println!("Unknown proposer: {}", proposer_id);
             Err(IcnError::Consensus(format!("Unknown proposer: {}", proposer_id)))
         }
     }
 
     /// Handles a potential fork in the blockchain by selecting the most valid chain
-    /// according to the `ProofOfCooperation` algorithm
+    /// according to the `ProofOfCooperation` algorithm.
     ///
     /// # Arguments
     ///
-    /// * `chain_a` - The first chain to be compared
-    /// * `chain_b` - The second chain to be compared
+    /// * `chain_a` - The first chain to be compared.
+    /// * `chain_b` - The second chain to be compared.
     ///
     /// # Returns
     ///
-    /// * `IcnResult<Vec<Block>>` - The chosen chain as a vector of blocks, or an `IcnError`
+    /// * `IcnResult<Vec<Block>>` - The chosen chain as a vector of blocks, or an `IcnError`.
     pub fn handle_fork(&self, chain_a: &[Block], chain_b: &[Block]) -> IcnResult<Vec<Block>> {
         let chosen_chain = self.proof_of_cooperation.handle_fork(chain_a, chain_b);
         Ok(chosen_chain.to_vec())
     }
 
-    /// Registers a new peer in the `ProofOfCooperation` consensus mechanism
+    /// Registers a new peer in the `ProofOfCooperation` consensus mechanism.
     ///
     /// # Arguments
     ///
-    /// * `peer_id` - The ID of the peer to be registered
+    /// * `peer_id` - The ID of the peer to be registered.
     ///
     /// # Returns
     ///
-    /// * `IcnResult<()>` - An empty result indicating success or failure
+    /// * `IcnResult<()>` - An empty result indicating success or failure.
     pub fn register_peer(&mut self, peer_id: &str) -> IcnResult<()> {
+        println!("Registering peer with ID: {}", peer_id);
         self.proof_of_cooperation.register_peer(peer_id);
         Ok(())
     }
@@ -77,23 +82,27 @@ mod tests {
         let mut consensus = Consensus::new();
         let proposer_id = "peer1".to_string();
         
+        println!("Registering proposer_id: {}", proposer_id);
         consensus.register_peer(&proposer_id).unwrap();  // Ensure proposer is registered
-
-        let block = Block::new(0, 0, vec![], proposer_id.clone(), String::new(), String::new());
-
+    
+        // Create a block with the correct proposer_id
+        let block = Block::new(0, 0, vec![], proposer_id.clone(), String::new(), proposer_id.clone());
+        println!("Created block with proposer_id: {}", block.proposer_id);
+    
         // Validate the block
         let validation_result = consensus.validate_block(&block);
-
+    
         // Clone the result to avoid borrowing issues
         let is_valid = validation_result.as_ref().is_ok();
-
+    
         // Debugging output to understand why the validation might fail
         if let Err(e) = validation_result {
             println!("Validation failed: {:?}", e);
         }
-
+    
         assert!(is_valid);
     }
+    
 
     #[test]
     fn test_handle_fork() {
