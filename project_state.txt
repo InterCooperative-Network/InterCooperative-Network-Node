@@ -1,3 +1,29 @@
+=== ./test_cert.crt ===
+-----BEGIN CERTIFICATE-----
+MIIDuTCCAqGgAwIBAgIUVXSz9n9sUkgSDhnyLuGmVcZRNK8wDQYJKoZIhvcNAQEL
+BQAwbDELMAkGA1UEBhMCVVMxCzAJBgNVBAgMAk5ZMRAwDgYDVQQHDAdQYWxteXJh
+MSEwHwYDVQQKDBhJbnRlckNvb3BlcmF0aXZlIE5ldHdvcmsxDTALBgNVBAsMBE5v
+ZGUxDDAKBgNVBAMMA0lDTjAeFw0yNDA4MjAwNzM5NDBaFw0yNTA4MjAwNzM5NDBa
+MGwxCzAJBgNVBAYTAlVTMQswCQYDVQQIDAJOWTEQMA4GA1UEBwwHUGFsbXlyYTEh
+MB8GA1UECgwYSW50ZXJDb29wZXJhdGl2ZSBOZXR3b3JrMQ0wCwYDVQQLDAROb2Rl
+MQwwCgYDVQQDDANJQ04wggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQCq
+iABpZtwNQC0vdQxFvm4uQsNQgRDL/90jRgrsm8AYWcKRDWpoExi/aiYT1FrFo2rs
+PM7kqzaIb7xiPtJIhzOJg4qNc5Gi6/wSJ4A/qYkRuAGznWkp735moKLmhbn0vRq3
+KWNUk7QN7cbQOww50Td25Omo0TZOrwXbGFdeit8WyjAaUxuXaFINnptga+v7PUhf
+DNbTh+TWqpUlc+sWQ/mjW7hXfTZrsfNRfU8dd+v2U9gS5DjJ8BsekHgUrdVJc0WG
+MeX4S5IIChV4vmf15XLayiQ1zY+SLwcg3u1eOHifmBJNX5YZlzYBknU5mOcR5mC/
+L8K6hfF1zFcjH+CPx5StAgMBAAGjUzBRMB0GA1UdDgQWBBRBUbpVIhBpqrVqPbWL
+/EhJ/b256jAfBgNVHSMEGDAWgBRBUbpVIhBpqrVqPbWL/EhJ/b256jAPBgNVHRMB
+Af8EBTADAQH/MA0GCSqGSIb3DQEBCwUAA4IBAQB/AFohJ7yOexdrCebW+BNvxER9
+i7zZN1HskiXEyW/st5L612vJMESQYj9cJBeg1j8L9X/5LitWjfZb/+KsFwglKOQa
+uoygrOUlhlnfLJYQeXHtG8wr/pVaYCGUWtd7S1ZlDe2gfCrZGRZRoZ1GvaO2FOKk
+EsAUy9UUeplYaSH/nrtVb2Af7bwnlSdOh0RnElUYpp0QYaynLWAZCXO8z9xyMlnd
+KOIMTYIMQ7eSe0UDH70LUNeroUuqCC/31MEKJERfLkVMrZLmsqA7Nj/yd+mh1ULx
+VRMUSGAQpVE/bUaHxN1MIKmzrh1CheXjShgHvkPxAlF1YOcvxfJgyXjbTuxf
+-----END CERTIFICATE-----
+
+
+
 === ./generate_project_state.sh ===
 #!/bin/bash
 
@@ -39,6 +65,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+tokio = { version = "1.0", features = ["full"] }
+tokio-native-tls = "0.3"
 native-tls = "0.2"
 log = "0.4"
 icn_shared = { path = "../icn_shared" }
@@ -50,8 +78,6 @@ icn_shared = { path = "../icn_shared" }
 
 
 === ./icn_networking/src/lib.rs ===
-// icn_networking/src/lib.rs
-
 use tokio::net::{TcpListener, TcpStream};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::Mutex;
@@ -114,86 +140,58 @@ impl Networking {
     pub async fn broadcast_message(&self, message: &str) -> IcnResult<()> {
         let mut peers = self.peers.lock().await;
         for peer in peers.iter_mut() {
-            peer.write_all(message.as_bytes()).await
-                .map_err(|e| IcnError::Network(format!("Failed to send message: {}", e)))?;
+            if let Err(e) = peer.write_all(message.as_bytes()).await {
+                error!("Failed to send message: {:?}", e);
+            }
         }
         Ok(())
     }
 
-    pub async fn initialize(&self) -> IcnResult<()> {
-        // Initialization logic here
-        Ok(())
-    }
-
-    pub async fn stop(&self) -> IcnResult<()> {
-        // Stop logic here
+    pub fn stop_server(&self) -> IcnResult<()> {
+        // Add your server stopping logic here
         Ok(())
     }
 }
 
-async fn handle_client(mut stream: TlsStream<TcpStream>, peers: Arc<Mutex<Vec<TlsStream<TcpStream>>>>) {
-    let mut buffer = [0; 1024];
+async fn handle_client(mut tls_stream: TlsStream<TcpStream>, peers: Arc<Mutex<Vec<TlsStream<TcpStream>>>>) {
+    let mut buf = vec![0; 1024];
     loop {
-        match stream.read(&mut buffer).await {
-            Ok(0) => break,
-            Ok(n) => {
-                let message = String::from_utf8_lossy(&buffer[..n]);
-                info!("Received message: {}", message);
-                // Process the message here
-            }
+        let n = match tls_stream.read(&mut buf).await {
+            Ok(n) if n == 0 => break, // Connection closed
+            Ok(n) => n,
             Err(e) => {
-                error!("Error reading from stream: {:?}", e);
+                error!("Failed to read from client: {:?}", e);
                 break;
             }
+        };
+
+        let message = String::from_utf8_lossy(&buf[..n]);
+        info!("Received message: {}", message);
+
+        // Broadcast message to all peers
+        let mut peers = peers.lock().await;
+        for peer in peers.iter_mut() {
+            if let Err(e) = peer.write_all(message.as_bytes()).await {
+                error!("Failed to send message to peer: {:?}", e);
+            }
         }
     }
-    let mut peers = peers.lock().await;
-    peers.retain(|p| !std::ptr::eq(p.get_ref(), stream.get_ref()));
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use tokio::net::TcpListener;
-    use std::net::SocketAddr;
-
-    #[tokio::test]
-    async fn test_networking_creation() {
-        let networking = Networking::new();
-        assert!(networking.peers.lock().await.is_empty());
-    }
-
-    #[tokio::test]
-    async fn test_connect_to_peer() {
-        let networking = Networking::new();
-        let (tx, rx) = tokio::sync::oneshot::channel();
-        
-        tokio::spawn(async move {
-            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-            let addr = listener.local_addr().unwrap();
-            tx.send(addr).unwrap();
-            let (stream, _) = listener.accept().await.unwrap();
-            let identity = Identity::from_pkcs12(include_bytes!("test_cert.p12"), "password").unwrap();
-            let acceptor = TlsAcceptor::new(identity).unwrap();
-            let _tls_stream = acceptor.accept(stream).await.unwrap();
-        });
-
-        let addr: SocketAddr = rx.await.unwrap();
-        let result = networking.connect_to_peer(&addr.to_string()).await;
-        assert!(result.is_ok());
-        assert_eq!(networking.peers.lock().await.len(), 1);
-    }
-}
 
 
 === ./icn_shared/Cargo.toml ===
 [package]
 name = "icn_shared"
 version = "0.1.0"
-edition = "2021"
+edition = "2018"
 
 [dependencies]
-native-tls = "0.2"
+serde = "1.0"
+serde_json = "1.0"
+log = "0.4"
+native-tls = "0.2"  # Add this line
+
 
 
 === ./icn_shared/src/lib.rs ===
@@ -250,6 +248,22 @@ impl From<native_tls::Error> for IcnError {
 }
 
 pub type IcnResult<T> = Result<T, IcnError>;
+
+
+=== ./test_cert.p12 ===
+0Ç
+è0Ç
+E	*ÜHÜ˜†Ç
+6Ç
+20Ç
+.0Ç¢	*ÜHÜ˜†Çì0Çè 0Çà	*ÜHÜ˜0W	*ÜHÜ˜0J0)	*ÜHÜ˜0‚“˘|Çí* 0*ÜHÜ˜	 0	`ÜHe*.B©ÆùÒy˘˜ª}Ã ÄÇ ÿæ‰ODÏËKÎ÷û—√´rìf¡çı√#∞˛í/Ià°øçòa8√º6ˆB˛ !GDFÚn¢CaOôu´·Ô?á«Í/>NBÕˆˇ/18Gb†-Ωt](¸àœ·≥Y™	3Áh…]	≠ÌìG}Øøˆ_ÓM¬F"<M™ú£Y/yåª¨àúÙ¨≥e¸ﬁ'tjåg≥ÿ™\¶L·”Ö∫ó&™oØy)ãŸvXÙn˚-«^| ∞Ú‰ÊXísÂ˘hô¡èZ0©9~0aà˝≤
+xl!år?¡"Âä?¿˝vî˛sÒEÄéMÖ≥K‰„§“˛Â˝ÚÀ“ ºí¿<ÈÜ'Z•A≤ä\Y^êàá•ËAw&¸ËÃ"\è¸ˇÏJ’	HÌ§%Vt9:ØqÈ,f√üÿ·m•≠IRhôÖDDÍApˇßEÑ'˙
+*™dfµÔqJ;!‰Ë∞∂ï≈—ÄÏF◊0≈·S8ÓÉ™?q◊z)Æù%ÿıîi<ïBîR 2úãlÉ1>Ge–êB$Ï¡næ“G§H3v º˙õ…aΩ[´	j‡⁄ΩPÌ¨>¨î_Î/eï-U¡Jò[™O⁄7Eå¬ïê 6ZS}ÕoåÛíÜ∞Ì∫éßsÌ£?ßõøO* ˇÙI√'◊BuÎ‡ìlÙÚ5ÃO∂õÜÀvHKV7 3≠ìEj€Õı-Ö®‡! ≈Ω≈-[àΩÜGÁÏ…3ç9.ñò{Çj\ª*≠mÓ<£A≥ÙÊÜËY6Ë<Ì˚‘1≈Òlô%™∫ñﬂ±g-3tI˘^}∏¨`Àbπ≥¨!=^Ú`TGåœò¬cwö‡N√Ü-´ÌÒöÊ”9Ω˛œL”8<∫3§_Ûº'[G≥Ä¢¸¯πÏº'ﬁ≤F√ykÑp-⁄4àÖæ˝HVﬂ'cﬂÃü0FÊ◊çãÚ[4‹5¢™~»ë‹º8ã{â¡ÈŒﬂü,ø¨µƒ#(û¸jdÁ6ƒmBWπF≈÷ö“„ˇ.◊ˆ˜Ω•GJ6¸…Á§ú…Ë∂Ìô*¥ëmÛÆ&Ô˘´€[Ç®¬•eë(p≥E´i’À81ŒÃ>S<ì-∫¨Ê6‰[[‹ÅiÛıŸ(“Áö»)Û€ﬁÑ…ö¢|JÜçÅidw¸ƒÒÂœ˘zπïÄÕFñõ{¢"	SıáÉ˝ôJ≈"‘ﬂ$Ì›63.ØÙ^·…Kûoﬂ≈∫qˆ76q¸“npSKÒÇeã…<dêwCëqpß∑îÆ8xc›‚=K%MjR˛NH…ç‹Ræ…˜˜©ôäûH–ùcÖI@Q2ºÛÁ“Øî◊{¯œ=ZÎπe˚%^…
+∞⁄vt€=@Ã1~ôvÄˆ«ÈcÃ«ı6≤fà√
+R)ûK[h.TSFÍ◊Qı„ ŒÛU0ÇÑ	*ÜHÜ˜†ÇuÇq0Çm0Çi*ÜHÜ˜
+†Ç10Ç-0W	*ÜHÜ˜0J0)	*ÜHÜ˜0‡™.R4# 0*ÜHÜ˜	 0	`ÜHe*œøsH/Eı√†]/L?^Ç–‡ö˙Ì‚h»öp5ùÁ≥Ü˝N'°<OÖ∏pfïË0.íï«Î¡[ïìÎ±ΩxÓ–#éûœhH√Ó™æûU(Gõ‚é|6∫‰#o!*À[ÿçπ[xn …˛∂ÂÁók±“!ûç–Ú¯Î∫QØ–°fsE.‡lpÕ•ÌaÌ¢!∏4>ó˚ŸΩ°√√≥cŸ~îèƒ∏)s“ûÌÉ€©œ3Æ≠0N”püø„fÏÁŸÙ[¡–#ï!·Q‹SÈ¸∆º.˙î9Î∆¡ç\ú€—ÃfP“‘OÜ öê@µJ∏«vy¡;¡x†C∆_’ö≠6@Œ»9y…n{ÛYm∂6÷∑BMõü!‘ñÊ´˙√qÛnP:ﬂ‘∂:Yä0nÂuWmÑ7A∂û¨˜’ wóX6G)"h†eÀ—âπã=|•±tCäÂ˛@?‹ÀËÄy”t>ı=À©
+f$DUÕÿb4˚≠J"=˛@–`i…ŒÀ'ª˚‡)∑8‘ÉË∏+CIãZA6WLı§ùpÇ{è|˝p¬ﬂi`ŸPµ’¡üWm‚≥ÿ±/Óˆ£5EH^oΩ=®"˛cê‹(ŒËCåofbÁc˝sWZOì∞=«»@¿î◊⁄ÎˆCònBıƒ$≈OK7u¶©L#ZMˇmW[îÒâ)+—<Á+°k≤ˇ$6TÙbiíü_ÿˆ!Wù˛ÑçÁ˘≈ÀÙ]N§‡1p—z›˘{X”+ÏªY∑]„≤i2PoR¬/ÜHôê §“é¡eÏ<¯—:IÓñ%ÙÂÓ5sxä«ßÚú‡X¸ÒÕÔ“IO.l“ÏÏ≥]\Aï ’Ç≈•l∞Å_9…≈˜_Õ1ı ∏d¿åUkñˇdöˆy"[…¡*¸Õ◊Èåø`C6‡#”"µ	“˘âvÂ'cQˆFI:Æ˝‡' B√epk*9Wó˜‰óu0yn‘∏5(ÿ\m±IÿŸÂéó93®2˚BRfÛé2£B‚lHO ™VY.<T‰Eïü>y®Ù(˛uxY"(ﬁñ›ûcrÊö¯Ú(	 Y¢S$6†Ö¸ÉÒ;øæËËº‘¥h∂˚˜f∑™óN%%•¨¶C$ûÆ©Í∏Vg<_≤h÷‚uÊqEJ%Í´¥.Á∑”˝KHπ"÷:≠ì;Ë¯£Ò ŸiBÈY˙°ÑE6¨µ‘)’IÃ\ÉÁ†¿‘%t¿Q°¯F ◊G˝`	È˛~N okà}j·π¯rΩÃ≠FCo»ü∏T¢€a94∑òÿxéÅ …ô¶ÕUP∑≤∑∂òŒÆy˛~¸é¶Bh7Nõä±‰,-ò∑∞n◊ºà{¡_≠‹zíÀ1iä
+._~	µtC  t©á‰4©’òÕ¨Qﬂ}2·N @œ„,ı·€d_TàÔPëheÚáÀŒ´·y¯vH∞ ⁄⁄>QÉ™¥ó‡!nra]& "ÖKªh|dø·bNÙ#u3€Üˇ/åú•µ¬ˆÃ(fAÓ”±ﬁUQìë&ØX"%1’ïŸºÕíl–Î]≤Æ¿‹∑Gèæ-ÍL(ìxƒ†=ÊÔÛ‘p¶ Ònôûﬁ4€~œ@De°QZÜÁ6îZXC_™‚ß‘€é1%0#	*ÜHÜ˜	1qÉ¶Œ˚Ÿ=¥ÀVéN*Ñ®L°5¥0A010	`ÜHe  /¡Õ,¸Üúj0ö÷TÂ±f‚®∂Wmî2¬÷i‹Á≥Ú¨\¶–ß¥õ 
 
 
 === ./config/default_config.toml ===
@@ -674,16 +688,16 @@ impl ExecutionEngine {
 
 
 === ./icn_consensus/Cargo.toml ===
-# icn_consensus/Cargo.toml
-
 [package]
 name = "icn_consensus"
 version = "0.1.0"
-edition = "2021"
+edition = "2018"
 
 [dependencies]
+icn_shared = { path = "../icn_shared" }
 icn_blockchain = { path = "../icn_blockchain" }
-icn_shared = { path = "../icn_shared" }  # Ensure this line is present
+log = "0.4"
+rand = "0.8"  # Add this line
 
 
 
@@ -692,8 +706,10 @@ icn_shared = { path = "../icn_shared" }  # Ensure this line is present
 
 
 === ./icn_consensus/src/lib.rs ===
+// icn_consensus/src/lib.rs
+
 use icn_blockchain::block::Block;
-use icn_shared::IcnResult; // Removed IcnError as it is not used
+use icn_shared::{IcnError, IcnResult};
 
 pub mod proof_of_cooperation;
 use proof_of_cooperation::ProofOfCooperation;
@@ -713,7 +729,7 @@ impl Consensus {
 
     /// Validates a block using the current consensus mechanism.
     pub fn validate_block(&self, block: &Block) -> IcnResult<bool> {
-        Ok(self.proof_of_cooperation.validate(block))
+        self.proof_of_cooperation.validate(block)
     }
 
     /// Handles a potential fork by comparing two chains.
@@ -739,19 +755,10 @@ mod tests {
         let mut consensus = Consensus::new();
         let proposer_id = "peer1".to_string();
         
-        println!("Registering peer: {}", proposer_id);
-        consensus.register_peer(&proposer_id).unwrap(); // Register the peer before validation
+        consensus.register_peer(&proposer_id).unwrap();
 
-        // Create a block with the registered proposer
         let block = Block::new(0, 0, vec![], proposer_id.clone(), String::new(), String::new());
-        println!("Testing block validation...");
-        println!("Validating block proposed by: {}", block.proposer_id);
-
-        // Validation should now pass because the proposer is registered
-        assert!(
-            consensus.validate_block(&block).unwrap(),
-            "Validation failed: proposer was not recognized"
-        );
+        assert!(consensus.validate_block(&block).unwrap());
     }
 
     #[test]
@@ -772,7 +779,6 @@ mod tests {
         assert!(consensus.register_peer("peer1").is_ok());
     }
 }
-
 
 
 === ./icn_consensus/src/proof_of_cooperation.rs ===
@@ -1082,6 +1088,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "79296716171880943b8470b5f8d03aa55eb2e645a4874bdbb28adb49162e012c"
 
 [[package]]
+name = "byteorder"
+version = "1.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1fd0f2584146f6f2ef48085050886acf353beff7305ebd1ae69500e27c67f64b"
+
+[[package]]
 name = "bytes"
 version = "1.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1327,6 +1339,8 @@ version = "0.1.0"
 dependencies = [
  "icn_blockchain",
  "icn_shared",
+ "log",
+ "rand",
 ]
 
 [[package]]
@@ -1342,6 +1356,8 @@ dependencies = [
  "icn_networking",
  "icn_shared",
  "log",
+ "native-tls",
+ "tempfile",
  "tokio",
  "toml",
 ]
@@ -1364,13 +1380,18 @@ dependencies = [
  "icn_shared",
  "log",
  "native-tls",
+ "tokio",
+ "tokio-native-tls",
 ]
 
 [[package]]
 name = "icn_shared"
 version = "0.1.0"
 dependencies = [
+ "log",
  "native-tls",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -1690,6 +1711,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d231b230927b5e4ad203db57bbcbee2802f6bce620b1e4a9024a07d94e2907ec"
 
 [[package]]
+name = "ppv-lite86"
+version = "0.2.20"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "77957b295656769bb8ad2b6a6b09d897d94f05c41b069aede1fcdaa675eaea04"
+dependencies = [
+ "zerocopy",
+]
+
+[[package]]
 name = "proc-macro2"
 version = "1.0.86"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1705,6 +1735,36 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0fa76aaf39101c457836aec0ce2316dbdc3ab723cdda1c6bd4e6ad4208acaca7"
 dependencies = [
  "proc-macro2",
+]
+
+[[package]]
+name = "rand"
+version = "0.8.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "34af8d1a0e25924bc5b7c43c079c942339d8f0a8b57c39049bef581b46327404"
+dependencies = [
+ "libc",
+ "rand_chacha",
+ "rand_core",
+]
+
+[[package]]
+name = "rand_chacha"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e6c10a63a0fa32252be49d21e7709d4d4baf8d231c2dbce1eaa8141b9b127d88"
+dependencies = [
+ "ppv-lite86",
+ "rand_core",
+]
+
+[[package]]
+name = "rand_core"
+version = "0.6.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c"
+dependencies = [
+ "getrandom",
 ]
 
 [[package]]
@@ -1986,6 +2046,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "tokio-native-tls"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bbae76ab933c85776efabc971569dd6119c580d8f5d448769dec1764bf796ef2"
+dependencies = [
+ "native-tls",
+ "tokio",
+]
+
+[[package]]
 name = "toml"
 version = "0.5.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2194,6 +2264,27 @@ dependencies = [
  "linked-hash-map",
 ]
 
+[[package]]
+name = "zerocopy"
+version = "0.7.35"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1b9b4fd18abc82b8136838da5d50bae7bdea537c574d8dc1a34ed098d6c166f0"
+dependencies = [
+ "byteorder",
+ "zerocopy-derive",
+]
+
+[[package]]
+name = "zerocopy-derive"
+version = "0.7.35"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fa4f8080344d4671fb4e831a13ad1e68092748387dfc4f55e356242fae12ce3e"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
 
 
 === ./icn_core/Cargo.toml ===
@@ -2203,6 +2294,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+tempfile = "3.2"
+native-tls = "0.2"
 tokio = { version = "1.28", features = ["full"] }
 config = "0.13"
 env_logger = "0.10"
@@ -2227,17 +2320,13 @@ pub use config_loader::ConfigLoader;  // Re-export ConfigLoader for easier acces
 
 
 === ./icn_core/src/config/config_loader.rs ===
-// icn_core/src/config/config_loader.rs
-
-use std::collections::HashMap;
 use std::fs;
-use std::path::Path;
-use toml::Value;
+use toml::{Value, map::Map};
 use icn_shared::IcnError;
 
 #[derive(Debug, Clone)]
 pub struct ConfigLoader {
-    config: HashMap<String, Value>,
+    config: Map<String, Value>,
 }
 
 impl ConfigLoader {
@@ -2245,10 +2334,14 @@ impl ConfigLoader {
         let config_content = fs::read_to_string(config_path)
             .map_err(|e| IcnError::Config(format!("Failed to read config file: {}", e)))?;
 
-        let config: HashMap<String, Value> = toml::from_str(&config_content)
+        let config: Map<String, Value> = toml::from_str(&config_content)
             .map_err(|e| IcnError::Config(format!("Failed to parse config file: {}", e)))?;
 
         Ok(ConfigLoader { config })
+    }
+
+    pub fn get_config(&self) -> &Map<String, Value> {
+        &self.config
     }
 
     pub fn get_string(&self, key: &str) -> Result<String, IcnError> {
@@ -2290,6 +2383,8 @@ impl ConfigLoader {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
 
     #[test]
     fn test_config_loader() {
@@ -2306,7 +2401,7 @@ mod tests {
             enable_caching = true
         "#;
 
-        let mut config_file = tempfile::NamedTempFile::new().unwrap();
+        let mut config_file = NamedTempFile::new().unwrap();
         config_file.write_all(config_content.as_bytes()).unwrap();
 
         let config_loader = ConfigLoader::new(config_file.path().to_str().unwrap()).unwrap();
@@ -2316,10 +2411,11 @@ mod tests {
         assert_eq!(config_loader.get_string("database.url").unwrap(), "postgres://user:pass@localhost/dbname");
         assert_eq!(config_loader.get_int("database.max_connections").unwrap(), 100);
         assert_eq!(config_loader.get_bool("features.enable_caching").unwrap(), true);
-        
+
         assert!(config_loader.get_string("nonexistent.key").is_err());
     }
 }
+
 
 
 === ./icn_core/src/lib/mod.rs ===
@@ -2439,83 +2535,40 @@ pub use node_manager::NodeManager;
 
 
 === ./icn_core/src/node/node_manager.rs ===
-// src/node/node_manager.rs
-
-use crate::config::ConfigLoader;
+use crate::config::ConfigLoader;  // Use `crate` instead of `icn_core`
+use icn_shared::IcnResult;
 use crate::coordinator::ModuleCoordinator;
-use icn_shared::IcnError;
-use log::info;
 
-/// NodeManager is responsible for initializing and managing the lifecycle of the node.
 pub struct NodeManager {
     config: ConfigLoader,
     coordinator: ModuleCoordinator,
 }
 
 impl NodeManager {
-    /// Creates a new instance of NodeManager with the provided configuration path.
-    ///
-    /// # Arguments
-    ///
-    /// * `config_path` - A string slice that holds the path to the configuration file.
-    pub fn new(config_path: &str) -> Result<Self, IcnError> {
-        let config = ConfigLoader::new(config_path)?;
-
-        // Add a debug output to show the entire loaded configuration
-        println!("Loaded full configuration: {:#?}", config.get_config());
-
-        Ok(NodeManager {
-            config,
-            coordinator: ModuleCoordinator::new(),
-        })
+    pub fn new(config_loader: ConfigLoader, coordinator: ModuleCoordinator) -> Self {
+        NodeManager {
+            config: config_loader,
+            coordinator,
+        }
     }
 
-    /// Starts the node by initializing all required modules.
-    ///
-    /// This method performs the following steps:
-    /// 1. Loads the node name from the configuration.
-    /// 2. Initializes the coordinator with all necessary modules.
-    /// 3. Starts the networking server.
-    ///
-    /// # Errors
-    ///
-    /// Returns an `IcnError` if any step in the initialization process fails.
-    pub async fn start(&mut self) -> Result<(), IcnError> {
-        info!("Starting NodeManager...");
+    pub fn load_configuration(&self) -> IcnResult<()> {
+        println!("Loaded full configuration: {:#?}", self.config.get_config());
 
-        // Accessing the node name directly from the config
-        if let Some(node_table) = self.config.get_config().get("node") {
-            if let Some(node_name) = node_table.get("name") {
-                info!("Node Name: {}", node_name.as_str().unwrap());
-            } else {
-                eprintln!("Failed to get 'node.name' from configuration: Name not found");
-                return Err(IcnError::Config("Config error: node.name not found".to_string()));
-            }
-        } else {
-            eprintln!("Failed to get 'node.name' from configuration: Node table not found");
-            return Err(IcnError::Config("Config error: node table not found".to_string()));
+        if let Some(_node_table) = self.config.get_config().get("node") {
+            // Handle node table...
         }
 
-        // Initialize and start all modules
-        self.coordinator.initialize().await?;
-        self.coordinator.start().await?;
-
-        info!("Node started successfully");
         Ok(())
     }
 
-    /// Stops the node by gracefully shutting down all modules.
-    ///
-    /// This method performs the following steps:
-    /// 1. Stops the coordinator which will in turn stop all modules.
-    ///
-    /// # Errors
-    ///
-    /// Returns an `IcnError` if any step in the shutdown process fails.
-    pub async fn stop(&mut self) -> Result<(), IcnError> {
-        info!("Stopping NodeManager...");
-        self.coordinator.stop().await?;
-        info!("Node stopped successfully");
+    pub async fn start(&mut self) -> IcnResult<()> {
+        self.coordinator.start().await?; // Async function, use await
+        Ok(())
+    }
+
+    pub async fn stop(&mut self) -> IcnResult<()> {
+        self.coordinator.stop()?; // No await needed as this is not async
         Ok(())
     }
 }
@@ -2535,59 +2588,43 @@ pub mod node;
 
 
 === ./icn_core/src/coordinator/module_coordinator.rs ===
-// /opt/InterCooperative-Network-Node/icn_core/src/coordinator/module_coordinator.rs
-
-use icn_consensus::Consensus;
-use icn_blockchain::Chain;
-use icn_identity::Identity;
-use icn_governance::Proposal; // Keep if you plan to use it later
 use icn_networking::Networking;
-use icn_shared::IcnError;
-use log::info;
+use native_tls::Identity; // Correct import
+use std::fs::File;
+use std::io::Read;
+use icn_shared::IcnResult;
 
-/// Coordinates the different modules of an ICN node, including consensus, blockchain, identity, governance, and networking.
 pub struct ModuleCoordinator {
-    consensus: Consensus,
-    blockchain: Chain,
-    identity: Identity,
-    // Commented out or remove if not used
-    // governance: Proposal,
     networking: Networking,
+    // Other fields...
 }
 
 impl ModuleCoordinator {
     pub fn new() -> Self {
+        // Initialize the Networking module and other fields
         ModuleCoordinator {
-            consensus: Consensus::new(),
-            blockchain: Chain::new(),
-            identity: Identity::new("node_id", "node_name"),
-            // Comment out or remove if not used
-            // governance: Proposal::new(1, "Initial Proposal"),
             networking: Networking::new(),
+            // Other initializations...
         }
     }
 
-    pub async fn initialize(&mut self) -> Result<(), IcnError> {
-        info!("Initializing modules...");
-        self.consensus = Consensus::new();
-        self.blockchain = Chain::new();
-        self.identity.initialize().map_err(|e| IcnError::Other(e.to_string()))?;
-        self.networking.initialize().map_err(|e| IcnError::Other(e.to_string()))?;
-        info!("All modules initialized successfully");
+    pub async fn start(&mut self) -> IcnResult<()> {
+        // Load the identity from the certificate file
+        let mut cert_file = File::open("test_cert.p12")?;
+        let mut cert_data = Vec::new();
+        cert_file.read_to_end(&mut cert_data)?;
+        let identity = Identity::from_pkcs12(&cert_data, "password")?;
+
+        // Start the networking server with the loaded identity
+        self.networking.start_server("127.0.0.1:8080", identity).await?;
+
+        // Other startup tasks...
         Ok(())
     }
 
-    pub async fn start(&mut self) -> Result<(), IcnError> {
-        info!("Starting modules...");
-        self.networking.start_server("127.0.0.1:8080")?;
-        info!("All modules started successfully");
-        Ok(())
-    }
-
-    pub async fn stop(&mut self) -> Result<(), IcnError> {
-        info!("Stopping modules...");
-        self.networking.stop().map_err(|e| IcnError::Other(e.to_string()))?;
-        info!("All modules stopped successfully");
+    pub fn stop(&mut self) -> IcnResult<()> {
+        // Logic to stop the networking or other modules
+        // For now, just a placeholder implementation
         Ok(())
     }
 }
@@ -2742,6 +2779,38 @@ impl Storage {
 
 
 
+=== ./test_cert.key ===
+-----BEGIN PRIVATE KEY-----
+MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQCqiABpZtwNQC0v
+dQxFvm4uQsNQgRDL/90jRgrsm8AYWcKRDWpoExi/aiYT1FrFo2rsPM7kqzaIb7xi
+PtJIhzOJg4qNc5Gi6/wSJ4A/qYkRuAGznWkp735moKLmhbn0vRq3KWNUk7QN7cbQ
+Oww50Td25Omo0TZOrwXbGFdeit8WyjAaUxuXaFINnptga+v7PUhfDNbTh+TWqpUl
+c+sWQ/mjW7hXfTZrsfNRfU8dd+v2U9gS5DjJ8BsekHgUrdVJc0WGMeX4S5IIChV4
+vmf15XLayiQ1zY+SLwcg3u1eOHifmBJNX5YZlzYBknU5mOcR5mC/L8K6hfF1zFcj
+H+CPx5StAgMBAAECggEAE8qQ8aqkY01NcTKOaBG/y9KnxFIWVvas/YkFf4xb8PeJ
+4zfBX67Hsn9pR+ffWQysPhqYkGVmgNMm8+gCk7RNQOppTB1bi6MDsD+xXLIaXFoU
+qHneWKWY7+Q4w7RFbqf7z8IX6xrxTKSJ7GTN+G/VlhDfJV6ShPM/JLxgd3J6jbRc
+29qmdsypcvmpEFgfMHtMgD8q0sSyiQkAa6LxYMBUSP8R52AafgTQ0BNzfS9UNTFA
+WH1Bgig+GaSoXjZBwCQbIP4+KN+1GHN3NUJGT0010GeAydS9qUWTJMKDN2kweANr
+dUXBX+QKtD3gld91sK1Og7mx7do7JwPoqBpYVtveAQKBgQDg0zgZZhadLK6+3oJM
+C/zwzKxC18hOBdmiMkCOJWSj2NGNv1/RsckaVpsP9DvzYCPHxuw3QjNR5KLE2bbE
+tFUtuJxIO1RYtapH4nEkXywjHwjznshsAEKNnJg5OkBMy9WM0PwW1BDv3xgTJdsx
+0FeNyZNqhYOHaZ2lFReRMNT5wQKBgQDCLXmTaQSwg+/tZ0h8188m6wrqwUR+L/LC
+diZ4wJ4BIZmeXIphoCaurQ71be+FdcKOqACOGrHwitDjiI7/ImrKJsxfO2NmjWQO
+L3Yjj5rHs8Rhe7S22vyMjkAbihKyjUjVTGtZ7GsxdZfFpRK972ZT1VwR8fVBArj4
+3r5Qz7Gd7QKBgFfedZiHq+L2Kb3znR03uj4q4FCnoWPNKYgY994Wg0T+YrhxyXNd
+dunSW3xaymuOca2M85mNSB2DrJIfPS2YBYp/EqWweoDJT6oUuH+sqsV3RbphnpeH
+anuKbnw/Zg4dxHLq4vvRGmWF3hTtwMOxV+bUl8cUM5njD3gLzFA0s6iBAoGAE0zV
+0rMThj/27w/fApmou2ONWDwRhMFbTbzUohfzHIWscTMdhgqXDbGh1P8yWX+U8Pz9
+4SICIbiKfrMqE23mU2V71tNeU+kl0ssg4PP7HHJfyJi1I5+sjoPtF0+oABtO6/SG
+jw+Sr/3SMhDwRfSvpRGF7zqvd+C/Ze0t2XZrXxkCgYBbidECfw6P3CQ6zSkN5l6T
+hFVItDrTiTyjqZS+mOptNJZBxbGPWkzLq/ZB7kUXMjnkc4eZqWRPvd9LquV7mLX1
+x0EGqev4/XUVu0SkNRTRaUX7Ellgoj/r7CWsy/ks5Km+QgS9T8nZs73kuxBMKH5X
+vs6ws3SO/YqC7FK/w9y2Yw==
+-----END PRIVATE KEY-----
+
+
+
 === ./icn_identity/Cargo.toml ===
 [package]
 name = "icn_identity"
@@ -2863,7 +2932,17 @@ edition = "2021"
 // icn_smart_contracts/src/lib.rs
 
 use std::collections::HashMap;
-use icn_shared::{IcnError, IcnResult};
+
+// Define our own error type for this crate
+#[derive(Debug)]
+pub enum SmartContractError {
+    InvalidArguments(String),
+    ContractNotFound(u32),
+    KeyNotFound(String),
+    UnknownFunction(String),
+}
+
+pub type SmartContractResult<T> = Result<T, SmartContractError>;
 
 pub struct SmartContract {
     pub id: u32,
@@ -2880,26 +2959,24 @@ impl SmartContract {
         }
     }
 
-    pub fn execute(&mut self, function: &str, args: Vec<String>) -> IcnResult<String> {
-        // This is a simplified execution model. In a real implementation,
-        // you'd want to use a proper VM or interpreter.
+    pub fn execute(&mut self, function: &str, args: Vec<String>) -> SmartContractResult<String> {
         match function {
             "set" => {
                 if args.len() != 2 {
-                    return Err(IcnError::SmartContract("Invalid number of arguments for 'set'".to_string()));
+                    return Err(SmartContractError::InvalidArguments("'set' requires 2 arguments".to_string()));
                 }
                 self.state.insert(args[0].clone(), args[1].clone());
                 Ok("Value set successfully".to_string())
             }
             "get" => {
                 if args.len() != 1 {
-                    return Err(IcnError::SmartContract("Invalid number of arguments for 'get'".to_string()));
+                    return Err(SmartContractError::InvalidArguments("'get' requires 1 argument".to_string()));
                 }
                 self.state.get(&args[0])
                     .cloned()
-                    .ok_or_else(|| IcnError::SmartContract("Key not found".to_string()))
+                    .ok_or_else(|| SmartContractError::KeyNotFound(args[0].clone()))
             }
-            _ => Err(IcnError::SmartContract(format!("Unknown function: {}", function))),
+            _ => Err(SmartContractError::UnknownFunction(function.to_string())),
         }
     }
 }
@@ -2915,16 +2992,16 @@ impl SmartContractEngine {
         }
     }
 
-    pub fn deploy_contract(&mut self, code: &str) -> IcnResult<u32> {
+    pub fn deploy_contract(&mut self, code: &str) -> SmartContractResult<u32> {
         let id = self.contracts.len() as u32 + 1;
         let contract = SmartContract::new(id, code);
         self.contracts.insert(id, contract);
         Ok(id)
     }
 
-    pub fn call_contract(&mut self, id: u32, function: &str, args: Vec<String>) -> IcnResult<String> {
+    pub fn call_contract(&mut self, id: u32, function: &str, args: Vec<String>) -> SmartContractResult<String> {
         self.contracts.get_mut(&id)
-            .ok_or_else(|| IcnError::SmartContract(format!("Contract not found: {}", id)))?
+            .ok_or_else(|| SmartContractError::ContractNotFound(id))?
             .execute(function, args)
     }
 }

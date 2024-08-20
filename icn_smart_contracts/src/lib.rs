@@ -1,7 +1,17 @@
 // icn_smart_contracts/src/lib.rs
 
 use std::collections::HashMap;
-use icn_shared::{IcnError, IcnResult};
+
+// Define our own error type for this crate
+#[derive(Debug)]
+pub enum SmartContractError {
+    InvalidArguments(String),
+    ContractNotFound(u32),
+    KeyNotFound(String),
+    UnknownFunction(String),
+}
+
+pub type SmartContractResult<T> = Result<T, SmartContractError>;
 
 pub struct SmartContract {
     pub id: u32,
@@ -18,26 +28,24 @@ impl SmartContract {
         }
     }
 
-    pub fn execute(&mut self, function: &str, args: Vec<String>) -> IcnResult<String> {
-        // This is a simplified execution model. In a real implementation,
-        // you'd want to use a proper VM or interpreter.
+    pub fn execute(&mut self, function: &str, args: Vec<String>) -> SmartContractResult<String> {
         match function {
             "set" => {
                 if args.len() != 2 {
-                    return Err(IcnError::SmartContract("Invalid number of arguments for 'set'".to_string()));
+                    return Err(SmartContractError::InvalidArguments("'set' requires 2 arguments".to_string()));
                 }
                 self.state.insert(args[0].clone(), args[1].clone());
                 Ok("Value set successfully".to_string())
             }
             "get" => {
                 if args.len() != 1 {
-                    return Err(IcnError::SmartContract("Invalid number of arguments for 'get'".to_string()));
+                    return Err(SmartContractError::InvalidArguments("'get' requires 1 argument".to_string()));
                 }
                 self.state.get(&args[0])
                     .cloned()
-                    .ok_or_else(|| IcnError::SmartContract("Key not found".to_string()))
+                    .ok_or_else(|| SmartContractError::KeyNotFound(args[0].clone()))
             }
-            _ => Err(IcnError::SmartContract(format!("Unknown function: {}", function))),
+            _ => Err(SmartContractError::UnknownFunction(function.to_string())),
         }
     }
 }
@@ -53,16 +61,16 @@ impl SmartContractEngine {
         }
     }
 
-    pub fn deploy_contract(&mut self, code: &str) -> IcnResult<u32> {
+    pub fn deploy_contract(&mut self, code: &str) -> SmartContractResult<u32> {
         let id = self.contracts.len() as u32 + 1;
         let contract = SmartContract::new(id, code);
         self.contracts.insert(id, contract);
         Ok(id)
     }
 
-    pub fn call_contract(&mut self, id: u32, function: &str, args: Vec<String>) -> IcnResult<String> {
+    pub fn call_contract(&mut self, id: u32, function: &str, args: Vec<String>) -> SmartContractResult<String> {
         self.contracts.get_mut(&id)
-            .ok_or_else(|| IcnError::SmartContract(format!("Contract not found: {}", id)))?
+            .ok_or_else(|| SmartContractError::ContractNotFound(id))?
             .execute(function, args)
     }
 }

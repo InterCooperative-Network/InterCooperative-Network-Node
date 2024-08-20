@@ -1,5 +1,7 @@
+// icn_consensus/src/lib.rs
+
 use icn_blockchain::block::Block;
-use icn_shared::IcnResult; // Removed IcnError as it is not used
+use icn_shared::{IcnError, IcnResult};
 
 pub mod proof_of_cooperation;
 use proof_of_cooperation::ProofOfCooperation;
@@ -19,7 +21,7 @@ impl Consensus {
 
     /// Validates a block using the current consensus mechanism.
     pub fn validate_block(&self, block: &Block) -> IcnResult<bool> {
-        Ok(self.proof_of_cooperation.validate(block))
+        self.proof_of_cooperation.validate(block)
     }
 
     /// Handles a potential fork by comparing two chains.
@@ -45,19 +47,10 @@ mod tests {
         let mut consensus = Consensus::new();
         let proposer_id = "peer1".to_string();
         
-        println!("Registering peer: {}", proposer_id);
-        consensus.register_peer(&proposer_id).unwrap(); // Register the peer before validation
+        consensus.register_peer(&proposer_id).unwrap();
 
-        // Create a block with the registered proposer
         let block = Block::new(0, 0, vec![], proposer_id.clone(), String::new(), String::new());
-        println!("Testing block validation...");
-        println!("Validating block proposed by: {}", block.proposer_id);
-
-        // Validation should now pass because the proposer is registered
-        assert!(
-            consensus.validate_block(&block).unwrap(),
-            "Validation failed: proposer was not recognized"
-        );
+        assert!(consensus.validate_block(&block).unwrap());
     }
 
     #[test]

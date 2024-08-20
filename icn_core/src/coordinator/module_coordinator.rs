@@ -1,56 +1,40 @@
-// /opt/InterCooperative-Network-Node/icn_core/src/coordinator/module_coordinator.rs
-
-use icn_consensus::Consensus;
-use icn_blockchain::Chain;
-use icn_identity::Identity;
-use icn_governance::Proposal; // Keep if you plan to use it later
 use icn_networking::Networking;
-use icn_shared::IcnError;
-use log::info;
+use native_tls::Identity; // Correct import
+use std::fs::File;
+use std::io::Read;
+use icn_shared::IcnResult;
 
-/// Coordinates the different modules of an ICN node, including consensus, blockchain, identity, governance, and networking.
 pub struct ModuleCoordinator {
-    consensus: Consensus,
-    blockchain: Chain,
-    identity: Identity,
-    // Commented out or remove if not used
-    // governance: Proposal,
     networking: Networking,
+    // Other fields...
 }
 
 impl ModuleCoordinator {
     pub fn new() -> Self {
+        // Initialize the Networking module and other fields
         ModuleCoordinator {
-            consensus: Consensus::new(),
-            blockchain: Chain::new(),
-            identity: Identity::new("node_id", "node_name"),
-            // Comment out or remove if not used
-            // governance: Proposal::new(1, "Initial Proposal"),
             networking: Networking::new(),
+            // Other initializations...
         }
     }
 
-    pub async fn initialize(&mut self) -> Result<(), IcnError> {
-        info!("Initializing modules...");
-        self.consensus = Consensus::new();
-        self.blockchain = Chain::new();
-        self.identity.initialize().map_err(|e| IcnError::Other(e.to_string()))?;
-        self.networking.initialize().map_err(|e| IcnError::Other(e.to_string()))?;
-        info!("All modules initialized successfully");
+    pub async fn start(&mut self) -> IcnResult<()> {
+        // Load the identity from the certificate file
+        let mut cert_file = File::open("test_cert.p12")?;
+        let mut cert_data = Vec::new();
+        cert_file.read_to_end(&mut cert_data)?;
+        let identity = Identity::from_pkcs12(&cert_data, "password")?;
+
+        // Start the networking server with the loaded identity
+        self.networking.start_server("127.0.0.1:8080", identity).await?;
+
+        // Other startup tasks...
         Ok(())
     }
 
-    pub async fn start(&mut self) -> Result<(), IcnError> {
-        info!("Starting modules...");
-        self.networking.start_server("127.0.0.1:8080")?;
-        info!("All modules started successfully");
-        Ok(())
-    }
-
-    pub async fn stop(&mut self) -> Result<(), IcnError> {
-        info!("Stopping modules...");
-        self.networking.stop().map_err(|e| IcnError::Other(e.to_string()))?;
-        info!("All modules stopped successfully");
+    pub fn stop(&mut self) -> IcnResult<()> {
+        // Logic to stop the networking or other modules
+        // For now, just a placeholder implementation
         Ok(())
     }
 }

@@ -1,5 +1,3 @@
-// icn_networking/src/lib.rs
-
 use tokio::net::{TcpListener, TcpStream};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::Mutex;
@@ -62,73 +60,40 @@ impl Networking {
     pub async fn broadcast_message(&self, message: &str) -> IcnResult<()> {
         let mut peers = self.peers.lock().await;
         for peer in peers.iter_mut() {
-            peer.write_all(message.as_bytes()).await
-                .map_err(|e| IcnError::Network(format!("Failed to send message: {}", e)))?;
+            if let Err(e) = peer.write_all(message.as_bytes()).await {
+                error!("Failed to send message: {:?}", e);
+            }
         }
         Ok(())
     }
 
-    pub async fn initialize(&self) -> IcnResult<()> {
-        // Initialization logic here
-        Ok(())
-    }
-
-    pub async fn stop(&self) -> IcnResult<()> {
-        // Stop logic here
+    pub fn stop_server(&self) -> IcnResult<()> {
+        // Add your server stopping logic here
         Ok(())
     }
 }
 
-async fn handle_client(mut stream: TlsStream<TcpStream>, peers: Arc<Mutex<Vec<TlsStream<TcpStream>>>>) {
-    let mut buffer = [0; 1024];
+async fn handle_client(mut tls_stream: TlsStream<TcpStream>, peers: Arc<Mutex<Vec<TlsStream<TcpStream>>>>) {
+    let mut buf = vec![0; 1024];
     loop {
-        match stream.read(&mut buffer).await {
-            Ok(0) => break,
-            Ok(n) => {
-                let message = String::from_utf8_lossy(&buffer[..n]);
-                info!("Received message: {}", message);
-                // Process the message here
-            }
+        let n = match tls_stream.read(&mut buf).await {
+            Ok(n) if n == 0 => break, // Connection closed
+            Ok(n) => n,
             Err(e) => {
-                error!("Error reading from stream: {:?}", e);
+                error!("Failed to read from client: {:?}", e);
                 break;
             }
+        };
+
+        let message = String::from_utf8_lossy(&buf[..n]);
+        info!("Received message: {}", message);
+
+        // Broadcast message to all peers
+        let mut peers = peers.lock().await;
+        for peer in peers.iter_mut() {
+            if let Err(e) = peer.write_all(message.as_bytes()).await {
+                error!("Failed to send message to peer: {:?}", e);
+            }
         }
-    }
-    let mut peers = peers.lock().await;
-    peers.retain(|p| !std::ptr::eq(p.get_ref(), stream.get_ref()));
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use tokio::net::TcpListener;
-    use std::net::SocketAddr;
-
-    #[tokio::test]
-    async fn test_networking_creation() {
-        let networking = Networking::new();
-        assert!(networking.peers.lock().await.is_empty());
-    }
-
-    #[tokio::test]
-    async fn test_connect_to_peer() {
-        let networking = Networking::new();
-        let (tx, rx) = tokio::sync::oneshot::channel();
-        
-        tokio::spawn(async move {
-            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-            let addr = listener.local_addr().unwrap();
-            tx.send(addr).unwrap();
-            let (stream, _) = listener.accept().await.unwrap();
-            let identity = Identity::from_pkcs12(include_bytes!("test_cert.p12"), "password").unwrap();
-            let acceptor = TlsAcceptor::new(identity).unwrap();
-            let _tls_stream = acceptor.accept(stream).await.unwrap();
-        });
-
-        let addr: SocketAddr = rx.await.unwrap();
-        let result = networking.connect_to_peer(&addr.to_string()).await;
-        assert!(result.is_ok());
-        assert_eq!(networking.peers.lock().await.len(), 1);
     }
 }

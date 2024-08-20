@@ -1,10 +1,10 @@
-# icn_consensus/Cargo.toml
-
 [package]
 name = "icn_consensus"
 version = "0.1.0"
-edition = "2021"
+edition = "2018"
 
 [dependencies]
+icn_shared = { path = "../icn_shared" }
 icn_blockchain = { path = "../icn_blockchain" }
-icn_shared = { path = "../icn_shared" }  # Ensure this line is present
+log = "0.4"
+rand = "0.8"  # Add this line

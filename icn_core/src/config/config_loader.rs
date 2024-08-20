@@ -1,14 +1,10 @@
-// icn_core/src/config/config_loader.rs
-
-use std::collections::HashMap;
 use std::fs;
-use std::path::Path;
-use toml::Value;
+use toml::{Value, map::Map};
 use icn_shared::IcnError;
 
 #[derive(Debug, Clone)]
 pub struct ConfigLoader {
-    config: HashMap<String, Value>,
+    config: Map<String, Value>,
 }
 
 impl ConfigLoader {
@@ -16,10 +12,14 @@ impl ConfigLoader {
         let config_content = fs::read_to_string(config_path)
             .map_err(|e| IcnError::Config(format!("Failed to read config file: {}", e)))?;
 
-        let config: HashMap<String, Value> = toml::from_str(&config_content)
+        let config: Map<String, Value> = toml::from_str(&config_content)
             .map_err(|e| IcnError::Config(format!("Failed to parse config file: {}", e)))?;
 
         Ok(ConfigLoader { config })
+    }
+
+    pub fn get_config(&self) -> &Map<String, Value> {
+        &self.config
     }
 
     pub fn get_string(&self, key: &str) -> Result<String, IcnError> {
@@ -61,6 +61,8 @@ impl ConfigLoader {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
 
     #[test]
     fn test_config_loader() {
@@ -77,7 +79,7 @@ mod tests {
             enable_caching = true
         "#;
 
-        let mut config_file = tempfile::NamedTempFile::new().unwrap();
+        let mut config_file = NamedTempFile::new().unwrap();
         config_file.write_all(config_content.as_bytes()).unwrap();
 
         let config_loader = ConfigLoader::new(config_file.path().to_str().unwrap()).unwrap();
@@ -87,7 +89,7 @@ mod tests {
         assert_eq!(config_loader.get_string("database.url").unwrap(), "postgres://user:pass@localhost/dbname");
         assert_eq!(config_loader.get_int("database.max_connections").unwrap(), 100);
         assert_eq!(config_loader.get_bool("features.enable_caching").unwrap(), true);
-        
+
         assert!(config_loader.get_string("nonexistent.key").is_err());
     }
 }
