@@ -54,7 +54,7 @@ icn_shared = { path = "../icn_shared" }
 === ./icn_networking/src/lib.rs ===
 // icn_networking/src/lib.rs
 
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::net::{TcpListener, TcpStream};
 use std::io::{Read, Write};
 use std::thread;
@@ -64,15 +64,15 @@ use icn_shared::{IcnError, IcnResult};
 
 /// Represents the networking component of the ICN node
 pub struct Networking {
-    /// A list of connected peers, protected by a mutex for thread-safety
-    peers: Arc<std::sync::Mutex<Vec<native_tls::TlsStream<TcpStream>>>>,
+    /// A list of connected peers, protected by a RwLock for thread-safety
+    peers: Arc<RwLock<Vec<native_tls::TlsStream<TcpStream>>>>,
 }
 
 impl Networking {
     /// Creates a new Networking instance
     pub fn new() -> Self {
         Networking {
-            peers: Arc::new(std::sync::Mutex::new(vec![])),
+            peers: Arc::new(RwLock::new(vec![])),
         }
     }
 
@@ -130,7 +130,7 @@ impl Networking {
             .map_err(|e| IcnError::Network(format!("Failed to establish TLS connection: {}", e)))?;
 
         // Add the connected peer to the list
-        self.peers.lock().unwrap().push(tls_stream);
+        self.peers.write().unwrap().push(tls_stream);
         info!("Connected to peer at {}", address);
         Ok(())
     }
@@ -141,7 +141,7 @@ impl Networking {
     ///
     /// * `message` - The message to broadcast
     pub fn broadcast_message(&self, message: &str) -> IcnResult<()> {
-        let mut peers = self.peers.lock().unwrap();
+        let mut peers = self.peers.write().unwrap();
         for peer in peers.iter_mut() {
             peer.write_all(message.as_bytes())
                 .map_err(|e| IcnError::Network(format!("Failed to send message: {}", e)))?;
@@ -168,7 +168,7 @@ impl Networking {
 ///
 /// * `stream` - The TLS stream representing the connection to the client
 /// * `peers` - A shared list of connected peers
-fn handle_client(mut stream: native_tls::TlsStream<TcpStream>, peers: Arc<std::sync::Mutex<Vec<native_tls::TlsStream<TcpStream>>>>) {
+fn handle_client(mut stream: native_tls::TlsStream<TcpStream>, peers: Arc<RwLock<Vec<native_tls::TlsStream<TcpStream>>>>) {
     let mut buffer = [0; 1024];
     loop {
         match stream.read(&mut buffer) {
@@ -194,8 +194,7 @@ fn handle_client(mut stream: native_tls::TlsStream<TcpStream>, peers: Arc<std::s
     }
 
     // Remove the disconnected peer from the list
-    let mut peers = peers.lock().unwrap();
-    // Compare TcpStream references directly
+    let mut peers = peers.write().unwrap();
     peers.retain(|p| !std::ptr::eq(p.get_ref(), stream.get_ref()));
 }
 
@@ -467,7 +466,7 @@ pub struct Chain {
 
 impl Chain {
     pub fn new() -> Self {
-        let genesis_block = create_genesis_block();
+        let genesis_block = Self::create_genesis_block();
         let mut blocks = VecDeque::new();
         blocks.push_back(genesis_block);
         Chain { blocks }
@@ -484,11 +483,12 @@ impl Chain {
     pub fn len(&self) -> usize {
         self.blocks.len()
     }
-}
 
-fn create_genesis_block() -> Block {
-    let transactions = vec![];
-    Block::new(0, 0, transactions, String::from("0"), String::from("genesis_hash"), String::from("genesis_proposer"))
+    /// Creates the genesis block for the blockchain.
+    fn create_genesis_block() -> Block {
+        let transactions = vec![];
+        Block::new(0, 0, transactions, String::from("0"), String::from("genesis_hash"), String::from("genesis_proposer"))
+    }
 }
 
 #[cfg(test)]
@@ -510,6 +510,7 @@ mod tests {
         assert_eq!(chain.len(), 2);
     }
 }
+
 
 
 === ./.github/workflows/ci.yml ===
@@ -736,129 +737,150 @@ rand = "0.8"  # Add this line
 
 
 === ./icn_consensus/src/lib.rs ===
-// icn_consensus/src/lib.rs
-use icn_blockchain::block::Block;
+// icn_networking/src/lib.rs
+
+use std::sync::{Arc, RwLock};
+use std::net::{TcpListener, TcpStream};
+use std::io::{Read, Write};
+use std::thread;
+use log::{info, error};
+use native_tls::{TlsAcceptor, TlsConnector, Identity};
 use icn_shared::{IcnError, IcnResult};
 
-pub mod proof_of_cooperation;
-use proof_of_cooperation::ProofOfCooperation;
-
-/// The `Consensus` struct manages the consensus mechanism for the blockchain.
-pub struct Consensus {
-    proof_of_cooperation: ProofOfCooperation,
+/// Represents the networking component of the ICN node
+pub struct Networking {
+    /// A list of connected peers, protected by a RwLock for thread-safety
+    peers: Arc<RwLock<Vec<native_tls::TlsStream<TcpStream>>>>,
 }
 
-impl Consensus {
-    /// Creates a new `Consensus` instance with a new `ProofOfCooperation`.
+impl Networking {
+    /// Creates a new Networking instance
     pub fn new() -> Self {
-        Consensus {
-            proof_of_cooperation: ProofOfCooperation::new(),
+        Networking {
+            peers: Arc::new(RwLock::new(vec![])),
         }
     }
 
-    /// Validates a `Block` using the `ProofOfCooperation` algorithm.
+    /// Starts a TLS server to accept incoming connections from peers
     ///
     /// # Arguments
     ///
-    /// * `block` - The block to be validated.
-    ///
-    /// # Returns
-    ///
-    /// * `IcnResult<bool>` - `true` if the block is valid, otherwise an `IcnError`.
-    pub fn validate_block(&mut self, block: &Block) -> IcnResult<bool> {
-        let proposer_id = &block.proposer_id;
-        println!("Validating block with proposer_id: {}", proposer_id);
+    /// * `address` - The address to bind the server to (e.g., "127.0.0.1:8080")
+    /// * `identity` - The TLS identity for the server, containing the certificate and private key
+    pub fn start_server(&self, address: &str, identity: Identity) -> IcnResult<()> {
+        let acceptor: Arc<TlsAcceptor> = Arc::new(
+            TlsAcceptor::new(identity)
+                .map_err(|e| IcnError::Network(format!("Failed to create TLS acceptor: {}", e)))?,
+        );
 
-        if self.proof_of_cooperation.is_registered(proposer_id) {
-            println!("Proposer is registered, proceeding with validation.");
-            self.proof_of_cooperation.validate(block)
-        } else {
-            println!("Unknown proposer: {}", proposer_id);
-            Err(IcnError::Consensus(format!("Unknown proposer: {}", proposer_id)))
+        let listener = TcpListener::bind(address)
+            .map_err(|e| IcnError::Network(format!("Failed to bind to address: {}", e)))?;
+        info!("Server started on {}", address);
+
+        // Accept incoming connections in a loop
+        for stream in listener.incoming() {
+            let acceptor = Arc::clone(&acceptor);
+            let peers = Arc::clone(&self.peers);
+
+            thread::spawn(move || {
+                match stream {
+                    Ok(stream) => {
+                        // Accept the TLS connection and handle the client in a separate thread
+                        match acceptor.accept(stream) {
+                            Ok(tls_stream) => handle_client(tls_stream, peers),
+                            Err(e) => error!("Failed to accept TLS connection: {:?}", e),
+                        }
+                    }
+                    Err(e) => error!("Failed to accept TCP connection: {:?}", e),
+                }
+            });
         }
+
+        Ok(())
     }
 
-    /// Handles a potential fork in the blockchain by selecting the most valid chain
-    /// according to the `ProofOfCooperation` algorithm.
+    /// Establishes a TLS connection to a peer at the specified address
     ///
     /// # Arguments
     ///
-    /// * `chain_a` - The first chain to be compared.
-    /// * `chain_b` - The second chain to be compared.
-    ///
-    /// # Returns
-    ///
-    /// * `IcnResult<Vec<Block>>` - The chosen chain as a vector of blocks, or an `IcnError`.
-    pub fn handle_fork(&self, chain_a: &[Block], chain_b: &[Block]) -> IcnResult<Vec<Block>> {
-        let chosen_chain = self.proof_of_cooperation.handle_fork(chain_a, chain_b);
-        Ok(chosen_chain.to_vec())
+    /// * `address` - The address of the peer to connect to (e.g., "127.0.0.1:8080")
+    pub fn connect_to_peer(&self, address: &str) -> IcnResult<()> {
+        let connector = TlsConnector::new()
+            .map_err(|e| IcnError::Network(format!("Failed to create TLS connector: {}", e)))?;
+
+        let stream = TcpStream::connect(address)
+            .map_err(|e| IcnError::Network(format!("Failed to connect to peer: {}", e)))?;
+
+        let tls_stream = connector.connect(address, stream)
+            .map_err(|e| IcnError::Network(format!("Failed to establish TLS connection: {}", e)))?;
+
+        // Add the connected peer to the list
+        self.peers.write().unwrap().push(tls_stream);
+        info!("Connected to peer at {}", address);
+        Ok(())
     }
 
-    /// Registers a new peer in the `ProofOfCooperation` consensus mechanism.
+    /// Broadcasts a message to all connected peers
     ///
     /// # Arguments
     ///
-    /// * `peer_id` - The ID of the peer to be registered.
-    ///
-    /// # Returns
-    ///
-    /// * `IcnResult<()>` - An empty result indicating success or failure.
-    pub fn register_peer(&mut self, peer_id: &str) -> IcnResult<()> {
-        println!("Registering peer with ID: {}", peer_id);
-        self.proof_of_cooperation.register_peer(peer_id);
+    /// * `message` - The message to broadcast
+    pub fn broadcast_message(&self, message: &str) -> IcnResult<()> {
+        let mut peers = self.peers.write().unwrap();
+        for peer in peers.iter_mut() {
+            peer.write_all(message.as_bytes())
+                .map_err(|e| IcnError::Network(format!("Failed to send message: {}", e)))?;
+        }
+        Ok(())
+    }
+
+    /// Initializes the networking component
+    pub fn initialize(&self) -> IcnResult<()> {
+        // Initialization logic here (e.g., loading peer addresses from configuration)
+        Ok(())
+    }
+
+    /// Stops the networking component, closing all connections
+    pub fn stop(&self) -> IcnResult<()> {
+        // Stop logic here (e.g., gracefully closing connections to peers)
         Ok(())
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use icn_blockchain::block::Block;
+/// Handles incoming client connections, processes received messages, and manages peer disconnections
+///
+/// # Arguments
+///
+/// * `stream` - The TLS stream representing the connection to the client
+/// * `peers` - A shared list of connected peers
+fn handle_client(mut stream: native_tls::TlsStream<TcpStream>, peers: Arc<RwLock<Vec<native_tls::TlsStream<TcpStream>>>>) {
+    let mut buffer = [0; 1024];
+    loop {
+        match stream.read(&mut buffer) {
+            Ok(0) => {
+                // Connection closed gracefully
+                break;
+            }
+            Ok(n) => {
+                let message = String::from_utf8_lossy(&buffer[..n]);
+                info!("Received message: {}", message);
 
-    #[test]
-    fn test_consensus_creation() {
-        let mut consensus = Consensus::new();
-        let proposer_id = "peer1".to_string();
-        
-        println!("Registering proposer_id: {}", proposer_id);
-        consensus.register_peer(&proposer_id).unwrap();  // Ensure proposer is registered
-    
-        // Create a block with the correct proposer_id
-        let block = Block::new(0, 0, vec![], proposer_id.clone(), String::new(), proposer_id.clone());
-        println!("Created block with proposer_id: {}", block.proposer_id);
-    
-        // Validate the block
-        let validation_result = consensus.validate_block(&block);
-    
-        // Clone the result to avoid borrowing issues
-        let is_valid = validation_result.as_ref().is_ok();
-    
-        // Debugging output to understand why the validation might fail
-        if let Err(e) = validation_result {
-            println!("Validation failed: {:?}", e);
+                // TODO: Process the message here
+                // This could involve:
+                // - Parsing the message based on a defined protocol
+                // - Routing the message to the appropriate module (e.g., consensus, blockchain)
+                // - Taking corresponding actions based on the message content
+            }
+            Err(e) => {
+                error!("Error reading from stream: {:?}", e);
+                break;
+            }
         }
-    
-        assert!(is_valid);
-    }
-    
-
-    #[test]
-    fn test_handle_fork() {
-        let consensus = Consensus::new();
-        let chain_a = vec![Block::new(0, 0, vec![], String::new(), String::new(), String::new())];
-        let chain_b = vec![
-            Block::new(0, 0, vec![], String::new(), String::new(), String::new()),
-            Block::new(1, 0, vec![], String::new(), String::new(), String::new()),
-        ];
-        let result = consensus.handle_fork(&chain_a, &chain_b).unwrap();
-        assert_eq!(result.len(), 2);
     }
 
-    #[test]
-    fn test_register_peer() {
-        let mut consensus = Consensus::new();
-        assert!(consensus.register_peer("peer1").is_ok());
-    }
+    // Remove the disconnected peer from the list
+    let mut peers = peers.write().unwrap();
+    peers.retain(|p| !std::ptr::eq(p.get_ref(), stream.get_ref()));
 }
 
 
@@ -2721,37 +2743,46 @@ pub type IcnResult<T> = Result<T, IcnError>;
 === ./icn_core/src/main.rs ===
 // icn_core/src/main.rs
 
-use icn_core::config::ConfigLoader; // Import from the config module
+use icn_core::config::ConfigLoader;
 use icn_core::node::NodeManager;
 use icn_core::coordinator::ModuleCoordinator;
 use std::env;
 use icn_shared::IcnResult;
+use log::error;
 
-#[tokio::main] // Using tokio's main to enable async runtime
-async fn main() -> IcnResult<()> {
-    // Obtain config_path from command-line arguments or environment variables
+#[tokio::main]
+async fn main() {
+    // Default configuration file name
+    let default_config_file = "config.toml";
+
+    // Obtain config_path from command-line arguments or use the default
     let args: Vec<String> = env::args().collect();
     let config_path = if args.len() > 1 {
         &args[1]
     } else {
-        "default_config_path"
+        default_config_file
     };
 
-    // Initialize the ConfigLoader using the correct module path
-    let config_loader = ConfigLoader::new(config_path)?;
+    // Initialize the ConfigLoader and handle potential errors
+    let config_loader = match ConfigLoader::new(config_path) {
+        Ok(loader) => loader,
+        Err(e) => {
+            error!("Failed to load configuration: {}", e);
+            return; // Exit the program if configuration loading fails
+        }
+    };
 
     // Initialize the ModuleCoordinator
-    let coordinator = ModuleCoordinator::new(); // Removed unnecessary mut
+    let coordinator = ModuleCoordinator::new();
 
-    // Create a NodeManager with both the ConfigLoader and ModuleCoordinator
-    let mut node = NodeManager::new(config_loader, coordinator)?;
+    // Create a NodeManager
+    let mut node = NodeManager::new(config_loader, coordinator).expect("Failed to create NodeManager");
 
-    // Start the node manager
-    node.start().await?;
-
-    Ok(())
+    // Start the node manager and handle potential errors
+    if let Err(e) = node.start().await {
+        error!("Node manager failed to start: {}", e);
+    }
 }
-
 
 
 === ./icn_core/src/node/mod.rs ===

@@ -1,6 +1,6 @@
 // icn_networking/src/lib.rs
 
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::net::{TcpListener, TcpStream};
 use std::io::{Read, Write};
 use std::thread;
@@ -10,15 +10,15 @@ use icn_shared::{IcnError, IcnResult};
 
 /// Represents the networking component of the ICN node
 pub struct Networking {
-    /// A list of connected peers, protected by a mutex for thread-safety
-    peers: Arc<std::sync::Mutex<Vec<native_tls::TlsStream<TcpStream>>>>,
+    /// A list of connected peers, protected by a RwLock for thread-safety
+    peers: Arc<RwLock<Vec<native_tls::TlsStream<TcpStream>>>>,
 }
 
 impl Networking {
     /// Creates a new Networking instance
     pub fn new() -> Self {
         Networking {
-            peers: Arc::new(std::sync::Mutex::new(vec![])),
+            peers: Arc::new(RwLock::new(vec![])),
         }
     }
 
@@ -76,7 +76,7 @@ impl Networking {
             .map_err(|e| IcnError::Network(format!("Failed to establish TLS connection: {}", e)))?;
 
         // Add the connected peer to the list
-        self.peers.lock().unwrap().push(tls_stream);
+        self.peers.write().unwrap().push(tls_stream);
         info!("Connected to peer at {}", address);
         Ok(())
     }
@@ -87,7 +87,7 @@ impl Networking {
     ///
     /// * `message` - The message to broadcast
     pub fn broadcast_message(&self, message: &str) -> IcnResult<()> {
-        let mut peers = self.peers.lock().unwrap();
+        let mut peers = self.peers.write().unwrap();
         for peer in peers.iter_mut() {
             peer.write_all(message.as_bytes())
                 .map_err(|e| IcnError::Network(format!("Failed to send message: {}", e)))?;
@@ -114,7 +114,7 @@ impl Networking {
 ///
 /// * `stream` - The TLS stream representing the connection to the client
 /// * `peers` - A shared list of connected peers
-fn handle_client(mut stream: native_tls::TlsStream<TcpStream>, peers: Arc<std::sync::Mutex<Vec<native_tls::TlsStream<TcpStream>>>>) {
+fn handle_client(mut stream: native_tls::TlsStream<TcpStream>, peers: Arc<RwLock<Vec<native_tls::TlsStream<TcpStream>>>>) {
     let mut buffer = [0; 1024];
     loop {
         match stream.read(&mut buffer) {
@@ -140,7 +140,6 @@ fn handle_client(mut stream: native_tls::TlsStream<TcpStream>, peers: Arc<std::s
     }
 
     // Remove the disconnected peer from the list
-    let mut peers = peers.lock().unwrap();
-    // Compare TcpStream references directly
+    let mut peers = peers.write().unwrap();
     peers.retain(|p| !std::ptr::eq(p.get_ref(), stream.get_ref()));
 }

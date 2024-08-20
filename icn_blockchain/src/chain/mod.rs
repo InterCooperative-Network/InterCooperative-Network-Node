@@ -9,7 +9,7 @@ pub struct Chain {
 
 impl Chain {
     pub fn new() -> Self {
-        let genesis_block = create_genesis_block();
+        let genesis_block = Self::create_genesis_block();
         let mut blocks = VecDeque::new();
         blocks.push_back(genesis_block);
         Chain { blocks }
@@ -26,11 +26,12 @@ impl Chain {
     pub fn len(&self) -> usize {
         self.blocks.len()
     }
-}
 
-fn create_genesis_block() -> Block {
-    let transactions = vec![];
-    Block::new(0, 0, transactions, String::from("0"), String::from("genesis_hash"), String::from("genesis_proposer"))
+    /// Creates the genesis block for the blockchain.
+    fn create_genesis_block() -> Block {
+        let transactions = vec![];
+        Block::new(0, 0, transactions, String::from("0"), String::from("genesis_hash"), String::from("genesis_proposer"))
+    }
 }
 
 #[cfg(test)]
