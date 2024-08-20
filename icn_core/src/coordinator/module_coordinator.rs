@@ -18,7 +18,6 @@ pub struct ModuleCoordinator {
 
 impl ModuleCoordinator {
     pub fn new() -> Self {
-        env_logger::init(); // Initialize the logger
         ModuleCoordinator {
             consensus: ProofOfCooperation::new(),
             identity: Identity::new("id123", "ICN Node Identity"),
