@@ -48,33 +48,52 @@ log = "0.4"
 
 
 === ./icn_networking/src/lib.rs ===
+// icn_networking/src/lib.rs
+
 use std::net::{TcpListener, TcpStream};
 use std::io::{Read, Write, Error};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use log::{info, error};
+use native_tls::{TlsAcceptor, TlsStream, Identity};
+use std::fs::File;
+use std::io::BufReader;
+use std::path::Path;
 
+/// The Networking struct manages peer-to-peer communication over TLS.
+/// It maintains a list of connected peers and handles incoming and outgoing messages.
 pub struct Networking {
-     _peers: Arc<Mutex<Vec<TcpStream>>>,
+    _peers: Arc<Mutex<Vec<TlsStream<TcpStream>>>>, // Shared list of connected peers
 }
 
 impl Networking {
+    /// Creates a new Networking instance with an empty peer list.
     pub fn new() -> Self {
         Networking {
-            _peers: Arc::<Mutex<Vec<TcpStream>>>::new(Mutex::new(vec![])),
+            _peers: Arc::<Mutex<Vec<TlsStream<TcpStream>>>>::new(Mutex::new(vec![])),
         }
     }
 
+    /// Starts a TLS server at the specified address and listens for incoming connections.
+    /// Returns an error if the server fails to start.
     pub fn start_server(&self, address: &str) -> Result<(), Error> {
+        let identity = load_identity()?; // Load the server's TLS identity (certificate and private key)
+        let acceptor = TlsAcceptor::new(identity)?;
+
         let listener = TcpListener::bind(address)?;
         info!("Server started on {}", address);
 
+        // Handle incoming connections
         for stream in listener.incoming() {
             match stream {
                 Ok(stream) => {
                     let peers = Arc::clone(&self._peers);
+                    let acceptor = acceptor.clone();
                     thread::spawn(move || {
-                        handle_client(stream, peers);
+                        match acceptor.accept(stream) {
+                            Ok(tls_stream) => handle_client(tls_stream, peers), // Handle client connection
+                            Err(e) => error!("Failed to accept client: {:?}", e),
+                        }
                     });
                 }
                 Err(e) => {
@@ -86,19 +105,19 @@ impl Networking {
         Ok(())
     }
 
+    /// Connects to a peer at the specified address using TLS.
+    /// Returns an error if the connection fails.
     pub fn connect_to_peer(&self, address: &str) -> Result<(), Error> {
-        match TcpStream::connect(address) {
-            Ok(stream) => {
-                self._peers.lock().unwrap().push(stream);
-                info!("Connected to peer at {}", address);
-            }
-            Err(e) => {
-                error!("Failed to connect to peer: {:?}", e);
-            }
-        }
+        let connector = native_tls::TlsConnector::new()?;
+        let stream = TcpStream::connect(address)?;
+        let tls_stream = connector.connect(address, stream)?;
+        self._peers.lock().unwrap().push(tls_stream); // Add the peer to the list
+        info!("Connected to peer at {}", address);
         Ok(())
     }
 
+    /// Broadcasts a message to all connected peers.
+    /// Logs errors if sending the message fails.
     pub fn broadcast_message(&self, message: &str) -> Result<(), Error> {
         let mut peers = self._peers.lock().unwrap();
         for peer in peers.iter_mut() {
@@ -110,7 +129,9 @@ impl Networking {
     }
 }
 
-fn handle_client(mut stream: TcpStream,  _peers: Arc<Mutex<Vec<TcpStream>>>) {
+/// Handles communication with a connected client.
+/// Continuously reads messages from the client and logs them.
+fn handle_client(mut stream: TlsStream<TcpStream>, _peers: Arc<Mutex<Vec<TlsStream<TcpStream>>>>) {
     let mut buffer = [0; 512];
     loop {
         match stream.read(&mut buffer) {
@@ -125,6 +146,16 @@ fn handle_client(mut stream: TcpStream,  _peers: Arc<Mutex<Vec<TcpStream>>>) {
             }
         }
     }
+}
+
+/// Loads the TLS identity (certificate and private key) from a PKCS#12 file.
+/// Returns an `Identity` object or an error if loading fails.
+fn load_identity() -> Result<Identity, Error> {
+    let cert_path = Path::new("path/to/cert.pfx"); // Path to the PKCS#12 file
+    let cert_file = File::open(&cert_path)?;
+    let mut cert_reader = BufReader::new(cert_file);
+    let identity = Identity::from_pkcs12_der(&mut cert_reader, "password")?;
+    Ok(identity)
 }
 
 
@@ -488,24 +519,46 @@ icn_blockchain = { path = "../icn_blockchain" }
 
 
 === ./icn_consensus/src/lib.rs ===
+// icn_consensus/src/lib.rs
+
 pub mod proof_of_cooperation;
+
+/// `IcnError` defines custom errors for the consensus module.
+/// This is used throughout the crate for consistent error handling.
+#[derive(Debug)]
+pub enum IcnError {
+    ConfigError(config::ConfigError),
+    IoError(std::io::Error),
+    TlsError(native_tls::Error),
+    Other(String),
+}
+
+/// `IcnResult` is a custom result type that wraps around `Result` using the `IcnError`.
+pub type IcnResult<T> = Result<T, IcnError>;
 
 pub use proof_of_cooperation::ProofOfCooperation;
 
 
 
 === ./icn_consensus/src/proof_of_cooperation.rs ===
+// icn_consensus/src/proof_of_cooperation.rs
+
 use icn_blockchain::block::Block;
 
+/// ProofOfCooperation is a consensus mechanism that validates blocks based on cooperation.
+/// This is a placeholder for more complex logic that will be implemented in the future.
 pub struct ProofOfCooperation;
 
 impl ProofOfCooperation {
+    /// Creates a new instance of the ProofOfCooperation consensus mechanism.
     pub fn new() -> Self {
         ProofOfCooperation
     }
 
+    /// Validates a given block.
+    /// This function currently returns `true` for all blocks as a placeholder.
     pub fn validate(&self, _block: &Block) -> bool {
-        // Implement validation logic
+        // Implement validation logic here
         true
     }
 }
@@ -1667,6 +1720,56 @@ impl ConfigLoader {
 
 
 
+=== ./icn_core/src/errors.rs ===
+// icn_core/src/errors.rs
+
+use std::fmt;
+
+/// `IcnError` defines custom errors for the ICN project.
+/// This is used throughout the project for consistent error handling.
+#[derive(Debug)]
+pub enum IcnError {
+    ConfigError(config::ConfigError),
+    IoError(std::io::Error),
+    TlsError(native_tls::Error),
+    Other(String),
+}
+
+impl fmt::Display for IcnError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            IcnError::ConfigError(ref e) => write!(f, "Configuration error: {}", e),
+            IcnError::IoError(ref e) => write!(f, "I/O error: {}", e),
+            IcnError::TlsError(ref e) => write!(f, "TLS error: {}", e),
+            IcnError::Other(ref s) => write!(f, "{}", s),
+        }
+    }
+}
+
+// Implement `From` trait to allow automatic conversion from other error types to `IcnError`.
+impl From<config::ConfigError> for IcnError {
+    fn from(err: config::ConfigError) -> IcnError {
+        IcnError::ConfigError(err)
+    }
+}
+
+impl From<std::io::Error> for IcnError {
+    fn from(err: std::io::Error) -> IcnError {
+        IcnError::IoError(err)
+    }
+}
+
+impl From<native_tls::Error> for IcnError {
+    fn from(err: native_tls::Error) -> IcnError {
+        IcnError::TlsError(err)
+    }
+}
+
+/// `IcnResult` is a custom result type that wraps around `Result` using the `IcnError`.
+pub type IcnResult<T> = Result<T, IcnError>;
+
+
+
 === ./icn_core/src/main.rs ===
 use icn_core::node::NodeManager;
 
@@ -1686,36 +1789,50 @@ pub use node_manager::NodeManager;
 
 
 === ./icn_core/src/node/node_manager.rs ===
+// icn_core/src/node/node_manager.rs
+
 use crate::config::ConfigLoader;
 use crate::coordinator::ModuleCoordinator;
+use crate::errors::{IcnError, IcnResult};
 
+/// The NodeManager struct is responsible for managing the ICN node's lifecycle,
+/// including starting, stopping, and handling configuration.
 pub struct NodeManager {
     config: ConfigLoader,
     coordinator: ModuleCoordinator,
 }
 
 impl NodeManager {
+    /// Creates a new NodeManager instance with a ConfigLoader and ModuleCoordinator.
     pub fn new() -> Self {
         let config = ConfigLoader::new();
         let coordinator = ModuleCoordinator::new();
         NodeManager { config, coordinator }
     }
 
-    pub async fn start(&mut self) {
+    /// Starts the ICN node by loading configuration and initializing all modules.
+    /// Returns an `IcnResult` indicating success or an error.
+    pub async fn start(&mut self) -> IcnResult<()> {
         println!("Starting ICN Node...");
 
-        // Load and print configuration values
-        if let Ok(node_name) = self.config.get_str("node.name") {
-            println!("Node Name: {}", node_name);
+        // Attempt to retrieve the node name from configuration
+        match self.config.get_str("node.name") {
+            Ok(node_name) => println!("Node Name: {}", node_name),
+            Err(e) => return Err(IcnError::ConfigError(e)), // Return error if configuration fails
         }
 
-        self.coordinator.initialize().await;
-        self.coordinator.start().await;
+        // Initialize and start all modules using the coordinator
+        self.coordinator.initialize().await?;
+        self.coordinator.start().await?;
+        Ok(())
     }
 
-    pub async fn stop(&mut self) {
+    /// Stops the ICN node and gracefully shuts down all modules.
+    /// Returns an `IcnResult` indicating success or an error.
+    pub async fn stop(&mut self) -> IcnResult<()> {
         println!("Stopping ICN Node...");
-        self.coordinator.stop().await;
+        self.coordinator.stop().await?;
+        Ok(())
     }
 }
 
@@ -1881,6 +1998,53 @@ impl Identity {
         }
     }
 }
+
+
+
+=== ./update_project.sh ===
+#!/bin/bash
+
+# Generate the latest project state before committing
+./generate_project_state.sh
+
+# Check if the project state was generated successfully
+if [[ $? -ne 0 ]]; then
+    echo "Error: Failed to generate project state."
+    exit 1
+fi
+
+# Prompt the user to enter a commit message
+echo "Enter the commit message:"
+read -r COMMIT_MSG
+
+# Ensure the commit message is not empty
+if [[ -z "$COMMIT_MSG" ]]; then
+    echo "Error: Commit message cannot be empty!"
+    exit 1
+fi
+
+# Stage all changes for commit
+git add .
+
+# Commit the changes with the provided message
+git commit -m "$COMMIT_MSG"
+
+# Check if the commit was successful
+if [[ $? -ne 0 ]]; then
+    echo "Error: Commit failed."
+    exit 1
+fi
+
+# Push the changes to the remote repository
+git push origin main
+
+# Check if the push was successful
+if [[ $? -ne 0 ]]; then
+    echo "Error: Push failed."
+    exit 1
+fi
+
+echo "Changes have been successfully committed and pushed."
 
 
 

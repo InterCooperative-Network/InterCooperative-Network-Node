@@ -1,26 +1,43 @@
 #!/bin/bash
 
-# Define the file containing the commit message
-COMMIT_MSG_FILE="commit_message.txt"
+# Generate the latest project state before committing
+./generate_project_state.sh
 
-# Function to read the commit message from the file
-read_commit_message() {
-    if [[ -f "$COMMIT_MSG_FILE" ]]; then
-        cat "$COMMIT_MSG_FILE"
-    else
-        echo "Error: Commit message file not found!"
-        exit 1
-    fi
-}
+# Check if the project state was generated successfully
+if [[ $? -ne 0 ]]; then
+    echo "Error: Failed to generate project state."
+    exit 1
+fi
+
+# Prompt the user to enter a commit message
+echo "Enter the commit message:"
+read -r COMMIT_MSG
+
+# Ensure the commit message is not empty
+if [[ -z "$COMMIT_MSG" ]]; then
+    echo "Error: Commit message cannot be empty!"
+    exit 1
+fi
 
 # Stage all changes for commit
 git add .
 
-# Read the commit message from the file
-COMMIT_MSG=$(read_commit_message)
-
 # Commit the changes with the provided message
 git commit -m "$COMMIT_MSG"
 
+# Check if the commit was successful
+if [[ $? -ne 0 ]]; then
+    echo "Error: Commit failed."
+    exit 1
+fi
+
 # Push the changes to the remote repository
 git push origin main
+
+# Check if the push was successful
+if [[ $? -ne 0 ]]; then
+    echo "Error: Push failed."
+    exit 1
+fi
+
+echo "Changes have been successfully committed and pushed."
