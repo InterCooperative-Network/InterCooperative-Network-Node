@@ -1,34 +1,19 @@
 [workspace]
 members = [
-    "icn_repos/icn_common",
-    "icn_repos/icn_blockchain",
-    "icn_repos/icn_consensus",
-    "icn_repos/icn_currency",
-    "icn_repos/icn_governance",
-    "icn_repos/icn_identity",
-    "icn_repos/icn_network",
-    "icn_repos/icn_sharding",
-    "icn_repos/icn_storage",
-    "icn_repos/icn_vm",
-    "icn_repos/icn_api",
-    "icn_repos/icn_testnet",
-    "icn_repos/icn_core",
-    "icn_repos/icn_zkp",
-    "icn_repos/icn_smart_contracts",
-    "icn_repos/icn_reputation",
-    "icn_repos/icn_market",
-    "icn_repos/icn_incentives",
-    "icn_repos/icn_language",
-    "icn_repos/icn_demo",
-    "icn_repos/icn_federation"
+    "icn_core",
+    "icn_blockchain",
+    "icn_consensus",
+    "icn_networking",
+    "icn_identity",
+    "icn_governance",
+    "icn_smart_contracts",
+    "icn_virtual_machine",
+    "icn_api",
+    "icn_storage"
 ]
 
-resolver = "2"
-
 [workspace.dependencies]
-serde = { version = "1.0", features = ["derive"] }
-tokio = { version = "1.0", features = ["full"] }
-chrono = { version = "0.4", features = ["serde"] }
-thiserror = "1.0"
-log = "0.4"
-env_logger = "0.9"
+# Add common dependencies here
+
+[workspace]
+resolver = "2"
