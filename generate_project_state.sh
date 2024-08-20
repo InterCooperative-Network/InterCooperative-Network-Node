@@ -14,6 +14,11 @@ write_file_content() {
     echo -e "\n\n" >> $output_file
 }
 
+# Write the tree structure of the project to the output file
+echo "=== Project Directory Tree ===" >> $output_file
+tree -a -I 'target|.git|node_modules' >> $output_file
+echo -e "\n\n" >> $output_file
+
 # Recursively list all files and append their content, excluding build artifacts and temporary files
 find . -type f \
     -not -path "./.git/*" \

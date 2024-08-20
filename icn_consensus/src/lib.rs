@@ -9,7 +9,7 @@ use log::info;
 
 pub struct ProofOfCooperation {
     known_peers: HashSet<String>,
-    cooperation_scores: HashMap<String, f64>,
+    cooperation_scores: HashMap<String, u64>,
     last_block_time: u64,
 }
 
@@ -24,7 +24,7 @@ impl ProofOfCooperation {
 
     pub fn register_peer(&mut self, peer_id: &str) {
         self.known_peers.insert(peer_id.to_string());
-        self.cooperation_scores.insert(peer_id.to_string(), 1.0);
+        self.cooperation_scores.insert(peer_id.to_string(), 100);
         info!("Registered peer: {}", peer_id);
     }
 
@@ -57,10 +57,10 @@ impl ProofOfCooperation {
 
     pub fn select_proposer(&self) -> IcnResult<String> {
         let mut rng = rand::thread_rng();
-        let total_score: f64 = self.cooperation_scores.values().sum();
-        let random_value: f64 = rng.gen::<f64>() * total_score;
+        let total_score: u64 = self.cooperation_scores.values().sum();
+        let random_value: u64 = rng.gen_range(0..total_score);
 
-        let mut cumulative_score = 0.0;
+        let mut cumulative_score = 0;
         for (peer_id, score) in &self.cooperation_scores {
             cumulative_score += score;
             if cumulative_score >= random_value {
@@ -76,7 +76,8 @@ impl ProofOfCooperation {
             .get_mut(peer_id)
             .ok_or_else(|| IcnError::Consensus(format!("Unknown peer: {}", peer_id)))?;
         
-        *score = (*score * performance).max(0.1).min(2.0);
+        *score = (*score as f64 * performance).round() as u64;
+        *score = score.max(10).min(200); // Ensure it stays within a sensible range
         Ok(())
     }
 
@@ -123,9 +124,9 @@ mod tests {
         poc.register_peer("peer1");
         
         poc.update_cooperation_score("peer1", 1.5).unwrap();
-        assert!(poc.cooperation_scores["peer1"] > 1.0);
+        assert!(poc.cooperation_scores["peer1"] > 100);
 
         poc.update_cooperation_score("peer1", 0.5).unwrap();
-        assert!(poc.cooperation_scores["peer1"] < 1.0);
+        assert!(poc.cooperation_scores["peer1"] < 100);
     }
 }

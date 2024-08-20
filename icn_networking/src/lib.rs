@@ -1,6 +1,6 @@
 // File: icn_networking/src/lib.rs
 
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio_native_tls::{TlsAcceptor, TlsConnector};
@@ -10,13 +10,13 @@ use log::{info, error};
 
 #[derive(Clone)]
 pub struct Networking {
-    peers: Arc<Mutex<Vec<tokio_native_tls::TlsStream<TcpStream>>>>,
+    peers: Arc<RwLock<Vec<tokio_native_tls::TlsStream<TcpStream>>>>,
 }
 
 impl Networking {
     pub fn new() -> Self {
         Networking {
-            peers: Arc::new(Mutex::new(vec![])),
+            peers: Arc::new(RwLock::new(vec![])),
         }
     }
 
@@ -68,14 +68,14 @@ impl Networking {
         let tls_stream = connector.connect(address, stream).await
             .map_err(|e| IcnError::Network(format!("Failed to establish TLS connection: {}", e)))?;
 
-        self.peers.lock().map_err(|_| IcnError::Network("Failed to acquire peers lock".to_string()))?.push(tls_stream);
+        self.peers.write().map_err(|_| IcnError::Network("Failed to acquire peers lock".to_string()))?.push(tls_stream);
         info!("Connected to peer at {}", address);
         Ok(())
     }
 
     pub async fn broadcast_message(&self, message: &str) -> IcnResult<()> {
-        let mut peers = self.peers.lock().map_err(|_| IcnError::Network("Failed to acquire peers lock".to_string()))?;
-        for peer in peers.iter_mut() {
+        let peers = self.peers.read().map_err(|_| IcnError::Network("Failed to acquire peers lock".to_string()))?;
+        for peer in peers.iter() {
             peer.write_all(message.as_bytes()).await
                 .map_err(|e| IcnError::Network(format!("Failed to send message: {}", e)))?;
         }
@@ -87,7 +87,7 @@ impl Networking {
     }
 
     pub async fn stop(&self) -> IcnResult<()> {
-        let mut peers = self.peers.lock().map_err(|_| IcnError::Network("Failed to acquire peers lock".to_string()))?;
+        let mut peers = self.peers.write().map_err(|_| IcnError::Network("Failed to acquire peers lock".to_string()))?;
         for peer in peers.iter_mut() {
             if let Err(e) = peer.shutdown().await {
                 error!("Failed to close peer connection: {:?}", e);
@@ -102,7 +102,7 @@ impl Networking {
 async fn handle_client_connection(
     stream: TcpStream,
     acceptor: TlsAcceptor,
-    peers: Arc<Mutex<Vec<tokio_native_tls::TlsStream<TcpStream>>>>
+    peers: Arc<RwLock<Vec<tokio_native_tls::TlsStream<TcpStream>>>>
 ) -> IcnResult<()> {
     let tls_stream = acceptor.accept(stream).await
         .map_err(|e| IcnError::Network(format!("Failed to accept TLS connection: {:?}", e)))?;
@@ -110,7 +110,7 @@ async fn handle_client_connection(
     handle_client(tls_stream, peers).await
 }
 
-async fn handle_client(mut stream: tokio_native_tls::TlsStream<TcpStream>, peers: Arc<Mutex<Vec<tokio_native_tls::TlsStream<TcpStream>>>>) -> IcnResult<()> {
+async fn handle_client(mut stream: tokio_native_tls::TlsStream<TcpStream>, peers: Arc<RwLock<Vec<tokio_native_tls::TlsStream<TcpStream>>>>) -> IcnResult<()> {
     let mut buffer = [0; 1024];
     loop {
         match stream.read(&mut buffer).await {
@@ -126,7 +126,7 @@ async fn handle_client(mut stream: tokio_native_tls::TlsStream<TcpStream>, peers
         }
     }
 
-    let mut peers = peers.lock().map_err(|_| IcnError::Network("Failed to acquire peers lock".to_string()))?;
+    let mut peers = peers.write().map_err(|_| IcnError::Network("Failed to acquire peers lock".to_string()))?;
     peers.retain(|p| !std::ptr::eq(p.get_ref(), stream.get_ref()));
     Ok(())
 }
@@ -140,7 +140,7 @@ mod tests {
     #[test]
     fn test_networking_creation() {
         let networking = Networking::new();
-        assert_eq!(networking.peers.lock().unwrap().len(), 0);
+        assert_eq!(networking.peers.read().unwrap().len(), 0);
     }
 
     #[test]
@@ -162,7 +162,7 @@ mod tests {
                 );
 
                 let tls_stream = tls_connector.connect("localhost", client).await.unwrap();
-                networking_clone.peers.lock().unwrap().push(tls_stream);
+                networking_clone.peers.write().unwrap().push(tls_stream);
             });
 
             let result = networking.connect_to_peer(&addr.to_string()).await;
@@ -203,7 +203,7 @@ mod tests {
                 );
 
                 let tls_stream = tls_connector.connect("localhost", client).await.unwrap();
-                networking_clone.peers.lock().unwrap().push(tls_stream);
+                networking_clone.peers.write().unwrap().push(tls_stream);
             });
 
             let result = networking.connect_to_peer(&addr.to_string()).await;

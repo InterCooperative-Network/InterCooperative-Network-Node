@@ -1,3 +1,120 @@
+=== Project Directory Tree ===
+.
+├── ca-bundle.crt
+├── Cargo.lock
+├── Cargo.toml
+├── cert.crt
+├── commit_message.txt
+├── config
+│   └── default_config.toml
+├── generate_project_state.sh
+├── .github
+│   ├── FUNDING.yml
+│   └── workflows
+│       ├── ci.yml
+│       └── static.yml
+├── .gitignore
+├── .gitmodules
+├── icn_api
+│   ├── Cargo.toml
+│   └── src
+│       ├── lib
+│       │   └── mod.rs
+│       └── lib.rs
+├── icn_blockchain
+│   ├── Cargo.toml
+│   └── src
+│       ├── block
+│       │   └── mod.rs
+│       ├── chain
+│       │   └── mod.rs
+│       ├── lib
+│       │   └── mod.rs
+│       ├── lib.rs
+│       └── transaction
+│           ├── mod.rs
+│           └── transaction_type.rs
+├── icn_consensus
+│   ├── Cargo.toml
+│   └── src
+│       ├── lib
+│       │   └── mod.rs
+│       ├── lib.rs
+│       └── proof_of_cooperation.rs
+├── icn_core
+│   ├── Cargo.toml
+│   └── src
+│       ├── config
+│       │   ├── config_loader.rs
+│       │   └── mod.rs
+│       ├── coordinator
+│       │   ├── mod.rs
+│       │   └── module_coordinator.rs
+│       ├── errors.rs
+│       ├── lib
+│       │   └── mod.rs
+│       ├── lib.rs
+│       ├── main.rs
+│       └── node
+│           ├── mod.rs
+│           └── node_manager.rs
+├── icn_governance
+│   ├── Cargo.toml
+│   └── src
+│       ├── lib
+│       │   └── mod.rs
+│       └── lib.rs
+├── icn_identity
+│   ├── Cargo.toml
+│   └── src
+│       ├── lib
+│       │   └── mod.rs
+│       └── lib.rs
+├── icn_networking
+│   ├── Cargo.toml
+│   └── src
+│       ├── lib
+│       │   └── mod.rs
+│       └── lib.rs
+├── icn_shared
+│   ├── Cargo.toml
+│   └── src
+│       └── lib.rs
+├── icn_smart_contracts
+│   ├── Cargo.toml
+│   └── src
+│       ├── lib
+│       │   └── mod.rs
+│       └── lib.rs
+├── icn_storage
+│   ├── Cargo.toml
+│   └── src
+│       ├── block_storage.rs
+│       ├── lib
+│       │   └── mod.rs
+│       ├── lib.rs
+│       └── state_storage.rs
+├── icn_virtual_machine
+│   ├── Cargo.toml
+│   └── src
+│       ├── bytecode.rs
+│       ├── execution_engine.rs
+│       ├── lib
+│       │   └── mod.rs
+│       └── lib.rs
+├── private.key
+├── project_parts
+│   └── core_files_00
+├── project_state.txt
+├── README.md
+├── update_project.sh
+└── .vscode
+    └── settings.json
+
+44 directories, 67 files
+
+
+
 === ./generate_project_state.sh ===
 #!/bin/bash
 
@@ -14,6 +131,11 @@ write_file_content() {
     cat "$file_path" >> $output_file
     echo -e "\n\n" >> $output_file
 }
+
+# Write the tree structure of the project to the output file
+echo "=== Project Directory Tree ===" >> $output_file
+tree -a -I 'target|.git|node_modules' >> $output_file
+echo -e "\n\n" >> $output_file
 
 # Recursively list all files and append their content, excluding build artifacts and temporary files
 find . -type f \
@@ -56,7 +178,7 @@ tempfile = "3.2"
 === ./icn_networking/src/lib.rs ===
 // File: icn_networking/src/lib.rs
 
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio_native_tls::{TlsAcceptor, TlsConnector};
@@ -66,13 +188,13 @@ use log::{info, error};
 
 #[derive(Clone)]
 pub struct Networking {
-    peers: Arc<Mutex<Vec<tokio_native_tls::TlsStream<TcpStream>>>>,
+    peers: Arc<RwLock<Vec<tokio_native_tls::TlsStream<TcpStream>>>>,
 }
 
 impl Networking {
     pub fn new() -> Self {
         Networking {
-            peers: Arc::new(Mutex::new(vec![])),
+            peers: Arc::new(RwLock::new(vec![])),
         }
     }
 
@@ -124,14 +246,14 @@ impl Networking {
         let tls_stream = connector.connect(address, stream).await
             .map_err(|e| IcnError::Network(format!("Failed to establish TLS connection: {}", e)))?;
 
-        self.peers.lock().map_err(|_| IcnError::Network("Failed to acquire peers lock".to_string()))?.push(tls_stream);
+        self.peers.write().map_err(|_| IcnError::Network("Failed to acquire peers lock".to_string()))?.push(tls_stream);
         info!("Connected to peer at {}", address);
         Ok(())
     }
 
     pub async fn broadcast_message(&self, message: &str) -> IcnResult<()> {
-        let mut peers = self.peers.lock().map_err(|_| IcnError::Network("Failed to acquire peers lock".to_string()))?;
-        for peer in peers.iter_mut() {
+        let peers = self.peers.read().map_err(|_| IcnError::Network("Failed to acquire peers lock".to_string()))?;
+        for peer in peers.iter() {
             peer.write_all(message.as_bytes()).await
                 .map_err(|e| IcnError::Network(format!("Failed to send message: {}", e)))?;
         }
@@ -143,7 +265,7 @@ impl Networking {
     }
 
     pub async fn stop(&self) -> IcnResult<()> {
-        let mut peers = self.peers.lock().map_err(|_| IcnError::Network("Failed to acquire peers lock".to_string()))?;
+        let mut peers = self.peers.write().map_err(|_| IcnError::Network("Failed to acquire peers lock".to_string()))?;
         for peer in peers.iter_mut() {
             if let Err(e) = peer.shutdown().await {
                 error!("Failed to close peer connection: {:?}", e);
@@ -158,7 +280,7 @@ impl Networking {
 async fn handle_client_connection(
     stream: TcpStream,
     acceptor: TlsAcceptor,
-    peers: Arc<Mutex<Vec<tokio_native_tls::TlsStream<TcpStream>>>>
+    peers: Arc<RwLock<Vec<tokio_native_tls::TlsStream<TcpStream>>>>
 ) -> IcnResult<()> {
     let tls_stream = acceptor.accept(stream).await
         .map_err(|e| IcnError::Network(format!("Failed to accept TLS connection: {:?}", e)))?;
@@ -166,7 +288,7 @@ async fn handle_client_connection(
     handle_client(tls_stream, peers).await
 }
 
-async fn handle_client(mut stream: tokio_native_tls::TlsStream<TcpStream>, peers: Arc<Mutex<Vec<tokio_native_tls::TlsStream<TcpStream>>>>) -> IcnResult<()> {
+async fn handle_client(mut stream: tokio_native_tls::TlsStream<TcpStream>, peers: Arc<RwLock<Vec<tokio_native_tls::TlsStream<TcpStream>>>>) -> IcnResult<()> {
     let mut buffer = [0; 1024];
     loop {
         match stream.read(&mut buffer).await {
@@ -182,7 +304,7 @@ async fn handle_client(mut stream: tokio_native_tls::TlsStream<TcpStream>, peers
         }
     }
 
-    let mut peers = peers.lock().map_err(|_| IcnError::Network("Failed to acquire peers lock".to_string()))?;
+    let mut peers = peers.write().map_err(|_| IcnError::Network("Failed to acquire peers lock".to_string()))?;
     peers.retain(|p| !std::ptr::eq(p.get_ref(), stream.get_ref()));
     Ok(())
 }
@@ -196,7 +318,7 @@ mod tests {
     #[test]
     fn test_networking_creation() {
         let networking = Networking::new();
-        assert_eq!(networking.peers.lock().unwrap().len(), 0);
+        assert_eq!(networking.peers.read().unwrap().len(), 0);
     }
 
     #[test]
@@ -218,7 +340,7 @@ mod tests {
                 );
 
                 let tls_stream = tls_connector.connect("localhost", client).await.unwrap();
-                networking_clone.peers.lock().unwrap().push(tls_stream);
+                networking_clone.peers.write().unwrap().push(tls_stream);
             });
 
             let result = networking.connect_to_peer(&addr.to_string()).await;
@@ -259,7 +381,7 @@ mod tests {
                 );
 
                 let tls_stream = tls_connector.connect("localhost", client).await.unwrap();
-                networking_clone.peers.lock().unwrap().push(tls_stream);
+                networking_clone.peers.write().unwrap().push(tls_stream);
             });
 
             let result = networking.connect_to_peer(&addr.to_string()).await;
@@ -270,6 +392,7 @@ mod tests {
         });
     }
 }
+
 
 
 === ./icn_shared/Cargo.toml ===
@@ -525,24 +648,20 @@ impl Block {
         block
     }
 
-
     pub fn calculate_hash(&self) -> String {
         let mut hasher = Sha256::new();
-        hasher.update(format!(
-            "{}{}{}{}{}{}", // Fixed formatting by adding the missing placeholder
-            self.index,
-            self.timestamp,
-            serde_json::to_string(&self.transactions).unwrap(),
-            self.previous_hash,
-            self.proposer_id,
-            self.nonce
-        ));
+        hasher.update(self.index.to_be_bytes());
+        hasher.update(self.timestamp.to_be_bytes());
+        hasher.update(serde_json::to_string(&self.transactions).unwrap());
+        hasher.update(&self.previous_hash);
+        hasher.update(&self.proposer_id);
+        hasher.update(self.nonce.to_be_bytes());
         format!("{:x}", hasher.finalize())
     }
 
     pub fn mine(&mut self, difficulty: usize) {
         let target = vec![0; difficulty];
-        let target_str = String::from_utf8(target).unwrap(); // Moved outside the loop
+        let target_str = String::from_utf8(target).unwrap();
 
         while !self.hash.starts_with(&target_str) {
             self.nonce += 1;
@@ -837,7 +956,7 @@ use log::info;
 
 pub struct ProofOfCooperation {
     known_peers: HashSet<String>,
-    cooperation_scores: HashMap<String, f64>,
+    cooperation_scores: HashMap<String, u64>,
     last_block_time: u64,
 }
 
@@ -852,7 +971,7 @@ impl ProofOfCooperation {
 
     pub fn register_peer(&mut self, peer_id: &str) {
         self.known_peers.insert(peer_id.to_string());
-        self.cooperation_scores.insert(peer_id.to_string(), 1.0);
+        self.cooperation_scores.insert(peer_id.to_string(), 100);
         info!("Registered peer: {}", peer_id);
     }
 
@@ -885,10 +1004,10 @@ impl ProofOfCooperation {
 
     pub fn select_proposer(&self) -> IcnResult<String> {
         let mut rng = rand::thread_rng();
-        let total_score: f64 = self.cooperation_scores.values().sum();
-        let random_value: f64 = rng.gen::<f64>() * total_score;
+        let total_score: u64 = self.cooperation_scores.values().sum();
+        let random_value: u64 = rng.gen_range(0..total_score);
 
-        let mut cumulative_score = 0.0;
+        let mut cumulative_score = 0;
         for (peer_id, score) in &self.cooperation_scores {
             cumulative_score += score;
             if cumulative_score >= random_value {
@@ -904,7 +1023,8 @@ impl ProofOfCooperation {
             .get_mut(peer_id)
             .ok_or_else(|| IcnError::Consensus(format!("Unknown peer: {}", peer_id)))?;
         
-        *score = (*score * performance).max(0.1).min(2.0);
+        *score = (*score as f64 * performance).round() as u64;
+        *score = score.max(10).min(200); // Ensure it stays within a sensible range
         Ok(())
     }
 
@@ -951,13 +1071,12 @@ mod tests {
         poc.register_peer("peer1");
         
         poc.update_cooperation_score("peer1", 1.5).unwrap();
-        assert!(poc.cooperation_scores["peer1"] > 1.0);
+        assert!(poc.cooperation_scores["peer1"] > 100);
 
         poc.update_cooperation_score("peer1", 0.5).unwrap();
-        assert!(poc.cooperation_scores["peer1"] < 1.0);
+        assert!(poc.cooperation_scores["peer1"] < 100);
     }
 }
-
 
 
 === ./icn_consensus/src/proof_of_cooperation.rs ===

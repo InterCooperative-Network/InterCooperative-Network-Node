@@ -36,24 +36,20 @@ impl Block {
         block
     }
 
-
     pub fn calculate_hash(&self) -> String {
         let mut hasher = Sha256::new();
-        hasher.update(format!(
-            "{}{}{}{}{}{}", // Fixed formatting by adding the missing placeholder
-            self.index,
-            self.timestamp,
-            serde_json::to_string(&self.transactions).unwrap(),
-            self.previous_hash,
-            self.proposer_id,
-            self.nonce
-        ));
+        hasher.update(self.index.to_be_bytes());
+        hasher.update(self.timestamp.to_be_bytes());
+        hasher.update(serde_json::to_string(&self.transactions).unwrap());
+        hasher.update(&self.previous_hash);
+        hasher.update(&self.proposer_id);
+        hasher.update(self.nonce.to_be_bytes());
         format!("{:x}", hasher.finalize())
     }
 
     pub fn mine(&mut self, difficulty: usize) {
         let target = vec![0; difficulty];
-        let target_str = String::from_utf8(target).unwrap(); // Moved outside the loop
+        let target_str = String::from_utf8(target).unwrap();
 
         while !self.hash.starts_with(&target_str) {
             self.nonce += 1;
