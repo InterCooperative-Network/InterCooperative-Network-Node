@@ -1,145 +1,133 @@
-// icn_networking/src/lib.rs
+// File: icn_consensus/src/lib.rs
 
-use std::sync::{Arc, RwLock};
-use std::net::{TcpListener, TcpStream};
-use std::io::{Read, Write};
-use std::thread;
-use log::{info, error};
-use native_tls::{TlsAcceptor, TlsConnector, Identity};
+use std::collections::{HashMap, HashSet};
+use icn_blockchain::block::Block;
 use icn_shared::{IcnError, IcnResult};
+use rand::Rng;
+use std::time::{SystemTime, UNIX_EPOCH};
+use log::info;
 
-/// Represents the networking component of the ICN node
-pub struct Networking {
-    /// A list of connected peers, protected by a RwLock for thread-safety
-    peers: Arc<RwLock<Vec<native_tls::TlsStream<TcpStream>>>>,
+pub struct ProofOfCooperation {
+    known_peers: HashSet<String>,
+    cooperation_scores: HashMap<String, f64>,
+    last_block_time: u64,
 }
 
-impl Networking {
-    /// Creates a new Networking instance
+impl ProofOfCooperation {
     pub fn new() -> Self {
-        Networking {
-            peers: Arc::new(RwLock::new(vec![])),
+        ProofOfCooperation {
+            known_peers: HashSet::new(),
+            cooperation_scores: HashMap::new(),
+            last_block_time: 0,
         }
     }
 
-    /// Starts a TLS server to accept incoming connections from peers
-    ///
-    /// # Arguments
-    ///
-    /// * `address` - The address to bind the server to (e.g., "127.0.0.1:8080")
-    /// * `identity` - The TLS identity for the server, containing the certificate and private key
-    pub fn start_server(&self, address: &str, identity: Identity) -> IcnResult<()> {
-        let acceptor: Arc<TlsAcceptor> = Arc::new(
-            TlsAcceptor::new(identity)
-                .map_err(|e| IcnError::Network(format!("Failed to create TLS acceptor: {}", e)))?,
-        );
+    pub fn register_peer(&mut self, peer_id: &str) {
+        self.known_peers.insert(peer_id.to_string());
+        self.cooperation_scores.insert(peer_id.to_string(), 1.0);
+        info!("Registered peer: {}", peer_id);
+    }
 
-        let listener = TcpListener::bind(address)
-            .map_err(|e| IcnError::Network(format!("Failed to bind to address: {}", e)))?;
-        info!("Server started on {}", address);
+    pub fn is_registered(&self, peer_id: &str) -> bool {
+        self.known_peers.contains(peer_id)
+    }
 
-        // Accept incoming connections in a loop
-        for stream in listener.incoming() {
-            let acceptor = Arc::clone(&acceptor);
-            let peers = Arc::clone(&self.peers);
-
-            thread::spawn(move || {
-                match stream {
-                    Ok(stream) => {
-                        // Accept the TLS connection and handle the client in a separate thread
-                        match acceptor.accept(stream) {
-                            Ok(tls_stream) => handle_client(tls_stream, peers),
-                            Err(e) => error!("Failed to accept TLS connection: {:?}", e),
-                        }
-                    }
-                    Err(e) => error!("Failed to accept TCP connection: {:?}", e),
-                }
-            });
+    pub fn validate(&mut self, block: &Block) -> IcnResult<bool> {
+        if !self.is_registered(&block.proposer_id) {
+            return Err(IcnError::Consensus(format!("Unknown proposer: {}", block.proposer_id)));
         }
 
-        Ok(())
-    }
+        let current_time = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|e| IcnError::Consensus(format!("System time error: {}", e)))?
+            .as_secs();
 
-    /// Establishes a TLS connection to a peer at the specified address
-    ///
-    /// # Arguments
-    ///
-    /// * `address` - The address of the peer to connect to (e.g., "127.0.0.1:8080")
-    pub fn connect_to_peer(&self, address: &str) -> IcnResult<()> {
-        let connector = TlsConnector::new()
-            .map_err(|e| IcnError::Network(format!("Failed to create TLS connector: {}", e)))?;
-
-        let stream = TcpStream::connect(address)
-            .map_err(|e| IcnError::Network(format!("Failed to connect to peer: {}", e)))?;
-
-        let tls_stream = connector.connect(address, stream)
-            .map_err(|e| IcnError::Network(format!("Failed to establish TLS connection: {}", e)))?;
-
-        // Add the connected peer to the list
-        self.peers.write().unwrap().push(tls_stream);
-        info!("Connected to peer at {}", address);
-        Ok(())
-    }
-
-    /// Broadcasts a message to all connected peers
-    ///
-    /// # Arguments
-    ///
-    /// * `message` - The message to broadcast
-    pub fn broadcast_message(&self, message: &str) -> IcnResult<()> {
-        let mut peers = self.peers.write().unwrap();
-        for peer in peers.iter_mut() {
-            peer.write_all(message.as_bytes())
-                .map_err(|e| IcnError::Network(format!("Failed to send message: {}", e)))?;
+        if current_time < self.last_block_time + 10 {
+            return Err(IcnError::Consensus("Block proposed too soon".to_string()));
         }
+
+        // Update last block time
+        self.last_block_time = current_time;
+
+        // Implement additional validation logic here
+        // For example, check block signature, transaction validity, etc.
+
+        Ok(true)
+    }
+
+    pub fn select_proposer(&self) -> IcnResult<String> {
+        let mut rng = rand::thread_rng();
+        let total_score: f64 = self.cooperation_scores.values().sum();
+        let random_value: f64 = rng.gen::<f64>() * total_score;
+
+        let mut cumulative_score = 0.0;
+        for (peer_id, score) in &self.cooperation_scores {
+            cumulative_score += score;
+            if cumulative_score >= random_value {
+                return Ok(peer_id.clone());
+            }
+        }
+
+        Err(IcnError::Consensus("Failed to select a proposer".to_string()))
+    }
+
+    pub fn update_cooperation_score(&mut self, peer_id: &str, performance: f64) -> IcnResult<()> {
+        let score = self.cooperation_scores
+            .get_mut(peer_id)
+            .ok_or_else(|| IcnError::Consensus(format!("Unknown peer: {}", peer_id)))?;
+        
+        *score = (*score * performance).max(0.1).min(2.0);
         Ok(())
     }
 
-    /// Initializes the networking component
-    pub fn initialize(&self) -> IcnResult<()> {
-        // Initialization logic here (e.g., loading peer addresses from configuration)
-        Ok(())
-    }
-
-    /// Stops the networking component, closing all connections
-    pub fn stop(&self) -> IcnResult<()> {
-        // Stop logic here (e.g., gracefully closing connections to peers)
-        Ok(())
+    pub fn handle_fork<'a>(&self, chain_a: &'a [Block], chain_b: &'a [Block]) -> &'a [Block] {
+        // Simple longest chain rule for now
+        if chain_a.len() >= chain_b.len() {
+            chain_a
+        } else {
+            chain_b
+        }
     }
 }
 
-/// Handles incoming client connections, processes received messages, and manages peer disconnections
-///
-/// # Arguments
-///
-/// * `stream` - The TLS stream representing the connection to the client
-/// * `peers` - A shared list of connected peers
-fn handle_client(mut stream: native_tls::TlsStream<TcpStream>, peers: Arc<RwLock<Vec<native_tls::TlsStream<TcpStream>>>>) {
-    let mut buffer = [0; 1024];
-    loop {
-        match stream.read(&mut buffer) {
-            Ok(0) => {
-                // Connection closed gracefully
-                break;
-            }
-            Ok(n) => {
-                let message = String::from_utf8_lossy(&buffer[..n]);
-                info!("Received message: {}", message);
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use icn_blockchain::block::Block;
 
-                // TODO: Process the message here
-                // This could involve:
-                // - Parsing the message based on a defined protocol
-                // - Routing the message to the appropriate module (e.g., consensus, blockchain)
-                // - Taking corresponding actions based on the message content
-            }
-            Err(e) => {
-                error!("Error reading from stream: {:?}", e);
-                break;
-            }
-        }
+    // File: icn_consensus/src/lib.rs (continued)
+
+    #[test]
+    fn test_register_and_validate_peer() {
+        let mut poc = ProofOfCooperation::new();
+        poc.register_peer("peer1");
+        
+        let block = Block::new(0, 0, vec![], "0".to_string(), "hash".to_string(), "peer1".to_string());
+        assert!(poc.validate(&block).is_ok());
+
+        let invalid_block = Block::new(0, 0, vec![], "0".to_string(), "hash".to_string(), "unknown_peer".to_string());
+        assert!(poc.validate(&invalid_block).is_err());
     }
 
-    // Remove the disconnected peer from the list
-    let mut peers = peers.write().unwrap();
-    peers.retain(|p| !std::ptr::eq(p.get_ref(), stream.get_ref()));
+    #[test]
+    fn test_select_proposer() {
+        let mut poc = ProofOfCooperation::new();
+        poc.register_peer("peer1");
+        poc.register_peer("peer2");
+        
+        let proposer = poc.select_proposer().unwrap();
+        assert!(vec!["peer1", "peer2"].contains(&proposer.as_str()));
+    }
+
+    #[test]
+    fn test_update_cooperation_score() {
+        let mut poc = ProofOfCooperation::new();
+        poc.register_peer("peer1");
+        
+        poc.update_cooperation_score("peer1", 1.5).unwrap();
+        assert!(poc.cooperation_scores["peer1"] > 1.0);
+
+        poc.update_cooperation_score("peer1", 0.5).unwrap();
+        assert!(poc.cooperation_scores["peer1"] < 1.0);
+    }
 }

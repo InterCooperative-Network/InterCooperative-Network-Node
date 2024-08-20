@@ -1,39 +1,67 @@
 // icn_blockchain/src/block/mod.rs
 
-#[derive(Clone)] // Added Clone derive
-/// The `Block` struct represents a block in the blockchain.
-/// It contains essential data such as index, timestamp, transactions, and hashes.
+use serde::{Serialize, Deserialize};
+use sha2::{Sha256, Digest};
+use chrono::Utc;
+// Updated: Fixed the incorrect import
+use crate::chain::Transaction;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Block {
     pub index: u64,
-    pub timestamp: u64,
-    pub transactions: Vec<String>,  // Placeholder for actual transactions
+    pub timestamp: i64,
+    pub transactions: Vec<Transaction>,
     pub previous_hash: String,
     pub hash: String,
-    pub proposer_id: String,  // Added field for proposer ID
+    pub proposer_id: String,
+    pub nonce: u64,
 }
 
 impl Block {
-    /// Creates a new block with the given parameters.
     pub fn new(
         index: u64,
-        timestamp: u64,
-        transactions: Vec<String>,
+        transactions: Vec<Transaction>,
         previous_hash: String,
-        hash: String,
         proposer_id: String,
     ) -> Self {
-        Block {
+        let mut block = Block {
             index,
-            timestamp,
+            timestamp: Utc::now().timestamp(),
             transactions,
             previous_hash,
-            hash,
+            hash: String::new(),
             proposer_id,
+            nonce: 0,
+        };
+        block.hash = block.calculate_hash();
+        block
+    }
+
+    pub fn calculate_hash(&self) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(format!(
+            "{}{}{}{}{}{}", // Added missing placeholder
+            self.index,
+            self.timestamp,
+            serde_json::to_string(&self.transactions).unwrap(),
+            self.previous_hash,
+            self.proposer_id,
+            self.nonce
+        ));
+        format!("{:x}", hasher.finalize())
+    }
+
+    pub fn mine(&mut self, difficulty: usize) {
+        let target = vec![0; difficulty];
+        let target_str = String::from_utf8(target).unwrap(); // Moved outside the loop
+
+        while !self.hash.starts_with(&target_str) {
+            self.nonce += 1;
+            self.hash = self.calculate_hash();
         }
     }
 
-    /// Placeholder method for validating transactions in a block.
-    pub fn validate_transactions(&self) -> bool {
-        !self.transactions.is_empty()
+    pub fn is_valid(&self) -> bool {
+        self.hash == self.calculate_hash()
     }
 }

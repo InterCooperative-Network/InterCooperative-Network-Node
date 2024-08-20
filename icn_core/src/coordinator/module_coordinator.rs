@@ -1,41 +1,65 @@
 // icn_core/src/coordinator/module_coordinator.rs
 
+use std::sync::{Arc, Mutex};
+use icn_blockchain::Blockchain;
+use icn_consensus::Consensus;
 use icn_networking::Networking;
-use native_tls::Identity;
-use std::fs::File;
-use std::io::Read;
-use icn_shared::IcnResult;
+use icn_shared::{NodeState, IcnResult};
+use icn_core::config::ConfigLoader;
 
+/// `ModuleCoordinator` coordinates the interactions between various modules of the node.
 pub struct ModuleCoordinator {
-    networking: Networking,
-    // Other fields...
+    blockchain: Arc<Mutex<Blockchain>>,
+    consensus: Arc<Mutex<Consensus>>,
+    networking: Arc<Mutex<Networking>>,
+    node_state: Arc<Mutex<NodeState>>,
 }
 
 impl ModuleCoordinator {
+    /// Creates a new `ModuleCoordinator` instance.
     pub fn new() -> Self {
-        // Initialize the Networking module and other fields
+        let blockchain = Arc::new(Mutex::new(Blockchain::new()));
+        let consensus = Arc::new(Mutex::new(Consensus::new()));
+        let networking = Arc::new(Mutex::new(Networking::new()));
+        let node_state = Arc::new(Mutex::new(NodeState::Initializing));
+
         ModuleCoordinator {
-            networking: Networking::new(),
-            // Other initializations...
+            blockchain,
+            consensus,
+            networking,
+            node_state,
         }
     }
 
-    pub async fn start(&mut self) -> IcnResult<()> {
-        // Load the identity from the certificate file
-        let mut cert_file = File::open("test_cert.p12")?;
-        let mut cert_data = Vec::new();
-        cert_file.read_to_end(&mut cert_data)?;
-        let identity = Identity::from_pkcs12(&cert_data, "password")?;
+    /// Starts the coordinator and its associated modules.
+    ///
+    /// This function reads necessary configurations (e.g. certificate path, password) from the `ConfigLoader`,
+    /// initializes the `Networking` module, and sets the node state to `Operational`.
+    ///
+    /// # Arguments
+    ///
+    /// * `config_loader` - A reference to the `ConfigLoader` for accessing configurations.
+    ///
+    /// # Returns
+    /// 
+    /// * `IcnResult<()>` -  Ok(()) if successful, or an `IcnError` if an error occurs.
+    pub fn start(&self, config_loader: &ConfigLoader) -> IcnResult<()> {
+        let cert_file_path = config_loader.get_string("network.cert_file_path")?;
+        let cert_password = config_loader.get_string("network.cert_password")?;
 
-        // Start the networking server with the loaded identity
-        self.networking.start_server("127.0.0.1:8080", identity)?;
+        // Initialize the Networking module using the cert_file_path and cert_password
+        self.networking
+            .lock()
+            .unwrap()
+            .initialize(&cert_file_path, &cert_password)?;
 
-        // Other startup tasks...
+        // ... other module initializations (blockchain, consensus) ...
+
+        // Update node state to Operational
+        *self.node_state.lock().unwrap() = NodeState::Operational;
+
         Ok(())
     }
 
-    pub fn stop(&mut self) -> IcnResult<()> {
-        // Logic to stop the networking or other modules
-        Ok(())
-    }
+    // ... other methods for module interactions ...
 }

@@ -13,14 +13,21 @@ impl ExecutionEngine {
     }
 
     /// Executes the provided bytecode.
-    /// Currently, this is a placeholder for future implementation.
+    /// The logic here will interpret and run the bytecode.
     pub fn execute(&self, bytecode: Bytecode) -> Result<(), String> {
-        // Placeholder logic for executing bytecode
         if bytecode.code.is_empty() {
             return Err("Bytecode is empty".to_string());
         }
-        // Here we would parse and execute the bytecode
-        println!("Executing bytecode: {:?}", bytecode.code);
+
+        // Example: Interpreting and executing the bytecode
+        // This is a placeholder, actual implementation should parse and execute bytecode instructions.
+        for instruction in bytecode.code {
+            match instruction {
+                0x01 => println!("Instruction: 0x01 - No-op"),
+                _ => return Err(format!("Unknown instruction: 0x{:x}", instruction)),
+            }
+        }
+
         Ok(())
     }
 }

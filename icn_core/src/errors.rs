@@ -1,46 +1,59 @@
 // icn_core/src/errors.rs
 
+use std::error::Error;
 use std::fmt;
+use thiserror::Error;
 
-/// `IcnError` defines custom errors for the ICN project.
-/// This is used throughout the project for consistent error handling.
-#[derive(Debug)]
+/// Custom error type for the ICN project
+#[derive(Error, Debug)]
 pub enum IcnError {
-    ConfigError(config::ConfigError),
-    IoError(std::io::Error),
-    TlsError(native_tls::Error),
+    /// Configuration error
+    #[error("Configuration error: {0}")]
+    Config(String),
+
+    /// IO error
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
+
+    /// TOML parsing error
+    #[error("TOML parsing error: {0}")]
+    Toml(#[from] toml::de::Error),
+
+    /// Blockchain error
+    #[error("Blockchain error: {0}")]
+    Blockchain(String),
+
+    /// Consensus error
+    #[error("Consensus error: {0}")]
+    Consensus(String),
+
+    /// Networking error
+    #[error("Networking error: {0}")]
+    Networking(String),
+
+    /// Smart Contract error
+    #[error("Smart Contract error: {0}")]
+    SmartContract(String),
+
+    /// Virtual Machine error
+    #[error("Virtual Machine error: {0}")]
+    VirtualMachine(String),
+
+    /// Storage error
+    #[error("Storage error: {0}")]
+    Storage(String),
+
+    /// Other errors
+    #[error("Other error: {0}")]
     Other(String),
 }
 
+// Implementing the `Error` trait allows our custom error to be used in the `?` operator
+impl Error for IcnError {}
+
+// Implementing the `Display` trait allows our custom error to be formatted and printed
 impl fmt::Display for IcnError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            IcnError::ConfigError(ref e) => write!(f, "Configuration error: {}", e),
-            IcnError::IoError(ref e) => write!(f, "I/O error: {}", e),
-            IcnError::TlsError(ref e) => write!(f, "TLS error: {}", e),
-            IcnError::Other(ref s) => write!(f, "{}", s),
-        }
+        write!(f, "{}", self) // Use the `Error` trait's implementation for formatting
     }
 }
-
-// Implement `From` trait to allow automatic conversion from other error types to `IcnError`.
-impl From<config::ConfigError> for IcnError {
-    fn from(err: config::ConfigError) -> IcnError {
-        IcnError::ConfigError(err)
-    }
-}
-
-impl From<std::io::Error> for IcnError {
-    fn from(err: std::io::Error) -> IcnError {
-        IcnError::IoError(err)
-    }
-}
-
-impl From<native_tls::Error> for IcnError {
-    fn from(err: native_tls::Error) -> IcnError {
-        IcnError::TlsError(err)
-    }
-}
-
-/// `IcnResult` is a custom result type that wraps around `Result` using the `IcnError`.
-pub type IcnResult<T> = Result<T, IcnError>;

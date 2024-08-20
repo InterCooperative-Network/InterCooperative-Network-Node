@@ -1,4 +1,5 @@
-// icn_blockchain/src/lib.rs
+// File: icn_blockchain/src/lib.rs
+
 pub mod block;
 pub mod chain;
 

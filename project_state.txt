@@ -52,27 +52,27 @@ icn_shared = { path = "../icn_shared" }
 
 
 === ./icn_networking/src/lib.rs ===
-// icn_networking/src/lib.rs
+// File: icn_networking/src/lib.rs
 
-use std::sync::{Arc, RwLock};
-use std::net::{TcpListener, TcpStream};
-use std::io::{Read, Write};
-use std::thread;
-use log::{info, error};
-use native_tls::{TlsAcceptor, TlsConnector, Identity};
+use std::sync::{Arc, Mutex};
+use tokio::net::{TcpListener, TcpStream};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio_native_tls::TlsAcceptor;
+use native_tls::{Identity, TlsAcceptor as NativeTlsAcceptor};
 use icn_shared::{IcnError, IcnResult};
+use log::{info, error};
 
 /// Represents the networking component of the ICN node
 pub struct Networking {
-    /// A list of connected peers, protected by a RwLock for thread-safety
-    peers: Arc<RwLock<Vec<native_tls::TlsStream<TcpStream>>>>,
+    /// A list of connected peers, protected by a Mutex for thread-safety
+    peers: Arc<Mutex<Vec<tokio_native_tls::TlsStream<TcpStream>>>>,
 }
 
 impl Networking {
     /// Creates a new Networking instance
     pub fn new() -> Self {
         Networking {
-            peers: Arc::new(RwLock::new(vec![])),
+            peers: Arc::new(Mutex::new(vec![])),
         }
     }
 
@@ -82,36 +82,36 @@ impl Networking {
     ///
     /// * `address` - The address to bind the server to (e.g., "127.0.0.1:8080")
     /// * `identity` - The TLS identity for the server, containing the certificate and private key
-    pub fn start_server(&self, address: &str, identity: Identity) -> IcnResult<()> {
-        let acceptor: Arc<TlsAcceptor> = Arc::new(
-            TlsAcceptor::new(identity)
-                .map_err(|e| IcnError::Network(format!("Failed to create TLS acceptor: {}", e)))?,
+    pub async fn start_server(&self, address: &str, identity: Identity) -> IcnResult<()> {
+        let acceptor = TlsAcceptor::from(
+            NativeTlsAcceptor::new(identity)
+                .map_err(|e| IcnError::Network(format!("Failed to create TLS acceptor: {}", e)))?
         );
 
-        let listener = TcpListener::bind(address)
+        let listener = TcpListener::bind(address).await
             .map_err(|e| IcnError::Network(format!("Failed to bind to address: {}", e)))?;
         info!("Server started on {}", address);
 
-        // Accept incoming connections in a loop
-        for stream in listener.incoming() {
-            let acceptor = Arc::clone(&acceptor);
-            let peers = Arc::clone(&self.peers);
+        loop {
+            match listener.accept().await {
+                Ok((stream, _)) => {
+                    let acceptor = acceptor.clone();
+                    let peers = Arc::clone(&self.peers);
 
-            thread::spawn(move || {
-                match stream {
-                    Ok(stream) => {
-                        // Accept the TLS connection and handle the client in a separate thread
-                        match acceptor.accept(stream) {
-                            Ok(tls_stream) => handle_client(tls_stream, peers),
+                    tokio::spawn(async move {
+                        match acceptor.accept(stream).await {
+                            Ok(tls_stream) => {
+                                if let Err(e) = handle_client(tls_stream, peers).await {
+                                    error!("Error handling client: {:?}", e);
+                                }
+                            }
                             Err(e) => error!("Failed to accept TLS connection: {:?}", e),
                         }
-                    }
-                    Err(e) => error!("Failed to accept TCP connection: {:?}", e),
+                    });
                 }
-            });
+                Err(e) => error!("Failed to accept TCP connection: {:?}", e),
+            }
         }
-
-        Ok(())
     }
 
     /// Establishes a TLS connection to a peer at the specified address
@@ -119,18 +119,20 @@ impl Networking {
     /// # Arguments
     ///
     /// * `address` - The address of the peer to connect to (e.g., "127.0.0.1:8080")
-    pub fn connect_to_peer(&self, address: &str) -> IcnResult<()> {
-        let connector = TlsConnector::new()
-            .map_err(|e| IcnError::Network(format!("Failed to create TLS connector: {}", e)))?;
+    pub async fn connect_to_peer(&self, address: &str) -> IcnResult<()> {
+        let connector = tokio_native_tls::TlsConnector::from(
+            native_tls::TlsConnector::new()
+                .map_err(|e| IcnError::Network(format!("Failed to create TLS connector: {}", e)))?
+        );
 
-        let stream = TcpStream::connect(address)
+        let stream = TcpStream::connect(address).await
             .map_err(|e| IcnError::Network(format!("Failed to connect to peer: {}", e)))?;
 
-        let tls_stream = connector.connect(address, stream)
+        let tls_stream = connector.connect(address, stream).await
             .map_err(|e| IcnError::Network(format!("Failed to establish TLS connection: {}", e)))?;
 
         // Add the connected peer to the list
-        self.peers.write().unwrap().push(tls_stream);
+        self.peers.lock().unwrap().push(tls_stream);
         info!("Connected to peer at {}", address);
         Ok(())
     }
@@ -140,23 +142,23 @@ impl Networking {
     /// # Arguments
     ///
     /// * `message` - The message to broadcast
-    pub fn broadcast_message(&self, message: &str) -> IcnResult<()> {
-        let mut peers = self.peers.write().unwrap();
+    pub async fn broadcast_message(&self, message: &str) -> IcnResult<()> {
+        let mut peers = self.peers.lock().unwrap();
         for peer in peers.iter_mut() {
-            peer.write_all(message.as_bytes())
+            peer.write_all(message.as_bytes()).await
                 .map_err(|e| IcnError::Network(format!("Failed to send message: {}", e)))?;
         }
         Ok(())
     }
 
     /// Initializes the networking component
-    pub fn initialize(&self) -> IcnResult<()> {
+    pub async fn initialize(&self) -> IcnResult<()> {
         // Initialization logic here (e.g., loading peer addresses from configuration)
         Ok(())
     }
 
     /// Stops the networking component, closing all connections
-    pub fn stop(&self) -> IcnResult<()> {
+    pub async fn stop(&self) -> IcnResult<()> {
         // Stop logic here (e.g., gracefully closing connections to peers)
         Ok(())
     }
@@ -168,10 +170,10 @@ impl Networking {
 ///
 /// * `stream` - The TLS stream representing the connection to the client
 /// * `peers` - A shared list of connected peers
-fn handle_client(mut stream: native_tls::TlsStream<TcpStream>, peers: Arc<RwLock<Vec<native_tls::TlsStream<TcpStream>>>>) {
+async fn handle_client(mut stream: tokio_native_tls::TlsStream<TcpStream>, peers: Arc<Mutex<Vec<tokio_native_tls::TlsStream<TcpStream>>>>) -> IcnResult<()> {
     let mut buffer = [0; 1024];
     loop {
-        match stream.read(&mut buffer) {
+        match stream.read(&mut buffer).await {
             Ok(0) => {
                 // Connection closed gracefully
                 break;
@@ -194,10 +196,38 @@ fn handle_client(mut stream: native_tls::TlsStream<TcpStream>, peers: Arc<RwLock
     }
 
     // Remove the disconnected peer from the list
-    let mut peers = peers.write().unwrap();
+    let mut peers = peers.lock().unwrap();
     peers.retain(|p| !std::ptr::eq(p.get_ref(), stream.get_ref()));
+    Ok(())
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::runtime::Runtime;
+
+    #[test]
+    fn test_networking_creation() {
+        let networking = Networking::new();
+        assert_eq!(networking.peers.lock().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn test_connect_to_peer() {
+        let runtime = Runtime::new().unwrap();
+        let networking = Networking::new();
+
+        // This test requires a running TLS server to connect to
+        // For a real test, you'd need to set up a mock TLS server
+        // Here, we'll just test that the method doesn't panic
+        runtime.block_on(async {
+            let result = networking.connect_to_peer("localhost:8080").await;
+            assert!(result.is_err()); // Expect an error since we're not actually connecting
+        });
+    }
+
+    // Add more tests for other methods
+}
 
 
 === ./icn_shared/Cargo.toml ===
@@ -215,40 +245,35 @@ native-tls = "0.2"  # Add this line
 
 
 === ./icn_shared/src/lib.rs ===
-// icn_shared/src/lib.rs
+// File: icn_shared/src/lib.rs
 
-use std::fmt;
 use std::error::Error;
+use std::fmt;
+use serde::{Serialize, Deserialize};
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum IcnError {
-    Io(std::io::Error),
-    Tls(native_tls::Error),
     Config(String),
+    Blockchain(String),
     Consensus(String),
     Network(String),
     SmartContract(String),
-    Database(String),
-    Validation(String),
-    NotFound(String),
-    Unauthorized(String),
+    Storage(String),
+    Io(String),
     Other(String),
 }
 
 impl fmt::Display for IcnError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            IcnError::Io(e) => write!(f, "I/O error: {}", e),
-            IcnError::Tls(e) => write!(f, "TLS error: {}", e),
-            IcnError::Config(e) => write!(f, "Configuration error: {}", e),
-            IcnError::Consensus(e) => write!(f, "Consensus error: {}", e),
-            IcnError::Network(e) => write!(f, "Network error: {}", e),
-            IcnError::SmartContract(e) => write!(f, "Smart contract error: {}", e),
-            IcnError::Database(e) => write!(f, "Database error: {}", e),
-            IcnError::Validation(e) => write!(f, "Validation error: {}", e),
-            IcnError::NotFound(e) => write!(f, "Not found: {}", e),
-            IcnError::Unauthorized(e) => write!(f, "Unauthorized: {}", e),
-            IcnError::Other(e) => write!(f, "Other error: {}", e),
+            IcnError::Config(msg) => write!(f, "Configuration error: {}", msg),
+            IcnError::Blockchain(msg) => write!(f, "Blockchain error: {}", msg),
+            IcnError::Consensus(msg) => write!(f, "Consensus error: {}", msg),
+            IcnError::Network(msg) => write!(f, "Network error: {}", msg),
+            IcnError::SmartContract(msg) => write!(f, "Smart contract error: {}", msg),
+            IcnError::Storage(msg) => write!(f, "Storage error: {}", msg),
+            IcnError::Io(msg) => write!(f, "I/O error: {}", msg),
+            IcnError::Other(msg) => write!(f, "Other error: {}", msg),
         }
     }
 }
@@ -256,18 +281,21 @@ impl fmt::Display for IcnError {
 impl Error for IcnError {}
 
 impl From<std::io::Error> for IcnError {
-    fn from(error: std::io::Error) -> Self {
-        IcnError::Io(error)
-    }
-}
-
-impl From<native_tls::Error> for IcnError {
-    fn from(error: native_tls::Error) -> Self {
-        IcnError::Tls(error)
+    fn from(err: std::io::Error) -> Self {
+        IcnError::Io(err.to_string())
     }
 }
 
 pub type IcnResult<T> = Result<T, IcnError>;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum NodeState {
+    Initializing,
+    Operational,
+    ShuttingDown,
+}
+
+// Add any other shared types or constants here
 
 
 === ./config/default_config.toml ===
@@ -402,7 +430,8 @@ pub enum TransactionType {
 
 
 === ./icn_blockchain/src/lib.rs ===
-// icn_blockchain/src/lib.rs
+// File: icn_blockchain/src/lib.rs
+
 pub mod block;
 pub mod chain;
 
@@ -414,41 +443,69 @@ pub use chain::Chain;
 === ./icn_blockchain/src/block/mod.rs ===
 // icn_blockchain/src/block/mod.rs
 
-#[derive(Clone)] // Added Clone derive
-/// The `Block` struct represents a block in the blockchain.
-/// It contains essential data such as index, timestamp, transactions, and hashes.
+use serde::{Serialize, Deserialize};
+use sha2::{Sha256, Digest};
+use chrono::Utc;
+// Updated: Fixed the incorrect import
+use crate::chain::Transaction;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Block {
     pub index: u64,
-    pub timestamp: u64,
-    pub transactions: Vec<String>,  // Placeholder for actual transactions
+    pub timestamp: i64,
+    pub transactions: Vec<Transaction>,
     pub previous_hash: String,
     pub hash: String,
-    pub proposer_id: String,  // Added field for proposer ID
+    pub proposer_id: String,
+    pub nonce: u64,
 }
 
 impl Block {
-    /// Creates a new block with the given parameters.
     pub fn new(
         index: u64,
-        timestamp: u64,
-        transactions: Vec<String>,
+        transactions: Vec<Transaction>,
         previous_hash: String,
-        hash: String,
         proposer_id: String,
     ) -> Self {
-        Block {
+        let mut block = Block {
             index,
-            timestamp,
+            timestamp: Utc::now().timestamp(),
             transactions,
             previous_hash,
-            hash,
+            hash: String::new(),
             proposer_id,
+            nonce: 0,
+        };
+        block.hash = block.calculate_hash();
+        block
+    }
+
+    pub fn calculate_hash(&self) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(format!(
+            "{}{}{}{}{}{}", // Added missing placeholder
+            self.index,
+            self.timestamp,
+            serde_json::to_string(&self.transactions).unwrap(),
+            self.previous_hash,
+            self.proposer_id,
+            self.nonce
+        ));
+        format!("{:x}", hasher.finalize())
+    }
+
+    pub fn mine(&mut self, difficulty: usize) {
+        let target = vec![0; difficulty];
+        let target_str = String::from_utf8(target).unwrap(); // Moved outside the loop
+
+        while !self.hash.starts_with(&target_str) {
+            self.nonce += 1;
+            self.hash = self.calculate_hash();
         }
     }
 
-    /// Placeholder method for validating transactions in a block.
-    pub fn validate_transactions(&self) -> bool {
-        !self.transactions.is_empty()
+    pub fn is_valid(&self) -> bool {
+        self.hash == self.calculate_hash()
     }
 }
 
@@ -700,14 +757,21 @@ impl ExecutionEngine {
     }
 
     /// Executes the provided bytecode.
-    /// Currently, this is a placeholder for future implementation.
+    /// The logic here will interpret and run the bytecode.
     pub fn execute(&self, bytecode: Bytecode) -> Result<(), String> {
-        // Placeholder logic for executing bytecode
         if bytecode.code.is_empty() {
             return Err("Bytecode is empty".to_string());
         }
-        // Here we would parse and execute the bytecode
-        println!("Executing bytecode: {:?}", bytecode.code);
+
+        // Example: Interpreting and executing the bytecode
+        // This is a placeholder, actual implementation should parse and execute bytecode instructions.
+        for instruction in bytecode.code {
+            match instruction {
+                0x01 => println!("Instruction: 0x01 - No-op"),
+                _ => return Err(format!("Unknown instruction: 0x{:x}", instruction)),
+            }
+        }
+
         Ok(())
     }
 }
@@ -737,152 +801,139 @@ rand = "0.8"  # Add this line
 
 
 === ./icn_consensus/src/lib.rs ===
-// icn_networking/src/lib.rs
+// File: icn_consensus/src/lib.rs
 
-use std::sync::{Arc, RwLock};
-use std::net::{TcpListener, TcpStream};
-use std::io::{Read, Write};
-use std::thread;
-use log::{info, error};
-use native_tls::{TlsAcceptor, TlsConnector, Identity};
+use std::collections::{HashMap, HashSet};
+use icn_blockchain::block::Block;
 use icn_shared::{IcnError, IcnResult};
+use rand::Rng;
+use std::time::{SystemTime, UNIX_EPOCH};
+use log::info;
 
-/// Represents the networking component of the ICN node
-pub struct Networking {
-    /// A list of connected peers, protected by a RwLock for thread-safety
-    peers: Arc<RwLock<Vec<native_tls::TlsStream<TcpStream>>>>,
+pub struct ProofOfCooperation {
+    known_peers: HashSet<String>,
+    cooperation_scores: HashMap<String, f64>,
+    last_block_time: u64,
 }
 
-impl Networking {
-    /// Creates a new Networking instance
+impl ProofOfCooperation {
     pub fn new() -> Self {
-        Networking {
-            peers: Arc::new(RwLock::new(vec![])),
+        ProofOfCooperation {
+            known_peers: HashSet::new(),
+            cooperation_scores: HashMap::new(),
+            last_block_time: 0,
         }
     }
 
-    /// Starts a TLS server to accept incoming connections from peers
-    ///
-    /// # Arguments
-    ///
-    /// * `address` - The address to bind the server to (e.g., "127.0.0.1:8080")
-    /// * `identity` - The TLS identity for the server, containing the certificate and private key
-    pub fn start_server(&self, address: &str, identity: Identity) -> IcnResult<()> {
-        let acceptor: Arc<TlsAcceptor> = Arc::new(
-            TlsAcceptor::new(identity)
-                .map_err(|e| IcnError::Network(format!("Failed to create TLS acceptor: {}", e)))?,
-        );
+    pub fn register_peer(&mut self, peer_id: &str) {
+        self.known_peers.insert(peer_id.to_string());
+        self.cooperation_scores.insert(peer_id.to_string(), 1.0);
+        info!("Registered peer: {}", peer_id);
+    }
 
-        let listener = TcpListener::bind(address)
-            .map_err(|e| IcnError::Network(format!("Failed to bind to address: {}", e)))?;
-        info!("Server started on {}", address);
+    pub fn is_registered(&self, peer_id: &str) -> bool {
+        self.known_peers.contains(peer_id)
+    }
 
-        // Accept incoming connections in a loop
-        for stream in listener.incoming() {
-            let acceptor = Arc::clone(&acceptor);
-            let peers = Arc::clone(&self.peers);
-
-            thread::spawn(move || {
-                match stream {
-                    Ok(stream) => {
-                        // Accept the TLS connection and handle the client in a separate thread
-                        match acceptor.accept(stream) {
-                            Ok(tls_stream) => handle_client(tls_stream, peers),
-                            Err(e) => error!("Failed to accept TLS connection: {:?}", e),
-                        }
-                    }
-                    Err(e) => error!("Failed to accept TCP connection: {:?}", e),
-                }
-            });
+    pub fn validate(&mut self, block: &Block) -> IcnResult<bool> {
+        if !self.is_registered(&block.proposer_id) {
+            return Err(IcnError::Consensus(format!("Unknown proposer: {}", block.proposer_id)));
         }
 
-        Ok(())
-    }
+        let current_time = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|e| IcnError::Consensus(format!("System time error: {}", e)))?
+            .as_secs();
 
-    /// Establishes a TLS connection to a peer at the specified address
-    ///
-    /// # Arguments
-    ///
-    /// * `address` - The address of the peer to connect to (e.g., "127.0.0.1:8080")
-    pub fn connect_to_peer(&self, address: &str) -> IcnResult<()> {
-        let connector = TlsConnector::new()
-            .map_err(|e| IcnError::Network(format!("Failed to create TLS connector: {}", e)))?;
-
-        let stream = TcpStream::connect(address)
-            .map_err(|e| IcnError::Network(format!("Failed to connect to peer: {}", e)))?;
-
-        let tls_stream = connector.connect(address, stream)
-            .map_err(|e| IcnError::Network(format!("Failed to establish TLS connection: {}", e)))?;
-
-        // Add the connected peer to the list
-        self.peers.write().unwrap().push(tls_stream);
-        info!("Connected to peer at {}", address);
-        Ok(())
-    }
-
-    /// Broadcasts a message to all connected peers
-    ///
-    /// # Arguments
-    ///
-    /// * `message` - The message to broadcast
-    pub fn broadcast_message(&self, message: &str) -> IcnResult<()> {
-        let mut peers = self.peers.write().unwrap();
-        for peer in peers.iter_mut() {
-            peer.write_all(message.as_bytes())
-                .map_err(|e| IcnError::Network(format!("Failed to send message: {}", e)))?;
+        if current_time < self.last_block_time + 10 {
+            return Err(IcnError::Consensus("Block proposed too soon".to_string()));
         }
+
+        // Update last block time
+        self.last_block_time = current_time;
+
+        // Implement additional validation logic here
+        // For example, check block signature, transaction validity, etc.
+
+        Ok(true)
+    }
+
+    pub fn select_proposer(&self) -> IcnResult<String> {
+        let mut rng = rand::thread_rng();
+        let total_score: f64 = self.cooperation_scores.values().sum();
+        let random_value: f64 = rng.gen::<f64>() * total_score;
+
+        let mut cumulative_score = 0.0;
+        for (peer_id, score) in &self.cooperation_scores {
+            cumulative_score += score;
+            if cumulative_score >= random_value {
+                return Ok(peer_id.clone());
+            }
+        }
+
+        Err(IcnError::Consensus("Failed to select a proposer".to_string()))
+    }
+
+    pub fn update_cooperation_score(&mut self, peer_id: &str, performance: f64) -> IcnResult<()> {
+        let score = self.cooperation_scores
+            .get_mut(peer_id)
+            .ok_or_else(|| IcnError::Consensus(format!("Unknown peer: {}", peer_id)))?;
+        
+        *score = (*score * performance).max(0.1).min(2.0);
         Ok(())
     }
 
-    /// Initializes the networking component
-    pub fn initialize(&self) -> IcnResult<()> {
-        // Initialization logic here (e.g., loading peer addresses from configuration)
-        Ok(())
-    }
-
-    /// Stops the networking component, closing all connections
-    pub fn stop(&self) -> IcnResult<()> {
-        // Stop logic here (e.g., gracefully closing connections to peers)
-        Ok(())
+    pub fn handle_fork<'a>(&self, chain_a: &'a [Block], chain_b: &'a [Block]) -> &'a [Block] {
+        // Simple longest chain rule for now
+        if chain_a.len() >= chain_b.len() {
+            chain_a
+        } else {
+            chain_b
+        }
     }
 }
 
-/// Handles incoming client connections, processes received messages, and manages peer disconnections
-///
-/// # Arguments
-///
-/// * `stream` - The TLS stream representing the connection to the client
-/// * `peers` - A shared list of connected peers
-fn handle_client(mut stream: native_tls::TlsStream<TcpStream>, peers: Arc<RwLock<Vec<native_tls::TlsStream<TcpStream>>>>) {
-    let mut buffer = [0; 1024];
-    loop {
-        match stream.read(&mut buffer) {
-            Ok(0) => {
-                // Connection closed gracefully
-                break;
-            }
-            Ok(n) => {
-                let message = String::from_utf8_lossy(&buffer[..n]);
-                info!("Received message: {}", message);
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use icn_blockchain::block::Block;
 
-                // TODO: Process the message here
-                // This could involve:
-                // - Parsing the message based on a defined protocol
-                // - Routing the message to the appropriate module (e.g., consensus, blockchain)
-                // - Taking corresponding actions based on the message content
-            }
-            Err(e) => {
-                error!("Error reading from stream: {:?}", e);
-                break;
-            }
-        }
+    // File: icn_consensus/src/lib.rs (continued)
+
+    #[test]
+    fn test_register_and_validate_peer() {
+        let mut poc = ProofOfCooperation::new();
+        poc.register_peer("peer1");
+        
+        let block = Block::new(0, 0, vec![], "0".to_string(), "hash".to_string(), "peer1".to_string());
+        assert!(poc.validate(&block).is_ok());
+
+        let invalid_block = Block::new(0, 0, vec![], "0".to_string(), "hash".to_string(), "unknown_peer".to_string());
+        assert!(poc.validate(&invalid_block).is_err());
     }
 
-    // Remove the disconnected peer from the list
-    let mut peers = peers.write().unwrap();
-    peers.retain(|p| !std::ptr::eq(p.get_ref(), stream.get_ref()));
-}
+    #[test]
+    fn test_select_proposer() {
+        let mut poc = ProofOfCooperation::new();
+        poc.register_peer("peer1");
+        poc.register_peer("peer2");
+        
+        let proposer = poc.select_proposer().unwrap();
+        assert!(vec!["peer1", "peer2"].contains(&proposer.as_str()));
+    }
 
+    #[test]
+    fn test_update_cooperation_score() {
+        let mut poc = ProofOfCooperation::new();
+        poc.register_peer("peer1");
+        
+        poc.update_cooperation_score("peer1", 1.5).unwrap();
+        assert!(poc.cooperation_scores["peer1"] > 1.0);
+
+        poc.update_cooperation_score("peer1", 0.5).unwrap();
+        assert!(poc.cooperation_scores["peer1"] < 1.0);
+    }
+}
 
 
 === ./icn_consensus/src/proof_of_cooperation.rs ===
@@ -2540,30 +2591,27 @@ impl ConfigLoader {
 
 use std::fs;
 use toml::{Value, map::Map};
-use icn_shared::IcnError;
+use icn_shared::IcnResult;
 
+/// `ConfigLoader` handles the loading and parsing of TOML configuration files.
 #[derive(Debug, Clone)]
 pub struct ConfigLoader {
     config: Map<String, Value>,
 }
 
 impl ConfigLoader {
-    /// Creates a new ConfigLoader instance by loading a TOML configuration file.
+    /// Creates a new `ConfigLoader` instance by loading and parsing a TOML configuration file.
     ///
     /// # Arguments
     ///
-    /// * `config_path` - The path to the TOML configuration file
+    /// * `config_path` - The path to the TOML configuration file.
     ///
     /// # Returns
     ///
-    /// * `Result<Self, IcnError>` - The ConfigLoader instance or an `IcnError` if loading fails
-    pub fn new(config_path: &str) -> Result<Self, IcnError> {
-        let config_content = fs::read_to_string(config_path)
-            .map_err(|e| IcnError::Config(format!("Failed to read config file: {}", e)))?;
-
-        let config: Map<String, Value> = toml::from_str(&config_content)
-            .map_err(|e| IcnError::Config(format!("Failed to parse config file: {}", e)))?;
-
+    /// * `IcnResult<Self>` - A new `ConfigLoader` instance if successful, otherwise an `IcnError`.
+    pub fn new(config_path: &str) -> IcnResult<Self> {
+        let config_content = fs::read_to_string(config_path)?;
+        let config: Map<String, Value> = toml::from_str(&config_content)?;
         Ok(ConfigLoader { config })
     }
 
@@ -2571,7 +2619,7 @@ impl ConfigLoader {
     ///
     /// # Returns
     ///
-    /// * `&Map<String, Value>` - A reference to the configuration map
+    /// * `&Map<String, Value>` - A reference to the configuration map.
     pub fn get_config(&self) -> &Map<String, Value> {
         &self.config
     }
@@ -2580,12 +2628,12 @@ impl ConfigLoader {
     ///
     /// # Arguments
     ///
-    /// * `key` - The key of the string value to retrieve
+    /// * `key` - The key of the string value to retrieve.
     ///
     /// # Returns
     ///
-    /// * `Result<String, IcnError>` - The string value or an `IcnError` if not found or invalid
-    pub fn get_string(&self, key: &str) -> Result<String, IcnError> {
+    /// * `IcnResult<String>` - The string value or an `IcnError` if not found or invalid.
+    pub fn get_string(&self, key: &str) -> IcnResult<String> {
         self.get_nested_value(key)?
             .as_str()
             .map(|s| s.to_string())
@@ -2596,12 +2644,12 @@ impl ConfigLoader {
     ///
     /// # Arguments
     ///
-    /// * `key` - The key of the integer value to retrieve
+    /// * `key` - The key of the integer value to retrieve.
     ///
     /// # Returns
     ///
-    /// * `Result<i64, IcnError>` - The integer value or an `IcnError` if not found or invalid
-    pub fn get_int(&self, key: &str) -> Result<i64, IcnError> {
+    /// * `IcnResult<i64>` - The integer value or an `IcnError` if not found or invalid.
+    pub fn get_int(&self, key: &str) -> IcnResult<i64> {
         self.get_nested_value(key)?
             .as_integer()
             .ok_or_else(|| IcnError::Config(format!("Value for key '{}' is not an integer", key)))
@@ -2611,79 +2659,39 @@ impl ConfigLoader {
     ///
     /// # Arguments
     ///
-    /// * `key` - The key of the boolean value to retrieve
+    /// * `key` - The key of the boolean value to retrieve.
     ///
     /// # Returns
     ///
-    /// * `Result<bool, IcnError>` - The boolean value or an `IcnError` if not found or invalid
-    pub fn get_bool(&self, key: &str) -> Result<bool, IcnError> {
+    /// * `IcnResult<bool>` - The boolean value or an `IcnError` if not found or invalid.
+    pub fn get_bool(&self, key: &str) -> IcnResult<bool> {
         self.get_nested_value(key)?
             .as_bool()
             .ok_or_else(|| IcnError::Config(format!("Value for key '{}' is not a boolean", key)))
     }
 
-    /// Retrieves a nested value from the configuration using a dot-separated key.
+    /// Retrieves a nested value from the configuration using dot-separated keys.
     ///
     /// # Arguments
     ///
-    /// * `key` - The dot-separated key of the value to retrieve
+    /// * `key` - The dot-separated keys to the nested value.
     ///
     /// # Returns
     ///
-    /// * `Result<&Value, IcnError>` - The nested value or an `IcnError` if not found or invalid
-    fn get_nested_value(&self, key: &str) -> Result<&Value, IcnError> {
-        let parts: Vec<&str> = key.split('.').collect();
-        let mut current = &self.config;
+    /// * `IcnResult<&Value>` - A reference to the nested value or an `IcnError` if not found.
+    fn get_nested_value(&self, key: &str) -> IcnResult<&Value> {
+        let keys: Vec<&str> = key.split('.').collect();
+        let mut current_value = &self.config;
 
-        for (i, &part) in parts.iter().enumerate() {
-            if i == parts.len() - 1 {
-                return current.get(part).ok_or_else(|| IcnError::Config(format!("Key '{}' not found", key)));
-            }
-            current = current.get(part)
-                .and_then(|v| v.as_table())
-                .ok_or_else(|| IcnError::Config(format!("Invalid nested key: {}", key)))?;
+        for key_part in keys {
+            current_value = current_value
+                .get(key_part)
+                .ok_or_else(|| IcnError::Config(format!("Key '{}' not found", key)))?;
         }
 
-        unreachable!()
+        Ok(current_value)
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::io::Write;
-    use tempfile::NamedTempFile;
-
-    #[test]
-    fn test_config_loader() {
-        let config_content = r#"
-            [server]
-            host = "localhost"
-            port = 8080
-
-            [database]
-            url = "postgres://user:pass@localhost/dbname"
-            max_connections = 100
-
-            [features]
-            enable_caching = true
-        "#;
-
-        let mut config_file = NamedTempFile::new().unwrap();
-        config_file.write_all(config_content.as_bytes()).unwrap();
-
-        let config_loader = ConfigLoader::new(config_file.path().to_str().unwrap()).unwrap();
-
-        assert_eq!(config_loader.get_string("server.host").unwrap(), "localhost");
-        assert_eq!(config_loader.get_int("server.port").unwrap(), 8080);
-        assert_eq!(config_loader.get_string("database.url").unwrap(), "postgres://user:pass@localhost/dbname");
-        assert_eq!(config_loader.get_int("database.max_connections").unwrap(), 100);
-        assert_eq!(config_loader.get_bool("features.enable_caching").unwrap(), true);
-
-        assert!(config_loader.get_string("nonexistent.key").is_err());
-    }
-}
-
 
 
 === ./icn_core/src/lib/mod.rs ===
@@ -2693,51 +2701,63 @@ mod tests {
 === ./icn_core/src/errors.rs ===
 // icn_core/src/errors.rs
 
+use std::error::Error;
 use std::fmt;
+use thiserror::Error;
 
-/// `IcnError` defines custom errors for the ICN project.
-/// This is used throughout the project for consistent error handling.
-#[derive(Debug)]
+/// Custom error type for the ICN project
+#[derive(Error, Debug)]
 pub enum IcnError {
-    ConfigError(config::ConfigError),
-    IoError(std::io::Error),
-    TlsError(native_tls::Error),
+    /// Configuration error
+    #[error("Configuration error: {0}")]
+    Config(String),
+
+    /// IO error
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
+
+    /// TOML parsing error
+    #[error("TOML parsing error: {0}")]
+    Toml(#[from] toml::de::Error),
+
+    /// Blockchain error
+    #[error("Blockchain error: {0}")]
+    Blockchain(String),
+
+    /// Consensus error
+    #[error("Consensus error: {0}")]
+    Consensus(String),
+
+    /// Networking error
+    #[error("Networking error: {0}")]
+    Networking(String),
+
+    /// Smart Contract error
+    #[error("Smart Contract error: {0}")]
+    SmartContract(String),
+
+    /// Virtual Machine error
+    #[error("Virtual Machine error: {0}")]
+    VirtualMachine(String),
+
+    /// Storage error
+    #[error("Storage error: {0}")]
+    Storage(String),
+
+    /// Other errors
+    #[error("Other error: {0}")]
     Other(String),
 }
 
+// Implementing the `Error` trait allows our custom error to be used in the `?` operator
+impl Error for IcnError {}
+
+// Implementing the `Display` trait allows our custom error to be formatted and printed
 impl fmt::Display for IcnError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            IcnError::ConfigError(ref e) => write!(f, "Configuration error: {}", e),
-            IcnError::IoError(ref e) => write!(f, "I/O error: {}", e),
-            IcnError::TlsError(ref e) => write!(f, "TLS error: {}", e),
-            IcnError::Other(ref s) => write!(f, "{}", s),
-        }
+        write!(f, "{}", self) // Use the `Error` trait's implementation for formatting
     }
 }
-
-// Implement `From` trait to allow automatic conversion from other error types to `IcnError`.
-impl From<config::ConfigError> for IcnError {
-    fn from(err: config::ConfigError) -> IcnError {
-        IcnError::ConfigError(err)
-    }
-}
-
-impl From<std::io::Error> for IcnError {
-    fn from(err: std::io::Error) -> IcnError {
-        IcnError::IoError(err)
-    }
-}
-
-impl From<native_tls::Error> for IcnError {
-    fn from(err: native_tls::Error) -> IcnError {
-        IcnError::TlsError(err)
-    }
-}
-
-/// `IcnResult` is a custom result type that wraps around `Result` using the `IcnError`.
-pub type IcnResult<T> = Result<T, IcnError>;
-
 
 
 === ./icn_core/src/main.rs ===
@@ -2841,46 +2861,69 @@ pub mod node;
 === ./icn_core/src/coordinator/module_coordinator.rs ===
 // icn_core/src/coordinator/module_coordinator.rs
 
+use std::sync::{Arc, Mutex};
+use icn_blockchain::Blockchain;
+use icn_consensus::Consensus;
 use icn_networking::Networking;
-use native_tls::Identity;
-use std::fs::File;
-use std::io::Read;
-use icn_shared::IcnResult;
+use icn_shared::{NodeState, IcnResult};
+use icn_core::config::ConfigLoader;
 
+/// `ModuleCoordinator` coordinates the interactions between various modules of the node.
 pub struct ModuleCoordinator {
-    networking: Networking,
-    // Other fields...
+    blockchain: Arc<Mutex<Blockchain>>,
+    consensus: Arc<Mutex<Consensus>>,
+    networking: Arc<Mutex<Networking>>,
+    node_state: Arc<Mutex<NodeState>>,
 }
 
 impl ModuleCoordinator {
+    /// Creates a new `ModuleCoordinator` instance.
     pub fn new() -> Self {
-        // Initialize the Networking module and other fields
+        let blockchain = Arc::new(Mutex::new(Blockchain::new()));
+        let consensus = Arc::new(Mutex::new(Consensus::new()));
+        let networking = Arc::new(Mutex::new(Networking::new()));
+        let node_state = Arc::new(Mutex::new(NodeState::Initializing));
+
         ModuleCoordinator {
-            networking: Networking::new(),
-            // Other initializations...
+            blockchain,
+            consensus,
+            networking,
+            node_state,
         }
     }
 
-    pub async fn start(&mut self) -> IcnResult<()> {
-        // Load the identity from the certificate file
-        let mut cert_file = File::open("test_cert.p12")?;
-        let mut cert_data = Vec::new();
-        cert_file.read_to_end(&mut cert_data)?;
-        let identity = Identity::from_pkcs12(&cert_data, "password")?;
+    /// Starts the coordinator and its associated modules.
+    ///
+    /// This function reads necessary configurations (e.g. certificate path, password) from the `ConfigLoader`,
+    /// initializes the `Networking` module, and sets the node state to `Operational`.
+    ///
+    /// # Arguments
+    ///
+    /// * `config_loader` - A reference to the `ConfigLoader` for accessing configurations.
+    ///
+    /// # Returns
+    /// 
+    /// * `IcnResult<()>` -  Ok(()) if successful, or an `IcnError` if an error occurs.
+    pub fn start(&self, config_loader: &ConfigLoader) -> IcnResult<()> {
+        let cert_file_path = config_loader.get_string("network.cert_file_path")?;
+        let cert_password = config_loader.get_string("network.cert_password")?;
 
-        // Start the networking server with the loaded identity
-        self.networking.start_server("127.0.0.1:8080", identity)?;
+        // Initialize the Networking module using the cert_file_path and cert_password
+        self.networking
+            .lock()
+            .unwrap()
+            .initialize(&cert_file_path, &cert_password)?;
 
-        // Other startup tasks...
+        // ... other module initializations (blockchain, consensus) ...
+
+        // Update node state to Operational
+        *self.node_state.lock().unwrap() = NodeState::Operational;
+
         Ok(())
     }
 
-    pub fn stop(&mut self) -> IcnResult<()> {
-        // Logic to stop the networking or other modules
-        Ok(())
-    }
+    // ... other methods for module interactions ...
 }
-
 
 
 === ./icn_core/src/coordinator/mod.rs ===

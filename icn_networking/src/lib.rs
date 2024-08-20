@@ -1,24 +1,24 @@
-// icn_networking/src/lib.rs
+// File: icn_networking/src/lib.rs
 
-use std::sync::{Arc, RwLock};
-use std::net::{TcpListener, TcpStream};
-use std::io::{Read, Write};
-use std::thread;
-use log::{info, error};
-use native_tls::{TlsAcceptor, TlsConnector, Identity};
+use std::sync::{Arc, Mutex};
+use tokio::net::{TcpListener, TcpStream};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio_native_tls::TlsAcceptor;
+use native_tls::{Identity, TlsAcceptor as NativeTlsAcceptor};
 use icn_shared::{IcnError, IcnResult};
+use log::{info, error};
 
 /// Represents the networking component of the ICN node
 pub struct Networking {
-    /// A list of connected peers, protected by a RwLock for thread-safety
-    peers: Arc<RwLock<Vec<native_tls::TlsStream<TcpStream>>>>,
+    /// A list of connected peers, protected by a Mutex for thread-safety
+    peers: Arc<Mutex<Vec<tokio_native_tls::TlsStream<TcpStream>>>>,
 }
 
 impl Networking {
     /// Creates a new Networking instance
     pub fn new() -> Self {
         Networking {
-            peers: Arc::new(RwLock::new(vec![])),
+            peers: Arc::new(Mutex::new(vec![])),
         }
     }
 
@@ -28,36 +28,36 @@ impl Networking {
     ///
     /// * `address` - The address to bind the server to (e.g., "127.0.0.1:8080")
     /// * `identity` - The TLS identity for the server, containing the certificate and private key
-    pub fn start_server(&self, address: &str, identity: Identity) -> IcnResult<()> {
-        let acceptor: Arc<TlsAcceptor> = Arc::new(
-            TlsAcceptor::new(identity)
-                .map_err(|e| IcnError::Network(format!("Failed to create TLS acceptor: {}", e)))?,
+    pub async fn start_server(&self, address: &str, identity: Identity) -> IcnResult<()> {
+        let acceptor = TlsAcceptor::from(
+            NativeTlsAcceptor::new(identity)
+                .map_err(|e| IcnError::Network(format!("Failed to create TLS acceptor: {}", e)))?
         );
 
-        let listener = TcpListener::bind(address)
+        let listener = TcpListener::bind(address).await
             .map_err(|e| IcnError::Network(format!("Failed to bind to address: {}", e)))?;
         info!("Server started on {}", address);
 
-        // Accept incoming connections in a loop
-        for stream in listener.incoming() {
-            let acceptor = Arc::clone(&acceptor);
-            let peers = Arc::clone(&self.peers);
+        loop {
+            match listener.accept().await {
+                Ok((stream, _)) => {
+                    let acceptor = acceptor.clone();
+                    let peers = Arc::clone(&self.peers);
 
-            thread::spawn(move || {
-                match stream {
-                    Ok(stream) => {
-                        // Accept the TLS connection and handle the client in a separate thread
-                        match acceptor.accept(stream) {
-                            Ok(tls_stream) => handle_client(tls_stream, peers),
+                    tokio::spawn(async move {
+                        match acceptor.accept(stream).await {
+                            Ok(tls_stream) => {
+                                if let Err(e) = handle_client(tls_stream, peers).await {
+                                    error!("Error handling client: {:?}", e);
+                                }
+                            }
                             Err(e) => error!("Failed to accept TLS connection: {:?}", e),
                         }
-                    }
-                    Err(e) => error!("Failed to accept TCP connection: {:?}", e),
+                    });
                 }
-            });
+                Err(e) => error!("Failed to accept TCP connection: {:?}", e),
+            }
         }
-
-        Ok(())
     }
 
     /// Establishes a TLS connection to a peer at the specified address
@@ -65,18 +65,20 @@ impl Networking {
     /// # Arguments
     ///
     /// * `address` - The address of the peer to connect to (e.g., "127.0.0.1:8080")
-    pub fn connect_to_peer(&self, address: &str) -> IcnResult<()> {
-        let connector = TlsConnector::new()
-            .map_err(|e| IcnError::Network(format!("Failed to create TLS connector: {}", e)))?;
+    pub async fn connect_to_peer(&self, address: &str) -> IcnResult<()> {
+        let connector = tokio_native_tls::TlsConnector::from(
+            native_tls::TlsConnector::new()
+                .map_err(|e| IcnError::Network(format!("Failed to create TLS connector: {}", e)))?
+        );
 
-        let stream = TcpStream::connect(address)
+        let stream = TcpStream::connect(address).await
             .map_err(|e| IcnError::Network(format!("Failed to connect to peer: {}", e)))?;
 
-        let tls_stream = connector.connect(address, stream)
+        let tls_stream = connector.connect(address, stream).await
             .map_err(|e| IcnError::Network(format!("Failed to establish TLS connection: {}", e)))?;
 
         // Add the connected peer to the list
-        self.peers.write().unwrap().push(tls_stream);
+        self.peers.lock().unwrap().push(tls_stream);
         info!("Connected to peer at {}", address);
         Ok(())
     }
@@ -86,23 +88,23 @@ impl Networking {
     /// # Arguments
     ///
     /// * `message` - The message to broadcast
-    pub fn broadcast_message(&self, message: &str) -> IcnResult<()> {
-        let mut peers = self.peers.write().unwrap();
+    pub async fn broadcast_message(&self, message: &str) -> IcnResult<()> {
+        let mut peers = self.peers.lock().unwrap();
         for peer in peers.iter_mut() {
-            peer.write_all(message.as_bytes())
+            peer.write_all(message.as_bytes()).await
                 .map_err(|e| IcnError::Network(format!("Failed to send message: {}", e)))?;
         }
         Ok(())
     }
 
     /// Initializes the networking component
-    pub fn initialize(&self) -> IcnResult<()> {
+    pub async fn initialize(&self) -> IcnResult<()> {
         // Initialization logic here (e.g., loading peer addresses from configuration)
         Ok(())
     }
 
     /// Stops the networking component, closing all connections
-    pub fn stop(&self) -> IcnResult<()> {
+    pub async fn stop(&self) -> IcnResult<()> {
         // Stop logic here (e.g., gracefully closing connections to peers)
         Ok(())
     }
@@ -114,10 +116,10 @@ impl Networking {
 ///
 /// * `stream` - The TLS stream representing the connection to the client
 /// * `peers` - A shared list of connected peers
-fn handle_client(mut stream: native_tls::TlsStream<TcpStream>, peers: Arc<RwLock<Vec<native_tls::TlsStream<TcpStream>>>>) {
+async fn handle_client(mut stream: tokio_native_tls::TlsStream<TcpStream>, peers: Arc<Mutex<Vec<tokio_native_tls::TlsStream<TcpStream>>>>) -> IcnResult<()> {
     let mut buffer = [0; 1024];
     loop {
-        match stream.read(&mut buffer) {
+        match stream.read(&mut buffer).await {
             Ok(0) => {
                 // Connection closed gracefully
                 break;
@@ -140,6 +142,35 @@ fn handle_client(mut stream: native_tls::TlsStream<TcpStream>, peers: Arc<RwLock
     }
 
     // Remove the disconnected peer from the list
-    let mut peers = peers.write().unwrap();
+    let mut peers = peers.lock().unwrap();
     peers.retain(|p| !std::ptr::eq(p.get_ref(), stream.get_ref()));
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::runtime::Runtime;
+
+    #[test]
+    fn test_networking_creation() {
+        let networking = Networking::new();
+        assert_eq!(networking.peers.lock().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn test_connect_to_peer() {
+        let runtime = Runtime::new().unwrap();
+        let networking = Networking::new();
+
+        // This test requires a running TLS server to connect to
+        // For a real test, you'd need to set up a mock TLS server
+        // Here, we'll just test that the method doesn't panic
+        runtime.block_on(async {
+            let result = networking.connect_to_peer("localhost:8080").await;
+            assert!(result.is_err()); // Expect an error since we're not actually connecting
+        });
+    }
+
+    // Add more tests for other methods
 }
