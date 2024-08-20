@@ -1,94 +1,93 @@
 // icn_networking/src/lib.rs
 
-use std::net::{TcpListener, TcpStream};
-use std::io::{Read, Write, Error};
-use std::sync::{Arc, Mutex};
-use std::thread;
+use tokio::net::{TcpListener, TcpStream};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::sync::Mutex;
+use std::sync::Arc;
 use log::{info, error};
-use native_tls::{TlsAcceptor, TlsStream, Identity};
-use std::fs::File;
-use std::io::BufReader;
-use std::path::Path;
+use native_tls::{TlsAcceptor, TlsConnector, Identity};
+use tokio_native_tls::{TlsAcceptor as TokioTlsAcceptor, TlsStream};
+use icn_shared::{IcnError, IcnResult};
 
-/// The Networking struct manages peer-to-peer communication over TLS.
-/// It maintains a list of connected peers and handles incoming and outgoing messages.
 pub struct Networking {
-    _peers: Arc<Mutex<Vec<TlsStream<TcpStream>>>>, // Shared list of connected peers
+    peers: Arc<Mutex<Vec<TlsStream<TcpStream>>>>,
 }
 
 impl Networking {
-    /// Creates a new Networking instance with an empty peer list.
     pub fn new() -> Self {
         Networking {
-            _peers: Arc::<Mutex<Vec<TlsStream<TcpStream>>>>::new(Mutex::new(vec![])),
+            peers: Arc::new(Mutex::new(vec![])),
         }
     }
 
-    /// Starts a TLS server at the specified address and listens for incoming connections.
-    /// Returns an error if the server fails to start.
-    pub fn start_server(&self, address: &str) -> Result<(), Error> {
-        let identity = load_identity()?; // Load the server's TLS identity (certificate and private key)
-        let acceptor = TlsAcceptor::new(identity)?;
+    pub async fn start_server(&self, address: &str, identity: Identity) -> IcnResult<()> {
+        let acceptor = TlsAcceptor::new(identity)
+            .map_err(|e| IcnError::Network(format!("Failed to create TLS acceptor: {}", e)))?;
+        let acceptor = TokioTlsAcceptor::from(acceptor);
 
-        let listener = TcpListener::bind(address)?;
+        let listener = TcpListener::bind(address).await
+            .map_err(|e| IcnError::Network(format!("Failed to bind to address: {}", e)))?;
         info!("Server started on {}", address);
 
-        // Handle incoming connections
-        for stream in listener.incoming() {
-            match stream {
-                Ok(stream) => {
-                    let peers = Arc::clone(&self._peers);
-                    let acceptor = acceptor.clone();
-                    thread::spawn(move || {
-                        match acceptor.accept(stream) {
-                            Ok(tls_stream) => handle_client(tls_stream, peers), // Handle client connection
-                            Err(e) => error!("Failed to accept client: {:?}", e),
-                        }
-                    });
-                }
-                Err(e) => {
-                    error!("Failed to accept client: {:?}", e);
-                }
-            }
-        }
+        loop {
+            let (stream, _) = listener.accept().await
+                .map_err(|e| IcnError::Network(format!("Failed to accept connection: {}", e)))?;
+            let acceptor = acceptor.clone();
+            let peers = Arc::clone(&self.peers);
 
-        Ok(())
+            tokio::spawn(async move {
+                match acceptor.accept(stream).await {
+                    Ok(tls_stream) => handle_client(tls_stream, peers).await,
+                    Err(e) => error!("Failed to accept TLS connection: {:?}", e),
+                }
+            });
+        }
     }
 
-    /// Connects to a peer at the specified address using TLS.
-    /// Returns an error if the connection fails.
-    pub fn connect_to_peer(&self, address: &str) -> Result<(), Error> {
-        let connector = native_tls::TlsConnector::new()?;
-        let stream = TcpStream::connect(address)?;
-        let tls_stream = connector.connect(address, stream)?;
-        self._peers.lock().unwrap().push(tls_stream); // Add the peer to the list
+    pub async fn connect_to_peer(&self, address: &str) -> IcnResult<()> {
+        let connector = TlsConnector::new()
+            .map_err(|e| IcnError::Network(format!("Failed to create TLS connector: {}", e)))?;
+        let connector = tokio_native_tls::TlsConnector::from(connector);
+
+        let stream = TcpStream::connect(address).await
+            .map_err(|e| IcnError::Network(format!("Failed to connect to peer: {}", e)))?;
+        let tls_stream = connector.connect(address, stream).await
+            .map_err(|e| IcnError::Network(format!("Failed to establish TLS connection: {}", e)))?;
+
+        self.peers.lock().await.push(tls_stream);
         info!("Connected to peer at {}", address);
         Ok(())
     }
 
-    /// Broadcasts a message to all connected peers.
-    /// Logs errors if sending the message fails.
-    pub fn broadcast_message(&self, message: &str) -> Result<(), Error> {
-        let mut peers = self._peers.lock().unwrap();
+    pub async fn broadcast_message(&self, message: &str) -> IcnResult<()> {
+        let mut peers = self.peers.lock().await;
         for peer in peers.iter_mut() {
-            if let Err(e) = peer.write_all(message.as_bytes()) {
-                error!("Failed to send message to peer: {:?}", e);
-            }
+            peer.write_all(message.as_bytes()).await
+                .map_err(|e| IcnError::Network(format!("Failed to send message: {}", e)))?;
         }
+        Ok(())
+    }
+
+    pub async fn initialize(&self) -> IcnResult<()> {
+        // Initialization logic here
+        Ok(())
+    }
+
+    pub async fn stop(&self) -> IcnResult<()> {
+        // Stop logic here
         Ok(())
     }
 }
 
-/// Handles communication with a connected client.
-/// Continuously reads messages from the client and logs them.
-fn handle_client(mut stream: TlsStream<TcpStream>, _peers: Arc<Mutex<Vec<TlsStream<TcpStream>>>>) {
-    let mut buffer = [0; 512];
+async fn handle_client(mut stream: TlsStream<TcpStream>, peers: Arc<Mutex<Vec<TlsStream<TcpStream>>>>) {
+    let mut buffer = [0; 1024];
     loop {
-        match stream.read(&mut buffer) {
-            Ok(0) => break, // Connection closed
-            Ok(_) => {
-                let message = String::from_utf8_lossy(&buffer[..]);
+        match stream.read(&mut buffer).await {
+            Ok(0) => break,
+            Ok(n) => {
+                let message = String::from_utf8_lossy(&buffer[..n]);
                 info!("Received message: {}", message);
+                // Process the message here
             }
             Err(e) => {
                 error!("Error reading from stream: {:?}", e);
@@ -96,14 +95,40 @@ fn handle_client(mut stream: TlsStream<TcpStream>, _peers: Arc<Mutex<Vec<TlsStre
             }
         }
     }
+    let mut peers = peers.lock().await;
+    peers.retain(|p| !std::ptr::eq(p.get_ref(), stream.get_ref()));
 }
 
-/// Loads the TLS identity (certificate and private key) from a PKCS#12 file.
-/// Returns an `Identity` object or an error if loading fails.
-fn load_identity() -> Result<Identity, Error> {
-    let cert_path = Path::new("path/to/cert.pfx"); // Path to the PKCS#12 file
-    let cert_file = File::open(&cert_path)?;
-    let mut cert_reader = BufReader::new(cert_file);
-    let identity = Identity::from_pkcs12_der(&mut cert_reader, "password")?;
-    Ok(identity)
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::net::TcpListener;
+    use std::net::SocketAddr;
+
+    #[tokio::test]
+    async fn test_networking_creation() {
+        let networking = Networking::new();
+        assert!(networking.peers.lock().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_connect_to_peer() {
+        let networking = Networking::new();
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        
+        tokio::spawn(async move {
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            tx.send(addr).unwrap();
+            let (stream, _) = listener.accept().await.unwrap();
+            let identity = Identity::from_pkcs12(include_bytes!("test_cert.p12"), "password").unwrap();
+            let acceptor = TlsAcceptor::new(identity).unwrap();
+            let _tls_stream = acceptor.accept(stream).await.unwrap();
+        });
+
+        let addr: SocketAddr = rx.await.unwrap();
+        let result = networking.connect_to_peer(&addr.to_string()).await;
+        assert!(result.is_ok());
+        assert_eq!(networking.peers.lock().await.len(), 1);
+    }
 }

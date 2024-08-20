@@ -1,18 +1,80 @@
-// icn_consensus/src/lib.rs
+use icn_blockchain::block::Block;
+use icn_shared::IcnResult; // Removed IcnError as it is not used
 
 pub mod proof_of_cooperation;
+use proof_of_cooperation::ProofOfCooperation;
 
-/// `IcnError` defines custom errors for the consensus module.
-/// This is used throughout the crate for consistent error handling.
-#[derive(Debug)]
-pub enum IcnError {
-    ConfigError(config::ConfigError),
-    IoError(std::io::Error),
-    TlsError(native_tls::Error),
-    Other(String),
+/// The Consensus struct manages the consensus mechanism for the blockchain.
+pub struct Consensus {
+    proof_of_cooperation: ProofOfCooperation,
 }
 
-/// `IcnResult` is a custom result type that wraps around `Result` using the `IcnError`.
-pub type IcnResult<T> = Result<T, IcnError>;
+impl Consensus {
+    /// Creates a new Consensus instance.
+    pub fn new() -> Self {
+        Consensus {
+            proof_of_cooperation: ProofOfCooperation::new(),
+        }
+    }
 
-pub use proof_of_cooperation::ProofOfCooperation;
+    /// Validates a block using the current consensus mechanism.
+    pub fn validate_block(&self, block: &Block) -> IcnResult<bool> {
+        Ok(self.proof_of_cooperation.validate(block))
+    }
+
+    /// Handles a potential fork by comparing two chains.
+    pub fn handle_fork(&self, chain_a: &[Block], chain_b: &[Block]) -> IcnResult<Vec<Block>> {
+        let chosen_chain = self.proof_of_cooperation.handle_fork(chain_a, chain_b);
+        Ok(chosen_chain.to_vec())
+    }
+
+    /// Registers a new peer in the consensus mechanism.
+    pub fn register_peer(&mut self, peer_id: &str) -> IcnResult<()> {
+        self.proof_of_cooperation.register_peer(peer_id);
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use icn_blockchain::block::Block;
+
+    #[test]
+    fn test_consensus_creation() {
+        let mut consensus = Consensus::new();
+        let proposer_id = "peer1".to_string();
+        
+        println!("Registering peer: {}", proposer_id);
+        consensus.register_peer(&proposer_id).unwrap(); // Register the peer before validation
+
+        // Create a block with the registered proposer
+        let block = Block::new(0, 0, vec![], proposer_id.clone(), String::new(), String::new());
+        println!("Testing block validation...");
+        println!("Validating block proposed by: {}", block.proposer_id);
+
+        // Validation should now pass because the proposer is registered
+        assert!(
+            consensus.validate_block(&block).unwrap(),
+            "Validation failed: proposer was not recognized"
+        );
+    }
+
+    #[test]
+    fn test_handle_fork() {
+        let consensus = Consensus::new();
+        let chain_a = vec![Block::new(0, 0, vec![], String::new(), String::new(), String::new())];
+        let chain_b = vec![
+            Block::new(0, 0, vec![], String::new(), String::new(), String::new()),
+            Block::new(1, 0, vec![], String::new(), String::new(), String::new()),
+        ];
+        let result = consensus.handle_fork(&chain_a, &chain_b).unwrap();
+        assert_eq!(result.len(), 2);
+    }
+
+    #[test]
+    fn test_register_peer() {
+        let mut consensus = Consensus::new();
+        assert!(consensus.register_peer("peer1").is_ok());
+    }
+}

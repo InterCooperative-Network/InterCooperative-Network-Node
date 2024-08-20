@@ -1,14 +1,27 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
+// icn_virtual_machine/src/lib.rs
+
+pub mod bytecode;
+pub mod execution_engine;
+
+use bytecode::Bytecode;
+use execution_engine::ExecutionEngine;
+
+/// The `VirtualMachine` struct is responsible for executing smart contracts.
+/// It processes bytecode using an execution engine.
+pub struct VirtualMachine {
+    engine: ExecutionEngine,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+impl VirtualMachine {
+    /// Creates a new instance of the `VirtualMachine`.
+    pub fn new() -> Self {
+        VirtualMachine {
+            engine: ExecutionEngine::new(),
+        }
+    }
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
+    /// Executes a smart contract represented by bytecode.
+    pub fn execute(&mut self, bytecode: Bytecode) -> Result<(), String> {
+        self.engine.execute(bytecode)
     }
 }

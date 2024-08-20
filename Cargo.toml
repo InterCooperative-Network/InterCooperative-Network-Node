@@ -9,7 +9,9 @@ members = [
     "icn_smart_contracts",
     "icn_virtual_machine",
     "icn_api",
-    "icn_storage"
+    "icn_storage",
+    "icn_shared"
 ]
+default-run = "icn_core"
 
 resolver = "2"

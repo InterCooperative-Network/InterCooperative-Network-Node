@@ -4,4 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+native-tls = "0.2"
 log = "0.4"
+icn_shared = { path = "../icn_shared" }

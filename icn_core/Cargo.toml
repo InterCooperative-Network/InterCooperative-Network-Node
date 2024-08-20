@@ -6,11 +6,12 @@ edition = "2021"
 [dependencies]
 tokio = { version = "1.28", features = ["full"] }
 config = "0.13"
+env_logger = "0.10"
+log = "0.4"
 icn_consensus = { path = "../icn_consensus" }
+icn_blockchain = { path = "../icn_blockchain" }
 icn_identity = { path = "../icn_identity" }
 icn_governance = { path = "../icn_governance" }
-icn_blockchain = { path = "../icn_blockchain" }
-icn_smart_contracts = { path = "../icn_smart_contracts" }
 icn_networking = { path = "../icn_networking" }
-log = "0.4"
-env_logger = "0.10"
+icn_shared = { path = "../icn_shared" }
+toml = "0.5"

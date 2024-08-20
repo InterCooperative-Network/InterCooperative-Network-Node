@@ -1,79 +1,56 @@
-use icn_consensus::ProofOfCooperation;
-use icn_blockchain::block::Block;
-use icn_blockchain::transaction::Transaction;
-use icn_identity::Identity;
-use icn_governance::Proposal;
-use icn_networking::Networking;
-use log::{info, error};
+// /opt/InterCooperative-Network-Node/icn_core/src/coordinator/module_coordinator.rs
 
-/// The ModuleCoordinator struct is responsible for coordinating the different
-/// modules of the ICN node, including consensus, identity, governance, and networking.
+use icn_consensus::Consensus;
+use icn_blockchain::Chain;
+use icn_identity::Identity;
+use icn_governance::Proposal; // Keep if you plan to use it later
+use icn_networking::Networking;
+use icn_shared::IcnError;
+use log::info;
+
+/// Coordinates the different modules of an ICN node, including consensus, blockchain, identity, governance, and networking.
 pub struct ModuleCoordinator {
-    consensus: ProofOfCooperation,
+    consensus: Consensus,
+    blockchain: Chain,
     identity: Identity,
-    governance: Proposal,
+    // Commented out or remove if not used
+    // governance: Proposal,
     networking: Networking,
-    // Add fields for other modules here
 }
 
 impl ModuleCoordinator {
     pub fn new() -> Self {
         ModuleCoordinator {
-            consensus: ProofOfCooperation::new(),
-            identity: Identity::new("id123", "ICN Node Identity"),
-            governance: Proposal::new(1, "First Proposal"),
+            consensus: Consensus::new(),
+            blockchain: Chain::new(),
+            identity: Identity::new("node_id", "node_name"),
+            // Comment out or remove if not used
+            // governance: Proposal::new(1, "Initial Proposal"),
             networking: Networking::new(),
-            // Initialize other modules here
         }
     }
 
-    pub async fn initialize(&mut self) {
+    pub async fn initialize(&mut self) -> Result<(), IcnError> {
         info!("Initializing modules...");
-
-        // Validate a sample block
-        let sample_block = Block::new(1, vec![Transaction {
-            sender: "Alice".to_string(),
-            receiver: "Bob".to_string(),
-            amount: 50,
-        }], "0".to_string());
-        
-        if sample_block.validate_transactions() {
-            info!("Transactions in the block are valid.");
-        } else {
-            error!("Invalid transactions in the block.");
-        }
-
-        // Print identity information
-        info!("Identity ID: {}", self.identity.id);
-        info!("Identity Name: {}", self.identity.name);
-
-        // Print governance proposal information
-        info!("Proposal ID: {}", self.governance.id);
-        info!("Proposal Description: {}", self.governance.description);
-
-        // Start networking
-        if let Err(e) = self.networking.start_server("127.0.0.1:7878") {
-            error!("Failed to start server: {:?}", e);
-        }
-        if let Err(e) = self.networking.connect_to_peer("127.0.0.1:7878") {
-            error!("Failed to connect to peer: {:?}", e);
-        }
-
-        // Broadcast a message to all peers
-        if let Err(e) = self.networking.broadcast_message("Hello, peers!") {
-            error!("Failed to broadcast message: {:?}", e);
-        }
-
-        // Initialize other modules here
+        self.consensus = Consensus::new();
+        self.blockchain = Chain::new();
+        self.identity.initialize().map_err(|e| IcnError::Other(e.to_string()))?;
+        self.networking.initialize().map_err(|e| IcnError::Other(e.to_string()))?;
+        info!("All modules initialized successfully");
+        Ok(())
     }
 
-    pub async fn start(&mut self) {
+    pub async fn start(&mut self) -> Result<(), IcnError> {
         info!("Starting modules...");
-        // Start other modules here
+        self.networking.start_server("127.0.0.1:8080")?;
+        info!("All modules started successfully");
+        Ok(())
     }
 
-    pub async fn stop(&mut self) {
+    pub async fn stop(&mut self) -> Result<(), IcnError> {
         info!("Stopping modules...");
-        // Stop other modules here
+        self.networking.stop().map_err(|e| IcnError::Other(e.to_string()))?;
+        info!("All modules stopped successfully");
+        Ok(())
     }
 }

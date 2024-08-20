@@ -1,6 +1,7 @@
 [package]
 name = "icn_storage"
 version = "0.1.0"
-edition = "2021"
+edition = "2018"
 
 [dependencies]
+icn_blockchain = { path = "../icn_blockchain" }

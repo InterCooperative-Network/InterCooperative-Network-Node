@@ -1,46 +1,80 @@
-// icn_core/src/node/node_manager.rs
+// src/node/node_manager.rs
 
 use crate::config::ConfigLoader;
 use crate::coordinator::ModuleCoordinator;
-use crate::errors::{IcnError, IcnResult};
+use icn_shared::IcnError;
+use log::info;
 
-/// The NodeManager struct is responsible for managing the ICN node's lifecycle,
-/// including starting, stopping, and handling configuration.
+/// NodeManager is responsible for initializing and managing the lifecycle of the node.
 pub struct NodeManager {
     config: ConfigLoader,
     coordinator: ModuleCoordinator,
 }
 
 impl NodeManager {
-    /// Creates a new NodeManager instance with a ConfigLoader and ModuleCoordinator.
-    pub fn new() -> Self {
-        let config = ConfigLoader::new();
-        let coordinator = ModuleCoordinator::new();
-        NodeManager { config, coordinator }
+    /// Creates a new instance of NodeManager with the provided configuration path.
+    ///
+    /// # Arguments
+    ///
+    /// * `config_path` - A string slice that holds the path to the configuration file.
+    pub fn new(config_path: &str) -> Result<Self, IcnError> {
+        let config = ConfigLoader::new(config_path)?;
+
+        // Add a debug output to show the entire loaded configuration
+        println!("Loaded full configuration: {:#?}", config.get_config());
+
+        Ok(NodeManager {
+            config,
+            coordinator: ModuleCoordinator::new(),
+        })
     }
 
-    /// Starts the ICN node by loading configuration and initializing all modules.
-    /// Returns an `IcnResult` indicating success or an error.
-    pub async fn start(&mut self) -> IcnResult<()> {
-        println!("Starting ICN Node...");
+    /// Starts the node by initializing all required modules.
+    ///
+    /// This method performs the following steps:
+    /// 1. Loads the node name from the configuration.
+    /// 2. Initializes the coordinator with all necessary modules.
+    /// 3. Starts the networking server.
+    ///
+    /// # Errors
+    ///
+    /// Returns an `IcnError` if any step in the initialization process fails.
+    pub async fn start(&mut self) -> Result<(), IcnError> {
+        info!("Starting NodeManager...");
 
-        // Attempt to retrieve the node name from configuration
-        match self.config.get_str("node.name") {
-            Ok(node_name) => println!("Node Name: {}", node_name),
-            Err(e) => return Err(IcnError::ConfigError(e)), // Return error if configuration fails
+        // Accessing the node name directly from the config
+        if let Some(node_table) = self.config.get_config().get("node") {
+            if let Some(node_name) = node_table.get("name") {
+                info!("Node Name: {}", node_name.as_str().unwrap());
+            } else {
+                eprintln!("Failed to get 'node.name' from configuration: Name not found");
+                return Err(IcnError::Config("Config error: node.name not found".to_string()));
+            }
+        } else {
+            eprintln!("Failed to get 'node.name' from configuration: Node table not found");
+            return Err(IcnError::Config("Config error: node table not found".to_string()));
         }
 
-        // Initialize and start all modules using the coordinator
+        // Initialize and start all modules
         self.coordinator.initialize().await?;
         self.coordinator.start().await?;
+
+        info!("Node started successfully");
         Ok(())
     }
 
-    /// Stops the ICN node and gracefully shuts down all modules.
-    /// Returns an `IcnResult` indicating success or an error.
-    pub async fn stop(&mut self) -> IcnResult<()> {
-        println!("Stopping ICN Node...");
+    /// Stops the node by gracefully shutting down all modules.
+    ///
+    /// This method performs the following steps:
+    /// 1. Stops the coordinator which will in turn stop all modules.
+    ///
+    /// # Errors
+    ///
+    /// Returns an `IcnError` if any step in the shutdown process fails.
+    pub async fn stop(&mut self) -> Result<(), IcnError> {
+        info!("Stopping NodeManager...");
         self.coordinator.stop().await?;
+        info!("Node stopped successfully");
         Ok(())
     }
 }
