@@ -51,7 +51,7 @@ impl Networking {
 
     pub fn broadcast_message(&self, message: &str) -> Result<(), Error> {
         let mut peers = self.peers.lock().unwrap();
-        for mut peer in peers.iter_mut() {
+        for peer in peers.iter_mut() {
             if let Err(e) = peer.write_all(message.as_bytes()) {
                 error!("Failed to send message to peer: {:?}", e);
             }
