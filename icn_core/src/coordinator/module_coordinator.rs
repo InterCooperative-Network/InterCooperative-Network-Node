@@ -7,60 +7,74 @@ use icn_networking::Networking;
 use log::{info, error};
 
 /// The ModuleCoordinator struct is responsible for coordinating the different
-/// modules of the ICN node, such as consensus, identity, governance, and networking.
+/// modules of the ICN node, including consensus, identity, governance, and networking.
 pub struct ModuleCoordinator {
     consensus: ProofOfCooperation,
     identity: Identity,
     governance: Proposal,
     networking: Networking,
+    // Add fields for other modules here
 }
 
 impl ModuleCoordinator {
-    /// Creates a new instance of ModuleCoordinator and initializes the logger.
     pub fn new() -> Self {
-        env_logger::init();  // Initialize the logger
+        env_logger::init(); // Initialize the logger
         ModuleCoordinator {
             consensus: ProofOfCooperation::new(),
             identity: Identity::new("id123", "ICN Node Identity"),
             governance: Proposal::new(1, "First Proposal"),
             networking: Networking::new(),
+            // Initialize other modules here
         }
     }
 
-    /// Initializes all modules and validates the sample block and its transactions.
     pub async fn initialize(&mut self) {
         info!("Initializing modules...");
 
-        let sample_block = Block::new(1, vec![Transaction::new("Alice", "Bob", 50)], "0".to_string());
+        // Validate a sample block
+        let sample_block = Block::new(1, vec![Transaction {
+            sender: "Alice".to_string(),
+            receiver: "Bob".to_string(),
+            amount: 50,
+        }], "0".to_string());
+        
         if sample_block.validate_transactions() {
             info!("Transactions in the block are valid.");
         } else {
-            error!("Transactions in the block are invalid.");
+            error!("Invalid transactions in the block.");
         }
 
-        if self.consensus.validate(&sample_block) {
-            info!("Consensus validated the block successfully.");
-        } else {
-            error!("Consensus failed to validate the block.");
-        }
-
+        // Print identity information
         info!("Identity ID: {}", self.identity.id);
         info!("Identity Name: {}", self.identity.name);
+
+        // Print governance proposal information
         info!("Proposal ID: {}", self.governance.id);
         info!("Proposal Description: {}", self.governance.description);
 
-        self.networking.start_server("127.0.0.1:7878").unwrap();
-        self.networking.connect_to_peer("127.0.0.1:7878").unwrap();
-        self.networking.broadcast_message("Hello, peers!").unwrap();
+        // Start networking
+        if let Err(e) = self.networking.start_server("127.0.0.1:7878") {
+            error!("Failed to start server: {:?}", e);
+        }
+        if let Err(e) = self.networking.connect_to_peer("127.0.0.1:7878") {
+            error!("Failed to connect to peer: {:?}", e);
+        }
+
+        // Broadcast a message to all peers
+        if let Err(e) = self.networking.broadcast_message("Hello, peers!") {
+            error!("Failed to broadcast message: {:?}", e);
+        }
+
+        // Initialize other modules here
     }
 
-    /// Starts all modules within the coordinator.
     pub async fn start(&mut self) {
         info!("Starting modules...");
+        // Start other modules here
     }
 
-    /// Stops all modules within the coordinator.
     pub async fn stop(&mut self) {
         info!("Stopping modules...");
+        // Stop other modules here
     }
 }
