@@ -41,7 +41,7 @@ impl ModuleCoordinator {
     /// * `config_loader` - A reference to the `ConfigLoader` for accessing configurations.
     ///
     /// # Returns
-    /// 
+    ///
     /// * `IcnResult<()>` - Ok(()) if successful, or an `IcnError` if an error occurs.
     pub async fn start(&self, config_loader: &ConfigLoader) -> IcnResult<()> {
         let cert_file_path = config_loader.get_string("network.cert_file_path")?;

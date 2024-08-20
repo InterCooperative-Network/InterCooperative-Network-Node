@@ -2571,61 +2571,69 @@ impl ConfigLoader {
 === ./icn_core/src/config/config_loader.rs ===
 // File: icn_core/src/config/config_loader.rs
 
-/// Represents a configuration loader for the ICN node.
+use std::fs;
+use toml::{Value, map::Map};
+use icn_shared::{IcnError, IcnResult};
+
+/// `ConfigLoader` handles the loading and parsing of TOML configuration files.
+#[derive(Debug, Clone)]
 pub struct ConfigLoader {
-    config: config::Config,
+    config: Map<String, Value>,
 }
 
 impl ConfigLoader {
-    /// Creates a new instance of `ConfigLoader` by loading the configuration from a file.
+    /// Creates a new `ConfigLoader` instance by loading and parsing a TOML configuration file.
     ///
     /// # Arguments
     ///
-    /// * `config_path` - The path to the configuration file.
+    /// * `config_path` - The path to the TOML configuration file.
     ///
     /// # Returns
     ///
-    /// * `IcnResult<ConfigLoader>` - An instance of `ConfigLoader` or an `IcnError`.
+    /// * `IcnResult<Self>` - A new `ConfigLoader` instance if successful, otherwise an `IcnError`.
     pub fn new(config_path: &str) -> IcnResult<Self> {
-        let mut config = config::Config::default();
-        config
-            .merge(config::File::with_name(config_path))
-            .map_err(|e| IcnError::Config(format!("Failed to load config: {}", e)))?;
-
+        let config_content = fs::read_to_string(config_path)?;
+        let config: Map<String, Value> = toml::from_str(&config_content)?;
         Ok(ConfigLoader { config })
     }
 
-    /// Retrieves a value from the configuration as a string.
+    /// Retrieves a string value from the configuration.
     ///
     /// # Arguments
     ///
-    /// * `key` - The configuration key to retrieve.
+    /// * `key` - The key of the string value to retrieve.
     ///
     /// # Returns
     ///
-    /// * `IcnResult<String>` - The configuration value as a string or an `IcnError`.
-    pub fn get_value_as_string(&self, key: &str) -> IcnResult<String> {
-        self.config
-            .get_str(key)
-            .map_err(|e| IcnError::Config(format!("Failed to get string value: {}", e)))
+    /// * `IcnResult<String>` - The string value or an `IcnError` if not found or invalid.
+    pub fn get_string(&self, key: &str) -> IcnResult<String> {
+        self.get_nested_value(key)?
+            .as_str()
+            .map(|s| s.to_string())
+            .ok_or_else(|| IcnError::Config(format!("Value for key '{}' is not a string", key)))
     }
 
-    /// Retrieves a value from the configuration as an integer.
+    /// Retrieves a nested value from the configuration using dot-separated keys.
     ///
     /// # Arguments
     ///
-    /// * `key` - The configuration key to retrieve.
+    /// * `key` - The dot-separated keys to the nested value.
     ///
     /// # Returns
     ///
-    /// * `IcnResult<i64>` - The configuration value as an integer or an `IcnError`.
-    pub fn get_value_as_int(&self, key: &str) -> IcnResult<i64> {
-        self.config
-            .get_int(key)
-            .map_err(|e| IcnError::Config(format!("Failed to get int value: {}", e)))
-    }
+    /// * `IcnResult<&Value>` - A reference to the nested value or an `IcnError` if not found.
+    fn get_nested_value(&self, key: &str) -> IcnResult<&Value> {
+        let keys: Vec<&str> = key.split('.').collect();
+        let mut current_value = &self.config;
 
-    // Add more methods for other types as needed (e.g., boolean, float)
+        for key_part in keys {
+            current_value = current_value
+                .get(key_part)
+                .ok_or_else(|| IcnError::Config(format!("Key '{}' not found", key)))?;
+        }
+
+        Ok(current_value)
+    }
 }
 
 
@@ -2852,7 +2860,7 @@ impl ModuleCoordinator {
     /// * `config_loader` - A reference to the `ConfigLoader` for accessing configurations.
     ///
     /// # Returns
-    /// 
+    ///
     /// * `IcnResult<()>` - Ok(()) if successful, or an `IcnError` if an error occurs.
     pub async fn start(&self, config_loader: &ConfigLoader) -> IcnResult<()> {
         let cert_file_path = config_loader.get_string("network.cert_file_path")?;
