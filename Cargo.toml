@@ -15,5 +15,4 @@ members = [
 [workspace.dependencies]
 # Add common dependencies here
 
-[workspace]
 resolver = "2"
