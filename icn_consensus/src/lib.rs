@@ -1,8 +1,9 @@
 // icn_consensus/src/lib.rs
 
 use icn_blockchain::block::Block;
-use icn_shared::{IcnError, IcnResult};
+use icn_shared::IcnResult;
 
+// Remove unused native_tls imports and unnecessary I/O imports
 pub mod proof_of_cooperation;
 use proof_of_cooperation::ProofOfCooperation;
 
@@ -12,25 +13,51 @@ pub struct Consensus {
 }
 
 impl Consensus {
-    /// Creates a new Consensus instance.
+    /// Creates a new Consensus instance with a new ProofOfCooperation.
     pub fn new() -> Self {
         Consensus {
             proof_of_cooperation: ProofOfCooperation::new(),
         }
     }
 
-    /// Validates a block using the current consensus mechanism.
+    /// Validates a `Block` using the `ProofOfCooperation` algorithm
+    ///
+    /// # Arguments
+    ///
+    /// * `block` - The block to be validated
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<bool>` - `true` if the block is valid, otherwise an `IcnError`
     pub fn validate_block(&self, block: &Block) -> IcnResult<bool> {
         self.proof_of_cooperation.validate(block)
     }
 
-    /// Handles a potential fork by comparing two chains.
+    /// Handles a potential fork in the blockchain by selecting the most valid chain
+    /// according to the `ProofOfCooperation` algorithm
+    ///
+    /// # Arguments
+    ///
+    /// * `chain_a` - The first chain to be compared
+    /// * `chain_b` - The second chain to be compared
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<Vec<Block>>` - The chosen chain as a vector of blocks, or an `IcnError`
     pub fn handle_fork(&self, chain_a: &[Block], chain_b: &[Block]) -> IcnResult<Vec<Block>> {
         let chosen_chain = self.proof_of_cooperation.handle_fork(chain_a, chain_b);
         Ok(chosen_chain.to_vec())
     }
 
-    /// Registers a new peer in the consensus mechanism.
+    /// Registers a new peer in the `ProofOfCooperation` consensus mechanism
+    ///
+    /// # Arguments
+    ///
+    /// * `peer_id` - The ID of the peer to be registered
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<()>` - An empty result indicating success or failure
     pub fn register_peer(&mut self, peer_id: &str) -> IcnResult<()> {
         self.proof_of_cooperation.register_peer(peer_id);
         Ok(())

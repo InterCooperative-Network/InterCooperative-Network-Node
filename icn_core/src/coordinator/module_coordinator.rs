@@ -1,5 +1,7 @@
+// icn_core/src/coordinator/module_coordinator.rs
+
 use icn_networking::Networking;
-use native_tls::Identity; // Correct import
+use native_tls::Identity;
 use std::fs::File;
 use std::io::Read;
 use icn_shared::IcnResult;
@@ -26,7 +28,7 @@ impl ModuleCoordinator {
         let identity = Identity::from_pkcs12(&cert_data, "password")?;
 
         // Start the networking server with the loaded identity
-        self.networking.start_server("127.0.0.1:8080", identity).await?;
+        self.networking.start_server("127.0.0.1:8080", identity)?;
 
         // Other startup tasks...
         Ok(())
@@ -34,7 +36,6 @@ impl ModuleCoordinator {
 
     pub fn stop(&mut self) -> IcnResult<()> {
         // Logic to stop the networking or other modules
-        // For now, just a placeholder implementation
         Ok(())
     }
 }

@@ -1,37 +1,31 @@
-use crate::config::ConfigLoader;  // Use `crate` instead of `icn_core`
-use icn_shared::IcnResult;
+// icn_core/src/node/node_manager.rs
+
+use crate::config::ConfigLoader; // Import ConfigLoader from the config module
 use crate::coordinator::ModuleCoordinator;
+use icn_shared::IcnResult;
 
 pub struct NodeManager {
-    config: ConfigLoader,
+    config_loader: ConfigLoader,
     coordinator: ModuleCoordinator,
+    // Other fields...
 }
 
 impl NodeManager {
-    pub fn new(config_loader: ConfigLoader, coordinator: ModuleCoordinator) -> Self {
-        NodeManager {
-            config: config_loader,
+    pub fn new(config_loader: ConfigLoader, coordinator: ModuleCoordinator) -> IcnResult<Self> {
+        // Initialize the NodeManager with the provided config_loader and coordinator
+        Ok(NodeManager {
+            config_loader,
             coordinator,
-        }
-    }
-
-    pub fn load_configuration(&self) -> IcnResult<()> {
-        println!("Loaded full configuration: {:#?}", self.config.get_config());
-
-        if let Some(_node_table) = self.config.get_config().get("node") {
-            // Handle node table...
-        }
-
-        Ok(())
+            // Other initializations...
+        })
     }
 
     pub async fn start(&mut self) -> IcnResult<()> {
-        self.coordinator.start().await?; // Async function, use await
+        // Logic to start the node manager
+        self.config_loader.load()?; // Use the config_loader
+        self.coordinator.start().await?;
         Ok(())
     }
 
-    pub async fn stop(&mut self) -> IcnResult<()> {
-        self.coordinator.stop()?; // No await needed as this is not async
-        Ok(())
-    }
+    // Other methods...
 }
