@@ -5,13 +5,13 @@ use std::thread;
 use log::{info, error};
 
 pub struct Networking {
-    peers: Arc<Mutex<Vec<TcpStream>>>,
+    peers: Arc<Mutex<Vec<TcpStream>>><Mutex<Vec<TcpStream>>>,
 }
 
 impl Networking {
     pub fn new() -> Self {
         Networking {
-            peers: Arc::new(Mutex::new(vec![])),
+            peers: Arc<Mutex<Vec<TcpStream>>>::new(Mutex::new(vec![])),
         }
     }
 
@@ -51,7 +51,7 @@ impl Networking {
 
     pub fn broadcast_message(&self, message: &str) -> Result<(), Error> {
         let peers = self.peers.lock().unwrap();
-        for peer in peers.iter() {
+        for mut peer in peers.iter_mut() {
             if let Err(e) = peer.write_all(message.as_bytes()) {
                 error!("Failed to send message to peer: {:?}", e);
             }
@@ -60,7 +60,7 @@ impl Networking {
     }
 }
 
-fn handle_client(mut stream: TcpStream, peers: Arc<Mutex<Vec<TcpStream>>>) {
+fn handle_client(mut stream: TcpStream, peers: Arc<Mutex<Vec<TcpStream>>><Mutex<Vec<TcpStream>>>) {
     let mut buffer = [0; 512];
     loop {
         match stream.read(&mut buffer) {
