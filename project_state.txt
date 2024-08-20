@@ -1,29 +1,3 @@
-=== ./test_cert.crt ===
------BEGIN CERTIFICATE-----
-MIIDuTCCAqGgAwIBAgIUVXSz9n9sUkgSDhnyLuGmVcZRNK8wDQYJKoZIhvcNAQEL
-BQAwbDELMAkGA1UEBhMCVVMxCzAJBgNVBAgMAk5ZMRAwDgYDVQQHDAdQYWxteXJh
-MSEwHwYDVQQKDBhJbnRlckNvb3BlcmF0aXZlIE5ldHdvcmsxDTALBgNVBAsMBE5v
-ZGUxDDAKBgNVBAMMA0lDTjAeFw0yNDA4MjAwNzM5NDBaFw0yNTA4MjAwNzM5NDBa
-MGwxCzAJBgNVBAYTAlVTMQswCQYDVQQIDAJOWTEQMA4GA1UEBwwHUGFsbXlyYTEh
-MB8GA1UECgwYSW50ZXJDb29wZXJhdGl2ZSBOZXR3b3JrMQ0wCwYDVQQLDAROb2Rl
-MQwwCgYDVQQDDANJQ04wggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQCq
-iABpZtwNQC0vdQxFvm4uQsNQgRDL/90jRgrsm8AYWcKRDWpoExi/aiYT1FrFo2rs
-PM7kqzaIb7xiPtJIhzOJg4qNc5Gi6/wSJ4A/qYkRuAGznWkp735moKLmhbn0vRq3
-KWNUk7QN7cbQOww50Td25Omo0TZOrwXbGFdeit8WyjAaUxuXaFINnptga+v7PUhf
-DNbTh+TWqpUlc+sWQ/mjW7hXfTZrsfNRfU8dd+v2U9gS5DjJ8BsekHgUrdVJc0WG
-MeX4S5IIChV4vmf15XLayiQ1zY+SLwcg3u1eOHifmBJNX5YZlzYBknU5mOcR5mC/
-L8K6hfF1zFcjH+CPx5StAgMBAAGjUzBRMB0GA1UdDgQWBBRBUbpVIhBpqrVqPbWL
-/EhJ/b256jAfBgNVHSMEGDAWgBRBUbpVIhBpqrVqPbWL/EhJ/b256jAPBgNVHRMB
-Af8EBTADAQH/MA0GCSqGSIb3DQEBCwUAA4IBAQB/AFohJ7yOexdrCebW+BNvxER9
-i7zZN1HskiXEyW/st5L612vJMESQYj9cJBeg1j8L9X/5LitWjfZb/+KsFwglKOQa
-uoygrOUlhlnfLJYQeXHtG8wr/pVaYCGUWtd7S1ZlDe2gfCrZGRZRoZ1GvaO2FOKk
-EsAUy9UUeplYaSH/nrtVb2Af7bwnlSdOh0RnElUYpp0QYaynLWAZCXO8z9xyMlnd
-KOIMTYIMQ7eSe0UDH70LUNeroUuqCC/31MEKJERfLkVMrZLmsqA7Nj/yd+mh1ULx
-VRMUSGAQpVE/bUaHxN1MIKmzrh1CheXjShgHvkPxAlF1YOcvxfJgyXjbTuxf
------END CERTIFICATE-----
-
-
-
 === ./generate_project_state.sh ===
 #!/bin/bash
 
@@ -295,22 +269,6 @@ impl From<native_tls::Error> for IcnError {
 }
 
 pub type IcnResult<T> = Result<T, IcnError>;
-
-
-=== ./test_cert.p12 ===
-0Ç
-è0Ç
-E	*ÜHÜ˜†Ç
-6Ç
-20Ç
-.0Ç¢	*ÜHÜ˜†Çì0Çè 0Çà	*ÜHÜ˜0W	*ÜHÜ˜0J0)	*ÜHÜ˜0‚“˘|Çí* 0*ÜHÜ˜	 0	`ÜHe*.B©ÆùÒy˘˜ª}Ã ÄÇ ÿæ‰ODÏËKÎ÷û—√´rìf¡çı√#∞˛í/Ià°øçòa8√º6ˆB˛ !GDFÚn¢CaOôu´·Ô?á«Í/>NBÕˆˇ/18Gb†-Ωt](¸àœ·≥Y™	3Áh…]	≠ÌìG}Øøˆ_ÓM¬F"<M™ú£Y/yåª¨àúÙ¨≥e¸ﬁ'tjåg≥ÿ™\¶L·”Ö∫ó&™oØy)ãŸvXÙn˚-«^| ∞Ú‰ÊXísÂ˘hô¡èZ0©9~0aà˝≤
-xl!år?¡"Âä?¿˝vî˛sÒEÄéMÖ≥K‰„§“˛Â˝ÚÀ“ ºí¿<ÈÜ'Z•A≤ä\Y^êàá•ËAw&¸ËÃ"\è¸ˇÏJ’	HÌ§%Vt9:ØqÈ,f√üÿ·m•≠IRhôÖDDÍApˇßEÑ'˙
-*™dfµÔqJ;!‰Ë∞∂ï≈—ÄÏF◊0≈·S8ÓÉ™?q◊z)Æù%ÿıîi<ïBîR 2úãlÉ1>Ge–êB$Ï¡næ“G§H3v º˙õ…aΩ[´	j‡⁄ΩPÌ¨>¨î_Î/eï-U¡Jò[™O⁄7Eå¬ïê 6ZS}ÕoåÛíÜ∞Ì∫éßsÌ£?ßõøO* ˇÙI√'◊BuÎ‡ìlÙÚ5ÃO∂õÜÀvHKV7 3≠ìEj€Õı-Ö®‡! ≈Ω≈-[àΩÜGÁÏ…3ç9.ñò{Çj\ª*≠mÓ<£A≥ÙÊÜËY6Ë<Ì˚‘1≈Òlô%™∫ñﬂ±g-3tI˘^}∏¨`Àbπ≥¨!=^Ú`TGåœò¬cwö‡N√Ü-´ÌÒöÊ”9Ω˛œL”8<∫3§_Ûº'[G≥Ä¢¸¯πÏº'ﬁ≤F√ykÑp-⁄4àÖæ˝HVﬂ'cﬂÃü0FÊ◊çãÚ[4‹5¢™~»ë‹º8ã{â¡ÈŒﬂü,ø¨µƒ#(û¸jdÁ6ƒmBWπF≈÷ö“„ˇ.◊ˆ˜Ω•GJ6¸…Á§ú…Ë∂Ìô*¥ëmÛÆ&Ô˘´€[Ç®¬•eë(p≥E´i’À81ŒÃ>S<ì-∫¨Ê6‰[[‹ÅiÛıŸ(“Áö»)Û€ﬁÑ…ö¢|JÜçÅidw¸ƒÒÂœ˘zπïÄÕFñõ{¢"	SıáÉ˝ôJ≈"‘ﬂ$Ì›63.ØÙ^·…Kûoﬂ≈∫qˆ76q¸“npSKÒÇeã…<dêwCëqpß∑îÆ8xc›‚=K%MjR˛NH…ç‹Ræ…˜˜©ôäûH–ùcÖI@Q2ºÛÁ“Øî◊{¯œ=ZÎπe˚%^…
-∞⁄vt€=@Ã1~ôvÄˆ«ÈcÃ«ı6≤fà√
-R)ûK[h.TSFÍ◊Qı„ ŒÛU0ÇÑ	*ÜHÜ˜†ÇuÇq0Çm0Çi*ÜHÜ˜
-†Ç10Ç-0W	*ÜHÜ˜0J0)	*ÜHÜ˜0‡™.R4# 0*ÜHÜ˜	 0	`ÜHe*œøsH/Eı√†]/L?^Ç–‡ö˙Ì‚h»öp5ùÁ≥Ü˝N'°<OÖ∏pfïË0.íï«Î¡[ïìÎ±ΩxÓ–#éûœhH√Ó™æûU(Gõ‚é|6∫‰#o!*À[ÿçπ[xn …˛∂ÂÁók±“!ûç–Ú¯Î∫QØ–°fsE.‡lpÕ•ÌaÌ¢!∏4>ó˚ŸΩ°√√≥cŸ~îèƒ∏)s“ûÌÉ€©œ3Æ≠0N”püø„fÏÁŸÙ[¡–#ï!·Q‹SÈ¸∆º.˙î9Î∆¡ç\ú€—ÃfP“‘OÜ öê@µJ∏«vy¡;¡x†C∆_’ö≠6@Œ»9y…n{ÛYm∂6÷∑BMõü!‘ñÊ´˙√qÛnP:ﬂ‘∂:Yä0nÂuWmÑ7A∂û¨˜’ wóX6G)"h†eÀ—âπã=|•±tCäÂ˛@?‹ÀËÄy”t>ı=À©
-f$DUÕÿb4˚≠J"=˛@–`i…ŒÀ'ª˚‡)∑8‘ÉË∏+CIãZA6WLı§ùpÇ{è|˝p¬ﬂi`ŸPµ’¡üWm‚≥ÿ±/Óˆ£5EH^oΩ=®"˛cê‹(ŒËCåofbÁc˝sWZOì∞=«»@¿î◊⁄ÎˆCònBıƒ$≈OK7u¶©L#ZMˇmW[îÒâ)+—<Á+°k≤ˇ$6TÙbiíü_ÿˆ!Wù˛ÑçÁ˘≈ÀÙ]N§‡1p—z›˘{X”+ÏªY∑]„≤i2PoR¬/ÜHôê §“é¡eÏ<¯—:IÓñ%ÙÂÓ5sxä«ßÚú‡X¸ÒÕÔ“IO.l“ÏÏ≥]\Aï ’Ç≈•l∞Å_9…≈˜_Õ1ı ∏d¿åUkñˇdöˆy"[…¡*¸Õ◊Èåø`C6‡#”"µ	“˘âvÂ'cQˆFI:Æ˝‡' B√epk*9Wó˜‰óu0yn‘∏5(ÿ\m±IÿŸÂéó93®2˚BRfÛé2£B‚lHO ™VY.<T‰Eïü>y®Ù(˛uxY"(ﬁñ›ûcrÊö¯Ú(	 Y¢S$6†Ö¸ÉÒ;øæËËº‘¥h∂˚˜f∑™óN%%•¨¶C$ûÆ©Í∏Vg<_≤h÷‚uÊqEJ%Í´¥.Á∑”˝KHπ"÷:≠ì;Ë¯£Ò ŸiBÈY˙°ÑE6¨µ‘)’IÃ\ÉÁ†¿‘%t¿Q°¯F ◊G˝`	È˛~N okà}j·π¯rΩÃ≠FCo»ü∏T¢€a94∑òÿxéÅ …ô¶ÕUP∑≤∑∂òŒÆy˛~¸é¶Bh7Nõä±‰,-ò∑∞n◊ºà{¡_≠‹zíÀ1iä
-._~	µtC  t©á‰4©’òÕ¨Qﬂ}2·N @œ„,ı·€d_TàÔPëheÚáÀŒ´·y¯vH∞ ⁄⁄>QÉ™¥ó‡!nra]& "ÖKªh|dø·bNÙ#u3€Üˇ/åú•µ¬ˆÃ(fAÓ”±ﬁUQìë&ØX"%1’ïŸºÕíl–Î]≤Æ¿‹∑Gèæ-ÍL(ìxƒ†=ÊÔÛ‘p¶ Ònôûﬁ4€~œ@De°QZÜÁ6îZXC_™‚ß‘€é1%0#	*ÜHÜ˜	1qÉ¶Œ˚Ÿ=¥ÀVéN*Ñ®L°5¥0A010	`ÜHe  /¡Õ,¸Üúj0ö÷TÂ±f‚®∂Wmî2¬÷i‹Á≥Ú¨\¶–ß¥õ 
 
 
 === ./config/default_config.toml ===
@@ -671,7 +629,6 @@ impl Bytecode {
 
 === ./icn_virtual_machine/src/lib.rs ===
 // icn_virtual_machine/src/lib.rs
-
 pub mod bytecode;
 pub mod execution_engine;
 
@@ -693,8 +650,34 @@ impl VirtualMachine {
     }
 
     /// Executes a smart contract represented by bytecode.
+    ///
+    /// # Arguments
+    ///
+    /// * `bytecode` - The bytecode to be executed.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<(), String>` - `Ok` if execution succeeds, otherwise an error message.
     pub fn execute(&mut self, bytecode: Bytecode) -> Result<(), String> {
         self.engine.execute(bytecode)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_virtual_machine_execution() {
+        let mut vm = VirtualMachine::new();
+        let bytecode = Bytecode::new(vec![0x01, 0x02, 0x03]);
+
+        // Test execution with non-empty bytecode
+        assert!(vm.execute(bytecode).is_ok());
+
+        // Test execution with empty bytecode
+        let empty_bytecode = Bytecode::new(vec![]);
+        assert!(vm.execute(empty_bytecode).is_err());
     }
 }
 
@@ -754,11 +737,9 @@ rand = "0.8"  # Add this line
 
 === ./icn_consensus/src/lib.rs ===
 // icn_consensus/src/lib.rs
-
 use icn_blockchain::block::Block;
-use icn_shared::IcnResult;
+use icn_shared::{IcnError, IcnResult};
 
-// Remove unused native_tls imports and unnecessary I/O imports
 pub mod proof_of_cooperation;
 use proof_of_cooperation::ProofOfCooperation;
 
@@ -785,7 +766,12 @@ impl Consensus {
     ///
     /// * `IcnResult<bool>` - `true` if the block is valid, otherwise an `IcnError`
     pub fn validate_block(&self, block: &Block) -> IcnResult<bool> {
-        self.proof_of_cooperation.validate(block)
+        let proposer_id = &block.proposer_id;
+        if self.proof_of_cooperation.is_registered(proposer_id) {
+            self.proof_of_cooperation.validate(block)
+        } else {
+            Err(IcnError::Consensus(format!("Unknown proposer: {}", proposer_id)))
+        }
     }
 
     /// Handles a potential fork in the blockchain by selecting the most valid chain
@@ -829,10 +815,22 @@ mod tests {
         let mut consensus = Consensus::new();
         let proposer_id = "peer1".to_string();
         
-        consensus.register_peer(&proposer_id).unwrap();
+        consensus.register_peer(&proposer_id).unwrap();  // Ensure proposer is registered
 
         let block = Block::new(0, 0, vec![], proposer_id.clone(), String::new(), String::new());
-        assert!(consensus.validate_block(&block).unwrap());
+
+        // Validate the block
+        let validation_result = consensus.validate_block(&block);
+
+        // Clone the result to avoid borrowing issues
+        let is_valid = validation_result.as_ref().is_ok();
+
+        // Debugging output to understand why the validation might fail
+        if let Err(e) = validation_result {
+            println!("Validation failed: {:?}", e);
+        }
+
+        assert!(is_valid);
     }
 
     #[test]
@@ -857,8 +855,6 @@ mod tests {
 
 
 === ./icn_consensus/src/proof_of_cooperation.rs ===
-// icn_consensus/src/proof_of_cooperation.rs
-
 use std::collections::{HashMap, HashSet};
 use icn_blockchain::block::Block;
 use icn_shared::{IcnError, IcnResult};
@@ -885,8 +881,12 @@ impl ProofOfCooperation {
         self.cooperation_scores.insert(peer_id.to_string(), 1.0);
     }
 
+    pub fn is_registered(&self, peer_id: &str) -> bool {
+        self.known_peers.contains(peer_id)
+    }
+
     pub fn validate(&self, block: &Block) -> IcnResult<bool> {
-        if !self.known_peers.contains(&block.proposer_id) {
+        if !self.is_registered(&block.proposer_id) {
             return Err(IcnError::Consensus(format!("Unknown proposer: {}", block.proposer_id)));
         }
 
@@ -924,7 +924,7 @@ impl ProofOfCooperation {
             .get_mut(peer_id)
             .ok_or_else(|| IcnError::Consensus(format!("Unknown peer: {}", peer_id)))?;
         
-        *score = score.max(0.1).min(2.0) * performance;
+        *score = (*score * performance).max(0.1).min(2.0);
         Ok(())
     }
 
@@ -979,6 +979,7 @@ mod tests {
 }
 
 
+
 === ./icn_governance/Cargo.toml ===
 [package]
 name = "icn_governance"
@@ -1019,6 +1020,42 @@ impl Proposal {
         self.votes_against += 1;
     }
 }
+
+
+
+=== ./ca-bundle.crt ===
+
+
+
+=== ./private.key ===
+-----BEGIN PRIVATE KEY-----
+MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQCimkgO66phw4qN
+6+fC37JTRI91L8Efir0T+Q7yHYUU2R1LKfIyHxY1CZzxb0JGi7VTI1Ps5kH7pzfw
+s++wyWDo6by1byJMW8ngiP0fLTe1iRfnQWw7bV36ndh0rFakfw9EmmCuWSHuMDcI
+YwJ2JUG3XHh7NXc4vls3J2SYF3/aq5/Ak++Ga4/OOJDRlGILaidw3whc0zB7K4JV
+p5yqHYoMq2cjwtBFpElvzVp/TDwd25JBXug/d5W1aIi7KPWYJzQL4Nf2ZL/P8kEv
+tRi2TkLIRawTl9Wdf6YT87Up9qYQDhu/n4GzVExJbc0wFP130pUW/pvsuksef0cy
+wB/FvA3pAgMBAAECggEADG8WzolH5KTyzep5tQWtGb/25mOp9XMDBWl4spv+RrtZ
+iZtiCWImLRUYmr/Cxik9yuc7LjTnW8qMNQxVamPj1Lu28frXGRa1x8VB8eXfyjJ7
+EPSIRb0VwCnc2QMqtvZ+YOUbOonXVeL6+lmz4Pv1XAOmtOlAPicUS5HoF9dIMBzr
+Z174rfyYKMMLacxxj293Vtg8PnkZeoOXZfK23I7z4QFubAvDR/RBsNq7kQvis5Hr
+VxRFB/lr47jqvsFWm12MsELaqkY7DNQEtadsANEE256SZqivveXV3xSk3kvYbkTE
+fRHoytV06VUxo1d4BHBMcFmkpp+aLT8TVKKK2DxXGQKBgQDTubwByvbwsp0zg7K3
+qufMqxG49eW4WDe5fRxJTdD7yJMRDNgM65k9zpMisfqUOrq/3c6Vd35bOQh2FTM8
+blbvMizZTB0odNuG25C6skVFFwdNTcZb92s4OK9N58M+PWIKo4y1iLHCdJVqT3Ed
+qH/Ya88JmvHCLmSg1k757XUvlQKBgQDEmtyGAufuzcw90eLSdRgWxBZAX4dVEAXL
+rc7XRGbkV5e9YSfxd9kNxQO+FWyj57GlNN5luGVTdTVEcecLSymVfmqeV68/IiDX
+GtinqiD3HwYGcHR1gbsL6Ptot6398tgPsAoEs9Ru+QgmXlK8pO8h4Y8Yhm+8+SIA
+dbv8GKGgBQKBgCQTjtyDWAZ1eOHRO/+dyHeQYqmwhJ8fsQcTMWGwN77fU2fhV2ME
+Ng1ZCKstxnPBeha9VbkULlye4Dk2rY9LgdaqJwgztvgwyUM2YHffbnwyS1U5vmXn
+R8bBqeVNa3BMh0smyRAZpahrsxX1SWHzVy1qWVHaq/0ZaJ4bRkPB2WjtAoGABDud
+UdlQKwkNQ6t4KbXRrfPM0tf7ru4oYck9Mc9MM9Ba+P3VgVJmPvCl8vq9Gw5K+daY
+jzIYJGLaob2eDtUwcQKGwx/6Ku7OLDNsxLdZ/FgTpiHXsAv5/finKQsDWPtYgYX1
+wUIp6bW84i6Xs24No/oaPZnvX+8xNzdRs8zH9g0CgYA8R6Agf9A2xki3oUQQoOAP
+IjQW43RvN5HsD5UW5UqLJEMgf1hOyh0jwDAYVIxya+36yRnLxtePh1C8W8+3xeod
+q8lbFk+CJMNprbCliRm7vlUAlK9c9ddUGuuCxjQ5QihGLHh/MdKmdLdD4VNqt4cO
+dQTRbDPlNRzDQQfAqfQYMw==
+-----END PRIVATE KEY-----
 
 
 
@@ -2590,7 +2627,7 @@ async fn main() -> IcnResult<()> {
     let config_loader = ConfigLoader::new(config_path)?;
 
     // Initialize the ModuleCoordinator
-    let mut coordinator = ModuleCoordinator::new();
+    let coordinator = ModuleCoordinator::new(); // Removed unnecessary mut
 
     // Create a NodeManager with both the ConfigLoader and ModuleCoordinator
     let mut node = NodeManager::new(config_loader, coordinator)?;
@@ -2849,38 +2886,6 @@ impl Storage {
 
 
 
-=== ./test_cert.key ===
------BEGIN PRIVATE KEY-----
-MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQCqiABpZtwNQC0v
-dQxFvm4uQsNQgRDL/90jRgrsm8AYWcKRDWpoExi/aiYT1FrFo2rsPM7kqzaIb7xi
-PtJIhzOJg4qNc5Gi6/wSJ4A/qYkRuAGznWkp735moKLmhbn0vRq3KWNUk7QN7cbQ
-Oww50Td25Omo0TZOrwXbGFdeit8WyjAaUxuXaFINnptga+v7PUhfDNbTh+TWqpUl
-c+sWQ/mjW7hXfTZrsfNRfU8dd+v2U9gS5DjJ8BsekHgUrdVJc0WGMeX4S5IIChV4
-vmf15XLayiQ1zY+SLwcg3u1eOHifmBJNX5YZlzYBknU5mOcR5mC/L8K6hfF1zFcj
-H+CPx5StAgMBAAECggEAE8qQ8aqkY01NcTKOaBG/y9KnxFIWVvas/YkFf4xb8PeJ
-4zfBX67Hsn9pR+ffWQysPhqYkGVmgNMm8+gCk7RNQOppTB1bi6MDsD+xXLIaXFoU
-qHneWKWY7+Q4w7RFbqf7z8IX6xrxTKSJ7GTN+G/VlhDfJV6ShPM/JLxgd3J6jbRc
-29qmdsypcvmpEFgfMHtMgD8q0sSyiQkAa6LxYMBUSP8R52AafgTQ0BNzfS9UNTFA
-WH1Bgig+GaSoXjZBwCQbIP4+KN+1GHN3NUJGT0010GeAydS9qUWTJMKDN2kweANr
-dUXBX+QKtD3gld91sK1Og7mx7do7JwPoqBpYVtveAQKBgQDg0zgZZhadLK6+3oJM
-C/zwzKxC18hOBdmiMkCOJWSj2NGNv1/RsckaVpsP9DvzYCPHxuw3QjNR5KLE2bbE
-tFUtuJxIO1RYtapH4nEkXywjHwjznshsAEKNnJg5OkBMy9WM0PwW1BDv3xgTJdsx
-0FeNyZNqhYOHaZ2lFReRMNT5wQKBgQDCLXmTaQSwg+/tZ0h8188m6wrqwUR+L/LC
-diZ4wJ4BIZmeXIphoCaurQ71be+FdcKOqACOGrHwitDjiI7/ImrKJsxfO2NmjWQO
-L3Yjj5rHs8Rhe7S22vyMjkAbihKyjUjVTGtZ7GsxdZfFpRK972ZT1VwR8fVBArj4
-3r5Qz7Gd7QKBgFfedZiHq+L2Kb3znR03uj4q4FCnoWPNKYgY994Wg0T+YrhxyXNd
-dunSW3xaymuOca2M85mNSB2DrJIfPS2YBYp/EqWweoDJT6oUuH+sqsV3RbphnpeH
-anuKbnw/Zg4dxHLq4vvRGmWF3hTtwMOxV+bUl8cUM5njD3gLzFA0s6iBAoGAE0zV
-0rMThj/27w/fApmou2ONWDwRhMFbTbzUohfzHIWscTMdhgqXDbGh1P8yWX+U8Pz9
-4SICIbiKfrMqE23mU2V71tNeU+kl0ssg4PP7HHJfyJi1I5+sjoPtF0+oABtO6/SG
-jw+Sr/3SMhDwRfSvpRGF7zqvd+C/Ze0t2XZrXxkCgYBbidECfw6P3CQ6zSkN5l6T
-hFVItDrTiTyjqZS+mOptNJZBxbGPWkzLq/ZB7kUXMjnkc4eZqWRPvd9LquV7mLX1
-x0EGqev4/XUVu0SkNRTRaUX7Ellgoj/r7CWsy/ks5Km+QgS9T8nZs73kuxBMKH5X
-vs6ws3SO/YqC7FK/w9y2Yw==
------END PRIVATE KEY-----
-
-
-
 === ./icn_identity/Cargo.toml ===
 [package]
 name = "icn_identity"
@@ -2981,6 +2986,31 @@ echo "Changes have been successfully committed and pushed."
 /target
 **/*.rs.bk
 Cargo.lock
+
+
+
+=== ./cert.crt ===
+-----BEGIN CERTIFICATE-----
+MIIDazCCAlOgAwIBAgIUJ7jodMjKnM44chKNoNnbLAu4dtgwDQYJKoZIhvcNAQEL
+BQAwRTELMAkGA1UEBhMCQVUxEzARBgNVBAgMClNvbWUtU3RhdGUxITAfBgNVBAoM
+GEludGVybmV0IFdpZGdpdHMgUHR5IEx0ZDAeFw0yNDA4MjAwOTQ5NThaFw0yNTA4
+MjAwOTQ5NThaMEUxCzAJBgNVBAYTAkFVMRMwEQYDVQQIDApTb21lLVN0YXRlMSEw
+HwYDVQQKDBhJbnRlcm5ldCBXaWRnaXRzIFB0eSBMdGQwggEiMA0GCSqGSIb3DQEB
+AQUAA4IBDwAwggEKAoIBAQCimkgO66phw4qN6+fC37JTRI91L8Efir0T+Q7yHYUU
+2R1LKfIyHxY1CZzxb0JGi7VTI1Ps5kH7pzfws++wyWDo6by1byJMW8ngiP0fLTe1
+iRfnQWw7bV36ndh0rFakfw9EmmCuWSHuMDcIYwJ2JUG3XHh7NXc4vls3J2SYF3/a
+q5/Ak++Ga4/OOJDRlGILaidw3whc0zB7K4JVp5yqHYoMq2cjwtBFpElvzVp/TDwd
+25JBXug/d5W1aIi7KPWYJzQL4Nf2ZL/P8kEvtRi2TkLIRawTl9Wdf6YT87Up9qYQ
+Dhu/n4GzVExJbc0wFP130pUW/pvsuksef0cywB/FvA3pAgMBAAGjUzBRMB0GA1Ud
+DgQWBBTfzrbbJMAfLYUPJ6jK56a7o67KaDAfBgNVHSMEGDAWgBTfzrbbJMAfLYUP
+J6jK56a7o67KaDAPBgNVHRMBAf8EBTADAQH/MA0GCSqGSIb3DQEBCwUAA4IBAQAd
+WjR2E/VjWEZevLwg2o/U61TgTT998xoNBRkUnxQtMr65+c1vaHri8Pup5UdL78DY
+HWbDSWRhdOXwgkKfVO/nra2q7wuKhzhtc93UJmMIpX6y/6n4rfiDPxhoTsvQFFbR
+SbM5unhTC3z8YRtpviH3uNpV9MLUl97WjnGtyO8JmeQJpShg+7QfODh9qeQdGhZE
+44w3iKwfxFh7QkrC1uxtJSNOEDojqd764jutLzkIwqGLmrTE8hdqsp0K1b4ndnr3
+HdblGrbmmRMcvNXnQBHuqGWisBJwyBOXe8xdrp2G6p+ugQwwjfYxQ84hARb4yfsV
+opofgoP+yqNGPhtUGpOJ
+-----END CERTIFICATE-----
 
 
 

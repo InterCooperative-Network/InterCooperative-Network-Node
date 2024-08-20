@@ -1,5 +1,3 @@
-// icn_consensus/src/proof_of_cooperation.rs
-
 use std::collections::{HashMap, HashSet};
 use icn_blockchain::block::Block;
 use icn_shared::{IcnError, IcnResult};
@@ -26,8 +24,12 @@ impl ProofOfCooperation {
         self.cooperation_scores.insert(peer_id.to_string(), 1.0);
     }
 
+    pub fn is_registered(&self, peer_id: &str) -> bool {
+        self.known_peers.contains(peer_id)
+    }
+
     pub fn validate(&self, block: &Block) -> IcnResult<bool> {
-        if !self.known_peers.contains(&block.proposer_id) {
+        if !self.is_registered(&block.proposer_id) {
             return Err(IcnError::Consensus(format!("Unknown proposer: {}", block.proposer_id)));
         }
 
@@ -65,7 +67,7 @@ impl ProofOfCooperation {
             .get_mut(peer_id)
             .ok_or_else(|| IcnError::Consensus(format!("Unknown peer: {}", peer_id)))?;
         
-        *score = score.max(0.1).min(2.0) * performance;
+        *score = (*score * performance).max(0.1).min(2.0);
         Ok(())
     }
 

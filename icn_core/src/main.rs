@@ -20,7 +20,7 @@ async fn main() -> IcnResult<()> {
     let config_loader = ConfigLoader::new(config_path)?;
 
     // Initialize the ModuleCoordinator
-    let mut coordinator = ModuleCoordinator::new();
+    let coordinator = ModuleCoordinator::new(); // Removed unnecessary mut
 
     // Create a NodeManager with both the ConfigLoader and ModuleCoordinator
     let mut node = NodeManager::new(config_loader, coordinator)?;
