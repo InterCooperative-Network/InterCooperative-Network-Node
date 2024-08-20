@@ -5,7 +5,7 @@ use std::thread;
 use log::{info, error};
 
 pub struct Networking {
-    peers: Arc<Mutex<Vec<TcpStream>>><Mutex<Vec<TcpStream>>>,
+    peers: Arc<Mutex<Vec<TcpStream>>>,
 }
 
 impl Networking {
@@ -60,7 +60,7 @@ impl Networking {
     }
 }
 
-fn handle_client(mut stream: TcpStream, peers: Arc<Mutex<Vec<TcpStream>>><Mutex<Vec<TcpStream>>>) {
+fn handle_client(mut stream: TcpStream, peers: Arc<Mutex<Vec<TcpStream>>>) {
     let mut buffer = [0; 512];
     loop {
         match stream.read(&mut buffer) {
