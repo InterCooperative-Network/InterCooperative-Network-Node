@@ -1,16 +1,16 @@
-// icn_core/src/coordinator/module_coordinator.rs
+// File: icn_core/src/coordinator/module_coordinator.rs
 
 use std::sync::{Arc, Mutex};
-use icn_blockchain::Blockchain;
-use icn_consensus::Consensus;
+use icn_blockchain::Chain;
+use icn_consensus::ProofOfCooperation;
 use icn_networking::Networking;
 use icn_shared::{NodeState, IcnResult};
-use icn_core::config::ConfigLoader;
+use crate::config::ConfigLoader;
 
 /// `ModuleCoordinator` coordinates the interactions between various modules of the node.
 pub struct ModuleCoordinator {
-    blockchain: Arc<Mutex<Blockchain>>,
-    consensus: Arc<Mutex<Consensus>>,
+    blockchain: Arc<Mutex<Chain>>,
+    consensus: Arc<Mutex<ProofOfCooperation>>,
     networking: Arc<Mutex<Networking>>,
     node_state: Arc<Mutex<NodeState>>,
 }
@@ -18,8 +18,8 @@ pub struct ModuleCoordinator {
 impl ModuleCoordinator {
     /// Creates a new `ModuleCoordinator` instance.
     pub fn new() -> Self {
-        let blockchain = Arc::new(Mutex::new(Blockchain::new()));
-        let consensus = Arc::new(Mutex::new(Consensus::new()));
+        let blockchain = Arc::new(Mutex::new(Chain::new()));
+        let consensus = Arc::new(Mutex::new(ProofOfCooperation::new()));
         let networking = Arc::new(Mutex::new(Networking::new()));
         let node_state = Arc::new(Mutex::new(NodeState::Initializing));
 
@@ -42,8 +42,8 @@ impl ModuleCoordinator {
     ///
     /// # Returns
     /// 
-    /// * `IcnResult<()>` -  Ok(()) if successful, or an `IcnError` if an error occurs.
-    pub fn start(&self, config_loader: &ConfigLoader) -> IcnResult<()> {
+    /// * `IcnResult<()>` - Ok(()) if successful, or an `IcnError` if an error occurs.
+    pub async fn start(&self, config_loader: &ConfigLoader) -> IcnResult<()> {
         let cert_file_path = config_loader.get_string("network.cert_file_path")?;
         let cert_password = config_loader.get_string("network.cert_password")?;
 
@@ -51,8 +51,8 @@ impl ModuleCoordinator {
         self.networking
             .lock()
             .unwrap()
-            .initialize(&cert_file_path, &cert_password)?;
-
+            .initialize().await?;
+        
         // ... other module initializations (blockchain, consensus) ...
 
         // Update node state to Operational

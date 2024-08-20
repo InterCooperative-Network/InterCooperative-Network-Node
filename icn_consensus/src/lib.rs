@@ -1,4 +1,4 @@
-// File: icn_consensus/src/lib.rs
+// icn_consensus/src/lib.rs
 
 use std::collections::{HashMap, HashSet};
 use icn_blockchain::block::Block;
@@ -95,17 +95,15 @@ mod tests {
     use super::*;
     use icn_blockchain::block::Block;
 
-    // File: icn_consensus/src/lib.rs (continued)
-
     #[test]
     fn test_register_and_validate_peer() {
         let mut poc = ProofOfCooperation::new();
         poc.register_peer("peer1");
         
-        let block = Block::new(0, 0, vec![], "0".to_string(), "hash".to_string(), "peer1".to_string());
+        let block = Block::new(0, vec![], "0".to_string(), "peer1".to_string());
         assert!(poc.validate(&block).is_ok());
 
-        let invalid_block = Block::new(0, 0, vec![], "0".to_string(), "hash".to_string(), "unknown_peer".to_string());
+        let invalid_block = Block::new(0, vec![], "0".to_string(), "unknown_peer".to_string());
         assert!(poc.validate(&invalid_block).is_err());
     }
 

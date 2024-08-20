@@ -1,105 +1,58 @@
-// icn_core/src/config/config_loader.rs
+// File: icn_core/src/config/config_loader.rs
 
-use std::fs;
-use toml::{Value, map::Map};
-use icn_shared::IcnResult;
-
-/// `ConfigLoader` handles the loading and parsing of TOML configuration files.
-#[derive(Debug, Clone)]
+/// Represents a configuration loader for the ICN node.
 pub struct ConfigLoader {
-    config: Map<String, Value>,
+    config: config::Config,
 }
 
 impl ConfigLoader {
-    /// Creates a new `ConfigLoader` instance by loading and parsing a TOML configuration file.
+    /// Creates a new instance of `ConfigLoader` by loading the configuration from a file.
     ///
     /// # Arguments
     ///
-    /// * `config_path` - The path to the TOML configuration file.
+    /// * `config_path` - The path to the configuration file.
     ///
     /// # Returns
     ///
-    /// * `IcnResult<Self>` - A new `ConfigLoader` instance if successful, otherwise an `IcnError`.
+    /// * `IcnResult<ConfigLoader>` - An instance of `ConfigLoader` or an `IcnError`.
     pub fn new(config_path: &str) -> IcnResult<Self> {
-        let config_content = fs::read_to_string(config_path)?;
-        let config: Map<String, Value> = toml::from_str(&config_content)?;
+        let mut config = config::Config::default();
+        config
+            .merge(config::File::with_name(config_path))
+            .map_err(|e| IcnError::Config(format!("Failed to load config: {}", e)))?;
+
         Ok(ConfigLoader { config })
     }
 
-    /// Retrieves the entire configuration map.
-    ///
-    /// # Returns
-    ///
-    /// * `&Map<String, Value>` - A reference to the configuration map.
-    pub fn get_config(&self) -> &Map<String, Value> {
-        &self.config
-    }
-
-    /// Retrieves a string value from the configuration.
+    /// Retrieves a value from the configuration as a string.
     ///
     /// # Arguments
     ///
-    /// * `key` - The key of the string value to retrieve.
+    /// * `key` - The configuration key to retrieve.
     ///
     /// # Returns
     ///
-    /// * `IcnResult<String>` - The string value or an `IcnError` if not found or invalid.
-    pub fn get_string(&self, key: &str) -> IcnResult<String> {
-        self.get_nested_value(key)?
-            .as_str()
-            .map(|s| s.to_string())
-            .ok_or_else(|| IcnError::Config(format!("Value for key '{}' is not a string", key)))
+    /// * `IcnResult<String>` - The configuration value as a string or an `IcnError`.
+    pub fn get_value_as_string(&self, key: &str) -> IcnResult<String> {
+        self.config
+            .get_str(key)
+            .map_err(|e| IcnError::Config(format!("Failed to get string value: {}", e)))
     }
 
-    /// Retrieves an integer value from the configuration.
+    /// Retrieves a value from the configuration as an integer.
     ///
     /// # Arguments
     ///
-    /// * `key` - The key of the integer value to retrieve.
+    /// * `key` - The configuration key to retrieve.
     ///
     /// # Returns
     ///
-    /// * `IcnResult<i64>` - The integer value or an `IcnError` if not found or invalid.
-    pub fn get_int(&self, key: &str) -> IcnResult<i64> {
-        self.get_nested_value(key)?
-            .as_integer()
-            .ok_or_else(|| IcnError::Config(format!("Value for key '{}' is not an integer", key)))
+    /// * `IcnResult<i64>` - The configuration value as an integer or an `IcnError`.
+    pub fn get_value_as_int(&self, key: &str) -> IcnResult<i64> {
+        self.config
+            .get_int(key)
+            .map_err(|e| IcnError::Config(format!("Failed to get int value: {}", e)))
     }
 
-    /// Retrieves a boolean value from the configuration.
-    ///
-    /// # Arguments
-    ///
-    /// * `key` - The key of the boolean value to retrieve.
-    ///
-    /// # Returns
-    ///
-    /// * `IcnResult<bool>` - The boolean value or an `IcnError` if not found or invalid.
-    pub fn get_bool(&self, key: &str) -> IcnResult<bool> {
-        self.get_nested_value(key)?
-            .as_bool()
-            .ok_or_else(|| IcnError::Config(format!("Value for key '{}' is not a boolean", key)))
-    }
-
-    /// Retrieves a nested value from the configuration using dot-separated keys.
-    ///
-    /// # Arguments
-    ///
-    /// * `key` - The dot-separated keys to the nested value.
-    ///
-    /// # Returns
-    ///
-    /// * `IcnResult<&Value>` - A reference to the nested value or an `IcnError` if not found.
-    fn get_nested_value(&self, key: &str) -> IcnResult<&Value> {
-        let keys: Vec<&str> = key.split('.').collect();
-        let mut current_value = &self.config;
-
-        for key_part in keys {
-            current_value = current_value
-                .get(key_part)
-                .ok_or_else(|| IcnError::Config(format!("Key '{}' not found", key)))?;
-        }
-
-        Ok(current_value)
-    }
+    // Add more methods for other types as needed (e.g., boolean, float)
 }

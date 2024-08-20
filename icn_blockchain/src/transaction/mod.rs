@@ -1,3 +1,5 @@
+// icn_blockchain/src/transaction/mod.rs
+
 use serde::{Serialize, Deserialize};
 
 /// Represents the different types of transactions supported by the blockchain
@@ -33,7 +35,7 @@ impl Transaction {
             }
             TransactionType::DeployContract => {
                 // Validation logic specific to DeployContract transactions
-                // ... (Add your validation logic here)
+                // Add your validation logic here
                 false // Placeholder for now
             }
             // Add more match arms for other transaction types as needed

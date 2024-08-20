@@ -3,8 +3,7 @@
 use serde::{Serialize, Deserialize};
 use sha2::{Sha256, Digest};
 use chrono::Utc;
-// Updated: Fixed the incorrect import
-use crate::chain::Transaction;
+use crate::transaction::Transaction; // Corrected import path
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Block {
@@ -37,10 +36,11 @@ impl Block {
         block
     }
 
+
     pub fn calculate_hash(&self) -> String {
         let mut hasher = Sha256::new();
         hasher.update(format!(
-            "{}{}{}{}{}{}", // Added missing placeholder
+            "{}{}{}{}{}{}", // Fixed formatting by adding the missing placeholder
             self.index,
             self.timestamp,
             serde_json::to_string(&self.transactions).unwrap(),

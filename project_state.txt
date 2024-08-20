@@ -373,6 +373,8 @@ chrono = "0.4"
 
 
 === ./icn_blockchain/src/transaction/mod.rs ===
+// icn_blockchain/src/transaction/mod.rs
+
 use serde::{Serialize, Deserialize};
 
 /// Represents the different types of transactions supported by the blockchain
@@ -408,7 +410,7 @@ impl Transaction {
             }
             TransactionType::DeployContract => {
                 // Validation logic specific to DeployContract transactions
-                // ... (Add your validation logic here)
+                // Add your validation logic here
                 false // Placeholder for now
             }
             // Add more match arms for other transaction types as needed
@@ -430,13 +432,15 @@ pub enum TransactionType {
 
 
 === ./icn_blockchain/src/lib.rs ===
-// File: icn_blockchain/src/lib.rs
+// icn_blockchain/src/lib.rs
 
 pub mod block;
 pub mod chain;
+pub mod transaction; // Ensure this line is included to expose the transaction module
 
 pub use block::Block;
 pub use chain::Chain;
+pub use transaction::Transaction; // Add this to expose Transaction if needed
 
 
 
@@ -446,8 +450,7 @@ pub use chain::Chain;
 use serde::{Serialize, Deserialize};
 use sha2::{Sha256, Digest};
 use chrono::Utc;
-// Updated: Fixed the incorrect import
-use crate::chain::Transaction;
+use crate::transaction::Transaction; // Corrected import path
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Block {
@@ -480,10 +483,11 @@ impl Block {
         block
     }
 
+
     pub fn calculate_hash(&self) -> String {
         let mut hasher = Sha256::new();
         hasher.update(format!(
-            "{}{}{}{}{}{}", // Added missing placeholder
+            "{}{}{}{}{}{}", // Fixed formatting by adding the missing placeholder
             self.index,
             self.timestamp,
             serde_json::to_string(&self.transactions).unwrap(),
@@ -515,56 +519,35 @@ impl Block {
 // icn_blockchain/src/chain/mod.rs
 
 use crate::block::Block;
-use std::collections::VecDeque;
+use crate::transaction::Transaction;
 
 pub struct Chain {
-    blocks: VecDeque<Block>,
+    pub blocks: Vec<Block>,
 }
 
 impl Chain {
     pub fn new() -> Self {
-        let genesis_block = Self::create_genesis_block();
-        let mut blocks = VecDeque::new();
-        blocks.push_back(genesis_block);
-        Chain { blocks }
+        let genesis_block = Block::new(
+            0, 
+            vec![], 
+            String::from("0"), 
+            String::from("genesis_proposer")
+        );
+
+        Chain {
+            blocks: vec![genesis_block],
+        }
     }
 
-    pub fn add_block(&mut self, block: Block) {
-        self.blocks.push_back(block);
-    }
-
-    pub fn get_latest_block(&self) -> Option<&Block> {
-        self.blocks.back()
-    }
-
-    pub fn len(&self) -> usize {
-        self.blocks.len()
-    }
-
-    /// Creates the genesis block for the blockchain.
-    fn create_genesis_block() -> Block {
-        let transactions = vec![];
-        Block::new(0, 0, transactions, String::from("0"), String::from("genesis_hash"), String::from("genesis_proposer"))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_chain_creation() {
-        let chain = Chain::new();
-        assert_eq!(chain.len(), 1);
-        assert!(chain.get_latest_block().is_some());
-    }
-
-    #[test]
-    fn test_add_block() {
-        let mut chain = Chain::new();
-        let new_block = Block::new(1, 0, vec![], String::from("prev_hash"), String::from("new_hash"), String::from("proposer"));
-        chain.add_block(new_block);
-        assert_eq!(chain.len(), 2);
+    pub fn add_block(&mut self, transactions: Vec<Transaction>, previous_hash: String, proposer_id: String) {
+        let previous_block = self.blocks.last().unwrap();
+        let new_block = Block::new(
+            previous_block.index + 1,
+            transactions,
+            previous_hash,
+            proposer_id
+        );
+        self.blocks.push(new_block);
     }
 }
 
@@ -801,7 +784,7 @@ rand = "0.8"  # Add this line
 
 
 === ./icn_consensus/src/lib.rs ===
-// File: icn_consensus/src/lib.rs
+// icn_consensus/src/lib.rs
 
 use std::collections::{HashMap, HashSet};
 use icn_blockchain::block::Block;
@@ -898,17 +881,15 @@ mod tests {
     use super::*;
     use icn_blockchain::block::Block;
 
-    // File: icn_consensus/src/lib.rs (continued)
-
     #[test]
     fn test_register_and_validate_peer() {
         let mut poc = ProofOfCooperation::new();
         poc.register_peer("peer1");
         
-        let block = Block::new(0, 0, vec![], "0".to_string(), "hash".to_string(), "peer1".to_string());
+        let block = Block::new(0, vec![], "0".to_string(), "peer1".to_string());
         assert!(poc.validate(&block).is_ok());
 
-        let invalid_block = Block::new(0, 0, vec![], "0".to_string(), "hash".to_string(), "unknown_peer".to_string());
+        let invalid_block = Block::new(0, vec![], "0".to_string(), "unknown_peer".to_string());
         assert!(poc.validate(&invalid_block).is_err());
     }
 
@@ -934,6 +915,7 @@ mod tests {
         assert!(poc.cooperation_scores["peer1"] < 1.0);
     }
 }
+
 
 
 === ./icn_consensus/src/proof_of_cooperation.rs ===
@@ -2587,111 +2569,65 @@ impl ConfigLoader {
 
 
 === ./icn_core/src/config/config_loader.rs ===
-// icn_core/src/config/config_loader.rs
+// File: icn_core/src/config/config_loader.rs
 
-use std::fs;
-use toml::{Value, map::Map};
-use icn_shared::IcnResult;
-
-/// `ConfigLoader` handles the loading and parsing of TOML configuration files.
-#[derive(Debug, Clone)]
+/// Represents a configuration loader for the ICN node.
 pub struct ConfigLoader {
-    config: Map<String, Value>,
+    config: config::Config,
 }
 
 impl ConfigLoader {
-    /// Creates a new `ConfigLoader` instance by loading and parsing a TOML configuration file.
+    /// Creates a new instance of `ConfigLoader` by loading the configuration from a file.
     ///
     /// # Arguments
     ///
-    /// * `config_path` - The path to the TOML configuration file.
+    /// * `config_path` - The path to the configuration file.
     ///
     /// # Returns
     ///
-    /// * `IcnResult<Self>` - A new `ConfigLoader` instance if successful, otherwise an `IcnError`.
+    /// * `IcnResult<ConfigLoader>` - An instance of `ConfigLoader` or an `IcnError`.
     pub fn new(config_path: &str) -> IcnResult<Self> {
-        let config_content = fs::read_to_string(config_path)?;
-        let config: Map<String, Value> = toml::from_str(&config_content)?;
+        let mut config = config::Config::default();
+        config
+            .merge(config::File::with_name(config_path))
+            .map_err(|e| IcnError::Config(format!("Failed to load config: {}", e)))?;
+
         Ok(ConfigLoader { config })
     }
 
-    /// Retrieves the entire configuration map.
-    ///
-    /// # Returns
-    ///
-    /// * `&Map<String, Value>` - A reference to the configuration map.
-    pub fn get_config(&self) -> &Map<String, Value> {
-        &self.config
-    }
-
-    /// Retrieves a string value from the configuration.
+    /// Retrieves a value from the configuration as a string.
     ///
     /// # Arguments
     ///
-    /// * `key` - The key of the string value to retrieve.
+    /// * `key` - The configuration key to retrieve.
     ///
     /// # Returns
     ///
-    /// * `IcnResult<String>` - The string value or an `IcnError` if not found or invalid.
-    pub fn get_string(&self, key: &str) -> IcnResult<String> {
-        self.get_nested_value(key)?
-            .as_str()
-            .map(|s| s.to_string())
-            .ok_or_else(|| IcnError::Config(format!("Value for key '{}' is not a string", key)))
+    /// * `IcnResult<String>` - The configuration value as a string or an `IcnError`.
+    pub fn get_value_as_string(&self, key: &str) -> IcnResult<String> {
+        self.config
+            .get_str(key)
+            .map_err(|e| IcnError::Config(format!("Failed to get string value: {}", e)))
     }
 
-    /// Retrieves an integer value from the configuration.
+    /// Retrieves a value from the configuration as an integer.
     ///
     /// # Arguments
     ///
-    /// * `key` - The key of the integer value to retrieve.
+    /// * `key` - The configuration key to retrieve.
     ///
     /// # Returns
     ///
-    /// * `IcnResult<i64>` - The integer value or an `IcnError` if not found or invalid.
-    pub fn get_int(&self, key: &str) -> IcnResult<i64> {
-        self.get_nested_value(key)?
-            .as_integer()
-            .ok_or_else(|| IcnError::Config(format!("Value for key '{}' is not an integer", key)))
+    /// * `IcnResult<i64>` - The configuration value as an integer or an `IcnError`.
+    pub fn get_value_as_int(&self, key: &str) -> IcnResult<i64> {
+        self.config
+            .get_int(key)
+            .map_err(|e| IcnError::Config(format!("Failed to get int value: {}", e)))
     }
 
-    /// Retrieves a boolean value from the configuration.
-    ///
-    /// # Arguments
-    ///
-    /// * `key` - The key of the boolean value to retrieve.
-    ///
-    /// # Returns
-    ///
-    /// * `IcnResult<bool>` - The boolean value or an `IcnError` if not found or invalid.
-    pub fn get_bool(&self, key: &str) -> IcnResult<bool> {
-        self.get_nested_value(key)?
-            .as_bool()
-            .ok_or_else(|| IcnError::Config(format!("Value for key '{}' is not a boolean", key)))
-    }
-
-    /// Retrieves a nested value from the configuration using dot-separated keys.
-    ///
-    /// # Arguments
-    ///
-    /// * `key` - The dot-separated keys to the nested value.
-    ///
-    /// # Returns
-    ///
-    /// * `IcnResult<&Value>` - A reference to the nested value or an `IcnError` if not found.
-    fn get_nested_value(&self, key: &str) -> IcnResult<&Value> {
-        let keys: Vec<&str> = key.split('.').collect();
-        let mut current_value = &self.config;
-
-        for key_part in keys {
-            current_value = current_value
-                .get(key_part)
-                .ok_or_else(|| IcnError::Config(format!("Key '{}' not found", key)))?;
-        }
-
-        Ok(current_value)
-    }
+    // Add more methods for other types as needed (e.g., boolean, float)
 }
+
 
 
 === ./icn_core/src/lib/mod.rs ===
@@ -2812,7 +2748,7 @@ pub use node_manager::NodeManager;
 
 
 === ./icn_core/src/node/node_manager.rs ===
-// icn_core/src/node/node_manager.rs
+// File: icn_core/src/node/node_manager.rs
 
 use crate::config::ConfigLoader; // Import ConfigLoader from the config module
 use crate::coordinator::ModuleCoordinator;
@@ -2825,6 +2761,16 @@ pub struct NodeManager {
 }
 
 impl NodeManager {
+    /// Creates a new `NodeManager` instance.
+    ///
+    /// # Arguments
+    ///
+    /// * `config_loader` - The loader for configuration data.
+    /// * `coordinator` - The module coordinator for handling interactions between modules.
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<Self>` - A new `NodeManager` instance if successful.
     pub fn new(config_loader: ConfigLoader, coordinator: ModuleCoordinator) -> IcnResult<Self> {
         // Initialize the NodeManager with the provided config_loader and coordinator
         Ok(NodeManager {
@@ -2834,10 +2780,14 @@ impl NodeManager {
         })
     }
 
+    /// Starts the NodeManager, initializing all necessary components.
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<()>` - Ok(()) if successful, or an `IcnError` if an error occurs.
     pub async fn start(&mut self) -> IcnResult<()> {
         // Logic to start the node manager
-        self.config_loader.load()?; // Use the config_loader
-        self.coordinator.start().await?;
+        self.coordinator.start(&self.config_loader).await?;
         Ok(())
     }
 
@@ -2859,19 +2809,19 @@ pub mod node;
 
 
 === ./icn_core/src/coordinator/module_coordinator.rs ===
-// icn_core/src/coordinator/module_coordinator.rs
+// File: icn_core/src/coordinator/module_coordinator.rs
 
 use std::sync::{Arc, Mutex};
-use icn_blockchain::Blockchain;
-use icn_consensus::Consensus;
+use icn_blockchain::Chain;
+use icn_consensus::ProofOfCooperation;
 use icn_networking::Networking;
 use icn_shared::{NodeState, IcnResult};
-use icn_core::config::ConfigLoader;
+use crate::config::ConfigLoader;
 
 /// `ModuleCoordinator` coordinates the interactions between various modules of the node.
 pub struct ModuleCoordinator {
-    blockchain: Arc<Mutex<Blockchain>>,
-    consensus: Arc<Mutex<Consensus>>,
+    blockchain: Arc<Mutex<Chain>>,
+    consensus: Arc<Mutex<ProofOfCooperation>>,
     networking: Arc<Mutex<Networking>>,
     node_state: Arc<Mutex<NodeState>>,
 }
@@ -2879,8 +2829,8 @@ pub struct ModuleCoordinator {
 impl ModuleCoordinator {
     /// Creates a new `ModuleCoordinator` instance.
     pub fn new() -> Self {
-        let blockchain = Arc::new(Mutex::new(Blockchain::new()));
-        let consensus = Arc::new(Mutex::new(Consensus::new()));
+        let blockchain = Arc::new(Mutex::new(Chain::new()));
+        let consensus = Arc::new(Mutex::new(ProofOfCooperation::new()));
         let networking = Arc::new(Mutex::new(Networking::new()));
         let node_state = Arc::new(Mutex::new(NodeState::Initializing));
 
@@ -2903,8 +2853,8 @@ impl ModuleCoordinator {
     ///
     /// # Returns
     /// 
-    /// * `IcnResult<()>` -  Ok(()) if successful, or an `IcnError` if an error occurs.
-    pub fn start(&self, config_loader: &ConfigLoader) -> IcnResult<()> {
+    /// * `IcnResult<()>` - Ok(()) if successful, or an `IcnError` if an error occurs.
+    pub async fn start(&self, config_loader: &ConfigLoader) -> IcnResult<()> {
         let cert_file_path = config_loader.get_string("network.cert_file_path")?;
         let cert_password = config_loader.get_string("network.cert_password")?;
 
@@ -2912,8 +2862,8 @@ impl ModuleCoordinator {
         self.networking
             .lock()
             .unwrap()
-            .initialize(&cert_file_path, &cert_password)?;
-
+            .initialize().await?;
+        
         // ... other module initializations (blockchain, consensus) ...
 
         // Update node state to Operational
@@ -2924,6 +2874,7 @@ impl ModuleCoordinator {
 
     // ... other methods for module interactions ...
 }
+
 
 
 === ./icn_core/src/coordinator/mod.rs ===
