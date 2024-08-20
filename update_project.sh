@@ -10,12 +10,12 @@ if [[ $? -ne 0 ]]; then
 fi
 
 # Prompt the user to enter a commit message
-echo "Enter the commit message (end with an empty line):"
+echo "Enter the commit message (end input with a single period on a new line):"
 
-# Read the commit message, allowing for multiple lines
+# Read the commit message, allowing for multi-line input until a period on its own line
 COMMIT_MSG=""
-while IFS= read -r line || [[ -n "$line" ]]; do
-    if [[ -z "$line" ]]; then
+while IFS= read -r line; do
+    if [[ "$line" == "." ]]; then
         break
     fi
     COMMIT_MSG+="$line"$'\n'
