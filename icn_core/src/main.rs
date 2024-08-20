@@ -4,7 +4,6 @@ use icn_core::config::ConfigLoader;
 use icn_core::node::NodeManager;
 use icn_core::coordinator::ModuleCoordinator;
 use std::env;
-use icn_shared::IcnResult;
 use log::error;
 
 #[tokio::main]
