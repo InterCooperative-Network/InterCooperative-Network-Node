@@ -74,8 +74,8 @@ impl Networking {
     }
 
     pub async fn broadcast_message(&self, message: &str) -> IcnResult<()> {
-        let peers = self.peers.read().map_err(|_| IcnError::Network("Failed to acquire peers lock".to_string()))?;
-        for peer in peers.iter() {
+        let mut peers = self.peers.write().map_err(|_| IcnError::Network("Failed to acquire peers lock".to_string()))?;
+        for peer in peers.iter_mut() {
             peer.write_all(message.as_bytes()).await
                 .map_err(|e| IcnError::Network(format!("Failed to send message: {}", e)))?;
         }

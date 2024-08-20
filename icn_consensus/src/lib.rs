@@ -1,4 +1,4 @@
-// icn_consensus/src/lib.rs
+// File: icn_consensus/src/lib.rs
 
 use std::collections::{HashMap, HashSet};
 use icn_blockchain::block::Block;
@@ -77,7 +77,7 @@ impl ProofOfCooperation {
             .ok_or_else(|| IcnError::Consensus(format!("Unknown peer: {}", peer_id)))?;
         
         *score = (*score as f64 * performance).round() as u64;
-        *score = score.max(10).min(200); // Ensure it stays within a sensible range
+        *score = (*score).max(10).min(200); // Ensure it stays within a sensible range
         Ok(())
     }
 

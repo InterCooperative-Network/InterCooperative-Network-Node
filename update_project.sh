@@ -10,8 +10,16 @@ if [[ $? -ne 0 ]]; then
 fi
 
 # Prompt the user to enter a commit message
-echo "Enter the commit message:"
-read -r COMMIT_MSG
+echo "Enter the commit message (end with an empty line):"
+
+# Read the commit message, allowing for multiple lines
+COMMIT_MSG=""
+while IFS= read -r line || [[ -n "$line" ]]; do
+    if [[ -z "$line" ]]; then
+        break
+    fi
+    COMMIT_MSG+="$line"$'\n'
+done
 
 # Ensure the commit message is not empty
 if [[ -z "$COMMIT_MSG" ]]; then

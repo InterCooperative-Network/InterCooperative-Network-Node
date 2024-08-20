@@ -252,8 +252,8 @@ impl Networking {
     }
 
     pub async fn broadcast_message(&self, message: &str) -> IcnResult<()> {
-        let peers = self.peers.read().map_err(|_| IcnError::Network("Failed to acquire peers lock".to_string()))?;
-        for peer in peers.iter() {
+        let mut peers = self.peers.write().map_err(|_| IcnError::Network("Failed to acquire peers lock".to_string()))?;
+        for peer in peers.iter_mut() {
             peer.write_all(message.as_bytes()).await
                 .map_err(|e| IcnError::Network(format!("Failed to send message: {}", e)))?;
         }
@@ -945,7 +945,7 @@ rand = "0.8"  # Add this line
 
 
 === ./icn_consensus/src/lib.rs ===
-// icn_consensus/src/lib.rs
+// File: icn_consensus/src/lib.rs
 
 use std::collections::{HashMap, HashSet};
 use icn_blockchain::block::Block;
@@ -1024,7 +1024,7 @@ impl ProofOfCooperation {
             .ok_or_else(|| IcnError::Consensus(format!("Unknown peer: {}", peer_id)))?;
         
         *score = (*score as f64 * performance).round() as u64;
-        *score = score.max(10).min(200); // Ensure it stays within a sensible range
+        *score = (*score).max(10).min(200); // Ensure it stays within a sensible range
         Ok(())
     }
 
@@ -1077,6 +1077,7 @@ mod tests {
         assert!(poc.cooperation_scores["peer1"] < 100);
     }
 }
+
 
 
 === ./icn_consensus/src/proof_of_cooperation.rs ===
@@ -3301,8 +3302,16 @@ if [[ $? -ne 0 ]]; then
 fi
 
 # Prompt the user to enter a commit message
-echo "Enter the commit message:"
-read -r COMMIT_MSG
+echo "Enter the commit message (end with an empty line):"
+
+# Read the commit message, allowing for multiple lines
+COMMIT_MSG=""
+while IFS= read -r line || [[ -n "$line" ]]; do
+    if [[ -z "$line" ]]; then
+        break
+    fi
+    COMMIT_MSG+="$line"$'\n'
+done
 
 # Ensure the commit message is not empty
 if [[ -z "$COMMIT_MSG" ]]; then
