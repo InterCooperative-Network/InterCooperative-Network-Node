@@ -32,6 +32,6 @@ impl Block {
     }
 
     pub fn validate_transactions(&self) -> bool {
-        self.transactions.iter().all(|tx| tx.is_valid())
+        self.transactions.iter().all(|tx| tx.validate_transaction())
     }
 }
