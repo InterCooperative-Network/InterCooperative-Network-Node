@@ -1,13 +1,10 @@
-// File: icn_core/src/coordinator/module_coordinator.rs
-
 use std::sync::{Arc, Mutex};
-use icn_blockchain::Chain;
+use icn_blockchain::{Chain, Transaction, Block};
 use icn_consensus::ProofOfCooperation;
 use icn_networking::Networking;
-use icn_shared::{NodeState, IcnResult};
-use crate::config::ConfigLoader;
+use icn_shared::{NodeState, IcnResult, IcnError};
+use config::Config; // Use the correct import for `Config`
 
-/// `ModuleCoordinator` coordinates the interactions between various modules of the node.
 pub struct ModuleCoordinator {
     blockchain: Arc<Mutex<Chain>>,
     consensus: Arc<Mutex<ProofOfCooperation>>,
@@ -16,50 +13,89 @@ pub struct ModuleCoordinator {
 }
 
 impl ModuleCoordinator {
-    /// Creates a new `ModuleCoordinator` instance.
     pub fn new() -> Self {
-        let blockchain = Arc::new(Mutex::new(Chain::new()));
-        let consensus = Arc::new(Mutex::new(ProofOfCooperation::new()));
-        let networking = Arc::new(Mutex::new(Networking::new()));
-        let node_state = Arc::new(Mutex::new(NodeState::Initializing));
-
         ModuleCoordinator {
-            blockchain,
-            consensus,
-            networking,
-            node_state,
+            blockchain: Arc::new(Mutex::new(Chain::new())),
+            consensus: Arc::new(Mutex::new(ProofOfCooperation::new())),
+            networking: Arc::new(Mutex::new(Networking::new())),
+            node_state: Arc::new(Mutex::new(NodeState::Initializing)),
         }
     }
 
-    /// Starts the coordinator and its associated modules.
-    ///
-    /// This function reads necessary configurations (e.g. certificate path, password) from the `ConfigLoader`,
-    /// initializes the `Networking` module, and sets the node state to `Operational`.
-    ///
-    /// # Arguments
-    ///
-    /// * `config_loader` - A reference to the `ConfigLoader` for accessing configurations.
-    ///
-    /// # Returns
-    ///
-    /// * `IcnResult<()>` - Ok(()) if successful, or an `IcnError` if an error occurs.
-    pub async fn start(&self, config_loader: &ConfigLoader) -> IcnResult<()> {
-        let cert_file_path = config_loader.get_string("network.cert_file_path")?;
-        let cert_password = config_loader.get_string("network.cert_password")?;
+    pub async fn start(&self, config: &Config) -> IcnResult<()> {
+        let cert_file_path: String = config.get::<String>("network.cert_file_path")
+            .map_err(|e| IcnError::Config(format!("Invalid cert file path: {}", e)))?;
+        let key_file_path: String = config.get::<String>("network.key_file_path")
+            .map_err(|e| IcnError::Config(format!("Invalid key file path: {}", e)))?;
+        let cert_password: String = config.get::<String>("network.cert_password")
+            .map_err(|e| IcnError::Config(format!("Invalid cert password: {}", e)))?;
 
-        // Initialize the Networking module using the cert_file_path and cert_password
+        let identity = Networking::load_tls_identity(&cert_file_path, &key_file_path, &cert_password)
+            .map_err(|e| IcnError::Network(format!("Failed to load TLS identity: {}", e)))?;
+        
         self.networking
             .lock()
-            .unwrap()
-            .initialize().await?;
-        
-        // ... other module initializations (blockchain, consensus) ...
+            .map_err(|_| IcnError::Network("Failed to acquire networking lock".to_string()))?
+            .start_server("0.0.0.0:8080", identity)
+            .await?;
 
-        // Update node state to Operational
-        *self.node_state.lock().unwrap() = NodeState::Operational;
+        *self.node_state
+            .lock()
+            .map_err(|_| IcnError::Other("Failed to acquire node state lock".to_string()))? = NodeState::Operational;
 
         Ok(())
     }
 
-    // ... other methods for module interactions ...
+    pub async fn stop(&self) -> IcnResult<()> {
+        self.networking
+            .lock()
+            .map_err(|_| IcnError::Network("Failed to acquire networking lock".to_string()))?
+            .stop()
+            .await?;
+
+        *self.node_state
+            .lock()
+            .map_err(|_| IcnError::Other("Failed to acquire node state lock".to_string()))? = NodeState::ShuttingDown;
+
+        Ok(())
+    }
+
+    pub fn add_block(&self, transactions: Vec<Transaction>) -> IcnResult<()> {
+        let mut blockchain = self.blockchain
+            .lock()
+            .map_err(|_| IcnError::Blockchain("Failed to acquire blockchain lock".to_string()))?;
+
+        let previous_hash = blockchain.blocks.last()
+            .map(|block| block.hash.clone())
+            .unwrap_or_else(|| "0".repeat(64));
+
+        let proposer_id = self.consensus
+            .lock()
+            .map_err(|_| IcnError::Consensus("Failed to acquire consensus lock".to_string()))?
+            .select_proposer()?;
+
+        let new_block = Block::new(
+            blockchain.blocks.len() as u64,
+            transactions,
+            previous_hash,
+            proposer_id,
+        );
+
+        blockchain.add_block(new_block.transactions, new_block.previous_hash, new_block.proposer_id);
+        Ok(())
+    }
+
+    pub fn validate_latest_block(&self) -> IcnResult<bool> {
+        let blockchain = self.blockchain
+            .lock()
+            .map_err(|_| IcnError::Blockchain("Failed to acquire blockchain lock".to_string()))?;
+
+        let latest_block = blockchain.blocks.last()
+            .ok_or_else(|| IcnError::Blockchain("Blockchain is empty".to_string()))?;
+
+        self.consensus
+            .lock()
+            .map_err(|_| IcnError::Consensus("Failed to acquire consensus lock".to_string()))?
+            .validate(latest_block)
+    }
 }

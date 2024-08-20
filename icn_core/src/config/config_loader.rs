@@ -1,13 +1,34 @@
 // File: icn_core/src/config/config_loader.rs
+// This file defines the `ConfigLoader` struct responsible for loading and parsing TOML configuration files.
+// It also defines the `Config` struct representing the application's configuration.
 
 use std::fs;
-use toml::{Value, map::Map};
+use serde::Deserialize;
 use icn_shared::{IcnError, IcnResult};
+
+/// Represents the application configuration loaded from a TOML file.
+#[derive(Debug, Deserialize, Clone)]
+pub struct Config {
+    pub server: ServerConfig,
+    pub database: DatabaseConfig,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct ServerConfig {
+    pub host: String,
+    pub port: u16,
+    pub debug: bool,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct DatabaseConfig {
+    pub urls: Vec<String>,
+}
 
 /// `ConfigLoader` handles the loading and parsing of TOML configuration files.
 #[derive(Debug, Clone)]
 pub struct ConfigLoader {
-    config: Map<String, Value>,
+    config: Config,
 }
 
 impl ConfigLoader {
@@ -21,46 +42,59 @@ impl ConfigLoader {
     ///
     /// * `IcnResult<Self>` - A new `ConfigLoader` instance if successful, otherwise an `IcnError`.
     pub fn new(config_path: &str) -> IcnResult<Self> {
-        let config_content = fs::read_to_string(config_path)?;
-        let config: Map<String, Value> = toml::from_str(&config_content)?;
+        let config_content = fs::read_to_string(config_path)
+            .map_err(|e| IcnError::Config(format!("Failed to read config file '{}': {}", config_path, e)))?;
+        let config: Config = toml::from_str(&config_content)
+            .map_err(|e| IcnError::Config(format!("Failed to parse TOML from '{}': {}", config_path, e)))?;
         Ok(ConfigLoader { config })
     }
 
-    /// Retrieves a string value from the configuration.
-    ///
-    /// # Arguments
-    ///
-    /// * `key` - The key of the string value to retrieve.
+    /// Returns a reference to the loaded configuration.
     ///
     /// # Returns
     ///
-    /// * `IcnResult<String>` - The string value or an `IcnError` if not found or invalid.
-    pub fn get_string(&self, key: &str) -> IcnResult<String> {
-        self.get_nested_value(key)?
-            .as_str()
-            .map(|s| s.to_string())
-            .ok_or_else(|| IcnError::Config(format!("Value for key '{}' is not a string", key)))
+    /// * `&Config` - A reference to the configuration.
+    pub fn get_config(&self) -> &Config {
+        &self.config
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::NamedTempFile;
+    use std::io::Write;
+
+    fn create_test_config() -> NamedTempFile {
+        let mut file = NamedTempFile::new().unwrap();
+        write!(file, r#"
+            [server]
+            host = "localhost"
+            port = 8080
+            debug = true
+
+            [database]
+            urls = ["postgresql://user:pass@localhost/db1", "postgresql://user:pass@localhost/db2"]
+        "#).unwrap();
+        file
     }
 
-    /// Retrieves a nested value from the configuration using dot-separated keys.
-    ///
-    /// # Arguments
-    ///
-    /// * `key` - The dot-separated keys to the nested value.
-    ///
-    /// # Returns
-    ///
-    /// * `IcnResult<&Value>` - A reference to the nested value or an `IcnError` if not found.
-    fn get_nested_value(&self, key: &str) -> IcnResult<&Value> {
-        let keys: Vec<&str> = key.split('.').collect();
-        let mut current_value = &self.config;
+    #[test]
+    fn test_config_loader() {
+        let config_file = create_test_config();
+        let config_loader = ConfigLoader::new(config_file.path().to_str().unwrap()).unwrap();
 
-        for key_part in keys {
-            current_value = current_value
-                .get(key_part)
-                .ok_or_else(|| IcnError::Config(format!("Key '{}' not found", key)))?;
-        }
+        let config = config_loader.get_config();
 
-        Ok(current_value)
+        assert_eq!(config.server.host, "localhost");
+        assert_eq!(config.server.port, 8080);
+        assert!(config.server.debug);
+        assert_eq!(
+            config.database.urls,
+            vec![
+                "postgresql://user:pass@localhost/db1".to_string(),
+                "postgresql://user:pass@localhost/db2".to_string()
+            ]
+        );
     }
 }

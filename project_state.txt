@@ -45,6 +45,8 @@ native-tls = "0.2"
 log = "0.4"
 icn_shared = { path = "../icn_shared" }
 
+[dev-dependencies]
+tempfile = "3.2"
 
 
 === ./icn_networking/src/lib/mod.rs ===
@@ -57,34 +59,35 @@ icn_shared = { path = "../icn_shared" }
 use std::sync::{Arc, Mutex};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio_native_tls::TlsAcceptor;
-use native_tls::{Identity, TlsAcceptor as NativeTlsAcceptor};
+use tokio_native_tls::{TlsAcceptor, TlsConnector};
+use native_tls::Identity;
 use icn_shared::{IcnError, IcnResult};
 use log::{info, error};
 
-/// Represents the networking component of the ICN node
+#[derive(Clone)]
 pub struct Networking {
-    /// A list of connected peers, protected by a Mutex for thread-safety
     peers: Arc<Mutex<Vec<tokio_native_tls::TlsStream<TcpStream>>>>,
 }
 
 impl Networking {
-    /// Creates a new Networking instance
     pub fn new() -> Self {
         Networking {
             peers: Arc::new(Mutex::new(vec![])),
         }
     }
 
-    /// Starts a TLS server to accept incoming connections from peers
-    ///
-    /// # Arguments
-    ///
-    /// * `address` - The address to bind the server to (e.g., "127.0.0.1:8080")
-    /// * `identity` - The TLS identity for the server, containing the certificate and private key
+    pub fn load_tls_identity(cert_path: &str, key_path: &str, password: &str) -> IcnResult<Identity> {
+        let cert = std::fs::read(cert_path)
+            .map_err(|e| IcnError::Network(format!("Failed to read certificate file: {}", e)))?;
+        let _key = std::fs::read(key_path)
+            .map_err(|e| IcnError::Network(format!("Failed to read key file: {}", e)))?;
+        Identity::from_pkcs12(&cert, password)
+            .map_err(|e| IcnError::Network(format!("Failed to load TLS identity: {}", e)))
+    }
+
     pub async fn start_server(&self, address: &str, identity: Identity) -> IcnResult<()> {
         let acceptor = TlsAcceptor::from(
-            NativeTlsAcceptor::new(identity)
+            native_tls::TlsAcceptor::new(identity)
                 .map_err(|e| IcnError::Network(format!("Failed to create TLS acceptor: {}", e)))?
         );
 
@@ -99,13 +102,8 @@ impl Networking {
                     let peers = Arc::clone(&self.peers);
 
                     tokio::spawn(async move {
-                        match acceptor.accept(stream).await {
-                            Ok(tls_stream) => {
-                                if let Err(e) = handle_client(tls_stream, peers).await {
-                                    error!("Error handling client: {:?}", e);
-                                }
-                            }
-                            Err(e) => error!("Failed to accept TLS connection: {:?}", e),
+                        if let Err(e) = handle_client_connection(stream, acceptor, peers).await {
+                            error!("Error handling client: {:?}", e);
                         }
                     });
                 }
@@ -114,13 +112,8 @@ impl Networking {
         }
     }
 
-    /// Establishes a TLS connection to a peer at the specified address
-    ///
-    /// # Arguments
-    ///
-    /// * `address` - The address of the peer to connect to (e.g., "127.0.0.1:8080")
     pub async fn connect_to_peer(&self, address: &str) -> IcnResult<()> {
-        let connector = tokio_native_tls::TlsConnector::from(
+        let connector = TlsConnector::from(
             native_tls::TlsConnector::new()
                 .map_err(|e| IcnError::Network(format!("Failed to create TLS connector: {}", e)))?
         );
@@ -131,19 +124,13 @@ impl Networking {
         let tls_stream = connector.connect(address, stream).await
             .map_err(|e| IcnError::Network(format!("Failed to establish TLS connection: {}", e)))?;
 
-        // Add the connected peer to the list
-        self.peers.lock().unwrap().push(tls_stream);
+        self.peers.lock().map_err(|_| IcnError::Network("Failed to acquire peers lock".to_string()))?.push(tls_stream);
         info!("Connected to peer at {}", address);
         Ok(())
     }
 
-    /// Broadcasts a message to all connected peers
-    ///
-    /// # Arguments
-    ///
-    /// * `message` - The message to broadcast
     pub async fn broadcast_message(&self, message: &str) -> IcnResult<()> {
-        let mut peers = self.peers.lock().unwrap();
+        let mut peers = self.peers.lock().map_err(|_| IcnError::Network("Failed to acquire peers lock".to_string()))?;
         for peer in peers.iter_mut() {
             peer.write_all(message.as_bytes()).await
                 .map_err(|e| IcnError::Network(format!("Failed to send message: {}", e)))?;
@@ -151,42 +138,42 @@ impl Networking {
         Ok(())
     }
 
-    /// Initializes the networking component
     pub async fn initialize(&self) -> IcnResult<()> {
-        // Initialization logic here (e.g., loading peer addresses from configuration)
         Ok(())
     }
 
-    /// Stops the networking component, closing all connections
     pub async fn stop(&self) -> IcnResult<()> {
-        // Stop logic here (e.g., gracefully closing connections to peers)
+        let mut peers = self.peers.lock().map_err(|_| IcnError::Network("Failed to acquire peers lock".to_string()))?;
+        for peer in peers.iter_mut() {
+            if let Err(e) = peer.shutdown().await {
+                error!("Failed to close peer connection: {:?}", e);
+            }
+        }
+        peers.clear();
+        info!("Networking component stopped.");
         Ok(())
     }
 }
 
-/// Handles incoming client connections, processes received messages, and manages peer disconnections
-///
-/// # Arguments
-///
-/// * `stream` - The TLS stream representing the connection to the client
-/// * `peers` - A shared list of connected peers
+async fn handle_client_connection(
+    stream: TcpStream,
+    acceptor: TlsAcceptor,
+    peers: Arc<Mutex<Vec<tokio_native_tls::TlsStream<TcpStream>>>>
+) -> IcnResult<()> {
+    let tls_stream = acceptor.accept(stream).await
+        .map_err(|e| IcnError::Network(format!("Failed to accept TLS connection: {:?}", e)))?;
+
+    handle_client(tls_stream, peers).await
+}
+
 async fn handle_client(mut stream: tokio_native_tls::TlsStream<TcpStream>, peers: Arc<Mutex<Vec<tokio_native_tls::TlsStream<TcpStream>>>>) -> IcnResult<()> {
     let mut buffer = [0; 1024];
     loop {
         match stream.read(&mut buffer).await {
-            Ok(0) => {
-                // Connection closed gracefully
-                break;
-            }
+            Ok(0) => break,
             Ok(n) => {
                 let message = String::from_utf8_lossy(&buffer[..n]);
                 info!("Received message: {}", message);
-
-                // TODO: Process the message here
-                // This could involve:
-                // - Parsing the message based on a defined protocol
-                // - Routing the message to the appropriate module (e.g., consensus, blockchain)
-                // - Taking corresponding actions based on the message content
             }
             Err(e) => {
                 error!("Error reading from stream: {:?}", e);
@@ -195,8 +182,7 @@ async fn handle_client(mut stream: tokio_native_tls::TlsStream<TcpStream>, peers
         }
     }
 
-    // Remove the disconnected peer from the list
-    let mut peers = peers.lock().unwrap();
+    let mut peers = peers.lock().map_err(|_| IcnError::Network("Failed to acquire peers lock".to_string()))?;
     peers.retain(|p| !std::ptr::eq(p.get_ref(), stream.get_ref()));
     Ok(())
 }
@@ -205,6 +191,7 @@ async fn handle_client(mut stream: tokio_native_tls::TlsStream<TcpStream>, peers
 mod tests {
     use super::*;
     use tokio::runtime::Runtime;
+    use tokio::net::TcpListener;
 
     #[test]
     fn test_networking_creation() {
@@ -217,16 +204,71 @@ mod tests {
         let runtime = Runtime::new().unwrap();
         let networking = Networking::new();
 
-        // This test requires a running TLS server to connect to
-        // For a real test, you'd need to set up a mock TLS server
-        // Here, we'll just test that the method doesn't panic
+        let listener = runtime.block_on(async {
+            TcpListener::bind("127.0.0.1:0").await.unwrap()
+        });
+        let addr = listener.local_addr().unwrap();
+
         runtime.block_on(async {
-            let result = networking.connect_to_peer("localhost:8080").await;
-            assert!(result.is_err()); // Expect an error since we're not actually connecting
+            let networking_clone = networking.clone();
+            tokio::spawn(async move {
+                let (client, _) = listener.accept().await.unwrap();
+                let tls_connector = tokio_native_tls::TlsConnector::from(
+                    native_tls::TlsConnector::new().unwrap()
+                );
+
+                let tls_stream = tls_connector.connect("localhost", client).await.unwrap();
+                networking_clone.peers.lock().unwrap().push(tls_stream);
+            });
+
+            let result = networking.connect_to_peer(&addr.to_string()).await;
+            assert!(result.is_ok());
         });
     }
 
-    // Add more tests for other methods
+    #[test]
+    fn test_load_tls_identity() {
+        let cert_file = tempfile::NamedTempFile::new().unwrap();
+        let key_file = tempfile::NamedTempFile::new().unwrap();
+
+        std::fs::write(cert_file.path(), b"dummy cert data").unwrap();
+        std::fs::write(key_file.path(), b"dummy key data").unwrap();
+
+        let result = Networking::load_tls_identity(
+            cert_file.path().to_str().unwrap(),
+            key_file.path().to_str().unwrap(),
+            "test_password"
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_broadcast_message() {
+        let runtime = Runtime::new().unwrap();
+        let networking = Networking::new();
+
+        runtime.block_on(async {
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+
+            let networking_clone = networking.clone();
+            tokio::spawn(async move {
+                let (client, _) = listener.accept().await.unwrap();
+                let tls_connector = tokio_native_tls::TlsConnector::from(
+                    native_tls::TlsConnector::new().unwrap()
+                );
+
+                let tls_stream = tls_connector.connect("localhost", client).await.unwrap();
+                networking_clone.peers.lock().unwrap().push(tls_stream);
+            });
+
+            let result = networking.connect_to_peer(&addr.to_string()).await;
+            assert!(result.is_ok());
+
+            let result = networking.broadcast_message("Test message").await;
+            assert!(result.is_ok());
+        });
+    }
 }
 
 
@@ -1586,6 +1628,7 @@ dependencies = [
  "icn_shared",
  "log",
  "native-tls",
+ "serde",
  "tempfile",
  "tokio",
  "toml",
@@ -1609,6 +1652,7 @@ dependencies = [
  "icn_shared",
  "log",
  "native-tls",
+ "tempfile",
  "tokio",
  "tokio-native-tls",
 ]
@@ -2523,6 +2567,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+serde = { version = "1.0", features = ["derive"] }
 tempfile = "3.2"
 native-tls = "0.2"
 tokio = { version = "1", features = ["full"] }
@@ -2540,45 +2585,46 @@ toml = "0.5"
 
 
 === ./icn_core/src/config/mod.rs ===
-// icn_core/src/config/mod.rs
+// File: icn_core/src/config/mod.rs
 
-use icn_shared::IcnResult;
+pub mod config_loader;
 
-pub struct ConfigLoader {
-    config_path: String,
-    // Add other necessary fields here
-}
-
-impl ConfigLoader {
-    pub fn new(config_path: &str) -> IcnResult<Self> {
-        // Initialize the ConfigLoader with the provided config path
-        Ok(ConfigLoader {
-            config_path: config_path.to_string(),
-            // Initialize other fields as needed
-        })
-    }
-
-    // Use the config_path to avoid the dead code warning
-    pub fn load(&self) -> IcnResult<()> {
-        println!("Loading configuration from path: {}", self.config_path);
-        // Implement the configuration loading logic here using config_path
-        Ok(())
-    }
-}
+pub use config_loader::{Config, ConfigLoader};
 
 
 
 === ./icn_core/src/config/config_loader.rs ===
 // File: icn_core/src/config/config_loader.rs
+// This file defines the `ConfigLoader` struct responsible for loading and parsing TOML configuration files.
+// It also defines the `Config` struct representing the application's configuration.
 
 use std::fs;
-use toml::{Value, map::Map};
+use serde::Deserialize;
 use icn_shared::{IcnError, IcnResult};
+
+/// Represents the application configuration loaded from a TOML file.
+#[derive(Debug, Deserialize, Clone)]
+pub struct Config {
+    pub server: ServerConfig,
+    pub database: DatabaseConfig,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct ServerConfig {
+    pub host: String,
+    pub port: u16,
+    pub debug: bool,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct DatabaseConfig {
+    pub urls: Vec<String>,
+}
 
 /// `ConfigLoader` handles the loading and parsing of TOML configuration files.
 #[derive(Debug, Clone)]
 pub struct ConfigLoader {
-    config: Map<String, Value>,
+    config: Config,
 }
 
 impl ConfigLoader {
@@ -2592,47 +2638,60 @@ impl ConfigLoader {
     ///
     /// * `IcnResult<Self>` - A new `ConfigLoader` instance if successful, otherwise an `IcnError`.
     pub fn new(config_path: &str) -> IcnResult<Self> {
-        let config_content = fs::read_to_string(config_path)?;
-        let config: Map<String, Value> = toml::from_str(&config_content)?;
+        let config_content = fs::read_to_string(config_path)
+            .map_err(|e| IcnError::Config(format!("Failed to read config file '{}': {}", config_path, e)))?;
+        let config: Config = toml::from_str(&config_content)
+            .map_err(|e| IcnError::Config(format!("Failed to parse TOML from '{}': {}", config_path, e)))?;
         Ok(ConfigLoader { config })
     }
 
-    /// Retrieves a string value from the configuration.
-    ///
-    /// # Arguments
-    ///
-    /// * `key` - The key of the string value to retrieve.
+    /// Returns a reference to the loaded configuration.
     ///
     /// # Returns
     ///
-    /// * `IcnResult<String>` - The string value or an `IcnError` if not found or invalid.
-    pub fn get_string(&self, key: &str) -> IcnResult<String> {
-        self.get_nested_value(key)?
-            .as_str()
-            .map(|s| s.to_string())
-            .ok_or_else(|| IcnError::Config(format!("Value for key '{}' is not a string", key)))
+    /// * `&Config` - A reference to the configuration.
+    pub fn get_config(&self) -> &Config {
+        &self.config
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::NamedTempFile;
+    use std::io::Write;
+
+    fn create_test_config() -> NamedTempFile {
+        let mut file = NamedTempFile::new().unwrap();
+        write!(file, r#"
+            [server]
+            host = "localhost"
+            port = 8080
+            debug = true
+
+            [database]
+            urls = ["postgresql://user:pass@localhost/db1", "postgresql://user:pass@localhost/db2"]
+        "#).unwrap();
+        file
     }
 
-    /// Retrieves a nested value from the configuration using dot-separated keys.
-    ///
-    /// # Arguments
-    ///
-    /// * `key` - The dot-separated keys to the nested value.
-    ///
-    /// # Returns
-    ///
-    /// * `IcnResult<&Value>` - A reference to the nested value or an `IcnError` if not found.
-    fn get_nested_value(&self, key: &str) -> IcnResult<&Value> {
-        let keys: Vec<&str> = key.split('.').collect();
-        let mut current_value = &self.config;
+    #[test]
+    fn test_config_loader() {
+        let config_file = create_test_config();
+        let config_loader = ConfigLoader::new(config_file.path().to_str().unwrap()).unwrap();
 
-        for key_part in keys {
-            current_value = current_value
-                .get(key_part)
-                .ok_or_else(|| IcnError::Config(format!("Key '{}' not found", key)))?;
-        }
+        let config = config_loader.get_config();
 
-        Ok(current_value)
+        assert_eq!(config.server.host, "localhost");
+        assert_eq!(config.server.port, 8080);
+        assert!(config.server.debug);
+        assert_eq!(
+            config.database.urls,
+            vec![
+                "postgresql://user:pass@localhost/db1".to_string(),
+                "postgresql://user:pass@localhost/db2".to_string()
+            ]
+        );
     }
 }
 
@@ -2756,47 +2815,40 @@ pub use node_manager::NodeManager;
 
 
 === ./icn_core/src/node/node_manager.rs ===
-// File: icn_core/src/node/node_manager.rs
-
-use crate::config::ConfigLoader; // Import ConfigLoader from the config module
+use crate::config::{ConfigLoader, config_loader}; // Ensure correct imports for ConfigLoader and config_loader
 use crate::coordinator::ModuleCoordinator;
 use icn_shared::IcnResult;
+use config::Config;
 
 pub struct NodeManager {
     config_loader: ConfigLoader,
     coordinator: ModuleCoordinator,
-    // Other fields...
 }
 
 impl NodeManager {
-    /// Creates a new `NodeManager` instance.
-    ///
-    /// # Arguments
-    ///
-    /// * `config_loader` - The loader for configuration data.
-    /// * `coordinator` - The module coordinator for handling interactions between modules.
-    ///
-    /// # Returns
-    ///
-    /// * `IcnResult<Self>` - A new `NodeManager` instance if successful.
     pub fn new(config_loader: ConfigLoader, coordinator: ModuleCoordinator) -> IcnResult<Self> {
-        // Initialize the NodeManager with the provided config_loader and coordinator
         Ok(NodeManager {
             config_loader,
             coordinator,
-            // Other initializations...
         })
     }
 
-    /// Starts the NodeManager, initializing all necessary components.
-    ///
-    /// # Returns
-    ///
-    /// * `IcnResult<()>` - Ok(()) if successful, or an `IcnError` if an error occurs.
     pub async fn start(&mut self) -> IcnResult<()> {
-        // Logic to start the node manager
-        self.coordinator.start(&self.config_loader).await?;
+        let config = self.config_loader.get_config();  // Get the custom config
+        let config_converted = self.convert_to_external_config(&config); // Convert to `config::Config` using reference
+        self.coordinator.start(&config_converted).await?;
         Ok(())
+    }
+
+    fn convert_to_external_config(&self, config: &config_loader::Config) -> Config {
+        let mut external_config = Config::builder();
+
+        // Assuming that `host` and `port` are relevant fields you want to use for configuring
+        external_config = external_config.set_override("server.host", config.server.host.clone()).unwrap();
+        external_config = external_config.set_override("server.port", config.server.port.to_string()).unwrap();
+        external_config = external_config.set_override("database.urls", config.database.urls.join(",")).unwrap();
+
+        external_config.build().unwrap()
     }
 
     // Other methods...
@@ -2817,16 +2869,13 @@ pub mod node;
 
 
 === ./icn_core/src/coordinator/module_coordinator.rs ===
-// File: icn_core/src/coordinator/module_coordinator.rs
-
 use std::sync::{Arc, Mutex};
-use icn_blockchain::Chain;
+use icn_blockchain::{Chain, Transaction, Block};
 use icn_consensus::ProofOfCooperation;
 use icn_networking::Networking;
-use icn_shared::{NodeState, IcnResult};
-use crate::config::ConfigLoader;
+use icn_shared::{NodeState, IcnResult, IcnError};
+use config::Config; // Use the correct import for `Config`
 
-/// `ModuleCoordinator` coordinates the interactions between various modules of the node.
 pub struct ModuleCoordinator {
     blockchain: Arc<Mutex<Chain>>,
     consensus: Arc<Mutex<ProofOfCooperation>>,
@@ -2835,52 +2884,91 @@ pub struct ModuleCoordinator {
 }
 
 impl ModuleCoordinator {
-    /// Creates a new `ModuleCoordinator` instance.
     pub fn new() -> Self {
-        let blockchain = Arc::new(Mutex::new(Chain::new()));
-        let consensus = Arc::new(Mutex::new(ProofOfCooperation::new()));
-        let networking = Arc::new(Mutex::new(Networking::new()));
-        let node_state = Arc::new(Mutex::new(NodeState::Initializing));
-
         ModuleCoordinator {
-            blockchain,
-            consensus,
-            networking,
-            node_state,
+            blockchain: Arc::new(Mutex::new(Chain::new())),
+            consensus: Arc::new(Mutex::new(ProofOfCooperation::new())),
+            networking: Arc::new(Mutex::new(Networking::new())),
+            node_state: Arc::new(Mutex::new(NodeState::Initializing)),
         }
     }
 
-    /// Starts the coordinator and its associated modules.
-    ///
-    /// This function reads necessary configurations (e.g. certificate path, password) from the `ConfigLoader`,
-    /// initializes the `Networking` module, and sets the node state to `Operational`.
-    ///
-    /// # Arguments
-    ///
-    /// * `config_loader` - A reference to the `ConfigLoader` for accessing configurations.
-    ///
-    /// # Returns
-    ///
-    /// * `IcnResult<()>` - Ok(()) if successful, or an `IcnError` if an error occurs.
-    pub async fn start(&self, config_loader: &ConfigLoader) -> IcnResult<()> {
-        let cert_file_path = config_loader.get_string("network.cert_file_path")?;
-        let cert_password = config_loader.get_string("network.cert_password")?;
+    pub async fn start(&self, config: &Config) -> IcnResult<()> {
+        let cert_file_path: String = config.get::<String>("network.cert_file_path")
+            .map_err(|e| IcnError::Config(format!("Invalid cert file path: {}", e)))?;
+        let key_file_path: String = config.get::<String>("network.key_file_path")
+            .map_err(|e| IcnError::Config(format!("Invalid key file path: {}", e)))?;
+        let cert_password: String = config.get::<String>("network.cert_password")
+            .map_err(|e| IcnError::Config(format!("Invalid cert password: {}", e)))?;
 
-        // Initialize the Networking module using the cert_file_path and cert_password
+        let identity = Networking::load_tls_identity(&cert_file_path, &key_file_path, &cert_password)
+            .map_err(|e| IcnError::Network(format!("Failed to load TLS identity: {}", e)))?;
+        
         self.networking
             .lock()
-            .unwrap()
-            .initialize().await?;
-        
-        // ... other module initializations (blockchain, consensus) ...
+            .map_err(|_| IcnError::Network("Failed to acquire networking lock".to_string()))?
+            .start_server("0.0.0.0:8080", identity)
+            .await?;
 
-        // Update node state to Operational
-        *self.node_state.lock().unwrap() = NodeState::Operational;
+        *self.node_state
+            .lock()
+            .map_err(|_| IcnError::Other("Failed to acquire node state lock".to_string()))? = NodeState::Operational;
 
         Ok(())
     }
 
-    // ... other methods for module interactions ...
+    pub async fn stop(&self) -> IcnResult<()> {
+        self.networking
+            .lock()
+            .map_err(|_| IcnError::Network("Failed to acquire networking lock".to_string()))?
+            .stop()
+            .await?;
+
+        *self.node_state
+            .lock()
+            .map_err(|_| IcnError::Other("Failed to acquire node state lock".to_string()))? = NodeState::ShuttingDown;
+
+        Ok(())
+    }
+
+    pub fn add_block(&self, transactions: Vec<Transaction>) -> IcnResult<()> {
+        let mut blockchain = self.blockchain
+            .lock()
+            .map_err(|_| IcnError::Blockchain("Failed to acquire blockchain lock".to_string()))?;
+
+        let previous_hash = blockchain.blocks.last()
+            .map(|block| block.hash.clone())
+            .unwrap_or_else(|| "0".repeat(64));
+
+        let proposer_id = self.consensus
+            .lock()
+            .map_err(|_| IcnError::Consensus("Failed to acquire consensus lock".to_string()))?
+            .select_proposer()?;
+
+        let new_block = Block::new(
+            blockchain.blocks.len() as u64,
+            transactions,
+            previous_hash,
+            proposer_id,
+        );
+
+        blockchain.add_block(new_block.transactions, new_block.previous_hash, new_block.proposer_id);
+        Ok(())
+    }
+
+    pub fn validate_latest_block(&self) -> IcnResult<bool> {
+        let blockchain = self.blockchain
+            .lock()
+            .map_err(|_| IcnError::Blockchain("Failed to acquire blockchain lock".to_string()))?;
+
+        let latest_block = blockchain.blocks.last()
+            .ok_or_else(|| IcnError::Blockchain("Blockchain is empty".to_string()))?;
+
+        self.consensus
+            .lock()
+            .map_err(|_| IcnError::Consensus("Failed to acquire consensus lock".to_string()))?
+            .validate(latest_block)
+    }
 }
 
 
