@@ -14,4 +14,4 @@ icn_blockchain = { path = "../icn_blockchain" }
 icn_smart_contracts = { path = "../icn_smart_contracts" }
 icn_networking = { path = "../icn_networking" }
 log = "0.4"
-env_logger = "0.9"
+env_logger = "0.10"
