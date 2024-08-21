@@ -890,12 +890,9 @@ pub use transaction::Transaction;
 
 
 === ./icn_blockchain/src/block/mod.rs ===
-// icn_blockchain/src/block/mod.rs
-
 use serde::{Serialize, Deserialize};
 use sha2::{Sha256, Digest};
 use chrono::Utc;
-use crate::transaction::Transaction;
 
 /// Represents a block in the blockchain.
 ///
@@ -905,7 +902,7 @@ use crate::transaction::Transaction;
 pub struct Block {
     pub index: u64,
     pub timestamp: i64,
-    pub transactions: Vec<Transaction>,
+    pub transactions: Vec<String>,
     pub previous_hash: String,
     pub hash: String,
     pub proposer_id: String,
@@ -927,7 +924,7 @@ impl Block {
     /// * `Block` - A new `Block` instance with a calculated hash.
     pub fn new(
         index: u64,
-        transactions: Vec<Transaction>,
+        transactions: Vec<String>,
         previous_hash: String,
         proposer_id: String,
     ) -> Self {
@@ -977,66 +974,57 @@ impl Block {
 }
 
 
-
 === ./icn_blockchain/src/chain/mod.rs ===
-use icn_shared::{Block, IcnError, IcnResult};
-use crate::transaction::Transaction; // Assuming Transaction is defined in this crate
-use icn_consensus::Consensus;
 use std::collections::VecDeque;
-use std::time::{SystemTime, UNIX_EPOCH};
-use log::info;
+use icn_shared::{Block, IcnResult, IcnError};
+use icn_consensus::Consensus;
 
 /// Represents the blockchain, which is a sequence of blocks.
+///
+/// The `Chain` interacts with a consensus mechanism to validate and add new blocks.
+/// The consensus mechanism is abstracted through the `Consensus` trait.
 pub struct Chain<C: Consensus> {
-    pub blocks: VecDeque<Block>,
+    pub blocks: VecDeque<Block>, // Using VecDeque for efficient block operations
     pub consensus: C,
 }
 
 impl<C: Consensus> Chain<C> {
     /// Creates a new blockchain with the given consensus mechanism.
+    ///
+    /// # Arguments
+    ///
+    /// * `consensus` - The consensus mechanism to be used for the blockchain.
+    ///
+    /// # Returns
+    ///
+    /// * `Chain<C>` - A new `Chain` instance.
     pub fn new(consensus: C) -> Self {
         Chain {
-            blocks: VecDeque::new(),
+            blocks: VecDeque::new(), // Initialize blocks as VecDeque
             consensus,
         }
     }
 
     /// Adds a new block to the blockchain.
     ///
+    /// The block is created using the provided transactions and the proposer ID selected
+    /// by the consensus mechanism. The block is then validated before being added to the chain.
+    ///
     /// # Arguments
     ///
-    /// * `transactions` - A vector of `Transaction` instances to include in the block.
+    /// * `transactions` - A vector of transactions to include in the block.
     ///
     /// # Returns
     ///
-    /// * `IcnResult<()>` - Returns `Ok(())` if the block is successfully added, or an `IcnError` if validation fails.
-    pub fn add_block(&mut self, transactions: Vec<Transaction>) -> IcnResult<()> {
-        let proposer_id = self.consensus.select_proposer()?;
+    /// * `IcnResult<()>` - Returns `Ok(())` if the block is successfully added,
+    ///   or an `IcnError` if validation fails.
+    pub fn add_block(&mut self, transactions: Vec<String>, previous_hash: String, proposer_id: String) -> IcnResult<()> {
+        let index = self.blocks.len() as u64;
 
-        let previous_block = self.latest_block();
-        let previous_hash = match previous_block {
-            Some(block) => block.hash.clone(),
-            None => "0".to_string(), // Genesis block case
-        };
-
-        let index = match previous_block {
-            Some(block) => block.index + 1,
-            None => 0, // Genesis block case
-        };
-
-        // Convert transactions to strings for inclusion in the block
-        let transactions_strings = transactions.iter().map(|tx| serde_json::to_string(tx).unwrap()).collect();
-
-        let new_block = Block::new(
-            index,
-            transactions_strings,
-            previous_hash,
-            proposer_id,
-        );
+        let new_block = Block::new(index, transactions, previous_hash, proposer_id);
 
         if self.consensus.validate(&new_block)? {
             self.blocks.push_back(new_block);
-            info!("Block added successfully.");
             Ok(())
         } else {
             Err(IcnError::Blockchain("Block validation failed.".to_string()))
@@ -1044,6 +1032,11 @@ impl<C: Consensus> Chain<C> {
     }
 
     /// Returns the latest block in the blockchain.
+    ///
+    /// # Returns
+    ///
+    /// * `Option<&Block>` - Returns an `Option` containing a reference to the latest block,
+    ///   or `None` if the blockchain is empty.
     pub fn latest_block(&self) -> Option<&Block> {
         self.blocks.back()
     }
@@ -2146,7 +2139,9 @@ dependencies = [
  "log",
  "native-tls",
  "serde",
+ "serde_json",
  "tempfile",
+ "thiserror",
  "tokio",
  "toml",
 ]
@@ -3086,6 +3081,7 @@ edition = "2021"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"  # Added serde_json dependency
 tempfile = "3.2"
 native-tls = "0.2"
 tokio = { version = "1", features = ["full"] }
@@ -3099,6 +3095,7 @@ icn_governance = { path = "../icn_governance" }
 icn_networking = { path = "../icn_networking" }
 icn_shared = { path = "../icn_shared" }
 toml = "0.5"
+thiserror = "1.0"
 
 
 
@@ -3253,71 +3250,80 @@ mod tests {
 
 
 === ./icn_core/src/errors.rs ===
-// icn_core/src/errors.rs
-
-use std::error::Error;
 use std::fmt;
-use thiserror::Error;
+use std::error::Error;
 
 /// Custom error type for the ICN project
-#[derive(Error, Debug)]
+#[derive(Debug)]
 pub enum IcnError {
     /// Configuration error
-    #[error("Configuration error: {0}")]
     Config(String),
 
     /// IO error
-    #[error("IO error: {0}")]
-    Io(#[from] std::io::Error),
+    Io(std::io::Error),
 
     /// TOML parsing error
-    #[error("TOML parsing error: {0}")]
-    Toml(#[from] toml::de::Error),
+    Toml(toml::de::Error),
 
     /// Blockchain error
-    #[error("Blockchain error: {0}")]
     Blockchain(String),
 
     /// Consensus error
-    #[error("Consensus error: {0}")]
     Consensus(String),
 
     /// Networking error
-    #[error("Networking error: {0}")]
     Networking(String),
 
     /// Smart Contract error
-    #[error("Smart Contract error: {0}")]
     SmartContract(String),
 
     /// Virtual Machine error
-    #[error("Virtual Machine error: {0}")]
     VirtualMachine(String),
 
     /// Storage error
-    #[error("Storage error: {0}")]
     Storage(String),
 
     /// Other errors
-    #[error("Other error: {0}")]
     Other(String),
 }
 
-// Implementing the `Error` trait allows our custom error to be used in the `?` operator
+impl fmt::Display for IcnError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            IcnError::Config(msg) => write!(f, "Configuration error: {}", msg),
+            IcnError::Io(err) => write!(f, "I/O error: {}", err),
+            IcnError::Toml(err) => write!(f, "TOML parsing error: {}", err),
+            IcnError::Blockchain(msg) => write!(f, "Blockchain error: {}", msg),
+            IcnError::Consensus(msg) => write!(f, "Consensus error: {}", msg),
+            IcnError::Networking(msg) => write!(f, "Networking error: {}", msg),
+            IcnError::SmartContract(msg) => write!(f, "Smart Contract error: {}", msg),
+            IcnError::VirtualMachine(msg) => write!(f, "Virtual Machine error: {}", msg),
+            IcnError::Storage(msg) => write!(f, "Storage error: {}", msg),
+            IcnError::Other(msg) => write!(f, "Other error: {}", msg),
+        }
+    }
+}
+
 impl Error for IcnError {}
 
-// Implementing the `Display` trait allows our custom error to be formatted and printed
-impl fmt::Display for IcnError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self) // Use the `Error` trait's implementation for formatting
+impl From<std::io::Error> for IcnError {
+    fn from(err: std::io::Error) -> Self {
+        IcnError::Io(err)
+    }
+}
+
+impl From<toml::de::Error> for IcnError {
+    fn from(err: toml::de::Error) -> Self {
+        IcnError::Toml(err)
     }
 }
 
 
+
 === ./icn_core/src/main.rs ===
 use icn_core::config::ConfigLoader;
-use icn_core::node::NodeManager;
 use icn_core::coordinator::ModuleCoordinator;
+use icn_consensus::ProofOfCooperation;
 use std::env;
 use log::error;
 
@@ -3326,13 +3332,13 @@ use log::error;
 /// This function initializes the node by performing the following steps:
 /// 1. Loads the configuration file.
 /// 2. Initializes the `ModuleCoordinator`, which manages the various components of the node.
-/// 3. Creates and starts the `NodeManager`, which is responsible for the node's lifecycle management.
+/// 3. Starts the coordinator, which is responsible for the node's lifecycle management.
 ///
 /// # Command-Line Arguments
 ///
 /// The program accepts an optional command-line argument:
 /// - `config_path` (optional): The path to the configuration file. If not provided, the default
-///   configuration file `config.toml` will be used.
+/// configuration file `config.toml` will be used.
 ///
 /// # Example
 ///
@@ -3346,7 +3352,7 @@ use log::error;
 ///
 /// # Error Handling
 ///
-/// If the configuration file cannot be loaded or if the node manager fails to start, an error
+/// If the configuration file cannot be loaded or if the coordinator fails to start, an error
 /// will be logged and the program will exit gracefully.
 ///
 /// # Dependencies
@@ -3354,7 +3360,7 @@ use log::error;
 /// This function relies on several core components:
 /// - `ConfigLoader`: Loads and parses the configuration file.
 /// - `ModuleCoordinator`: Initializes and manages the coordination between different modules.
-/// - `NodeManager`: Manages the node's lifecycle, including starting and stopping the node.
+/// - `ProofOfCooperation`: The consensus mechanism used by the network.
 #[tokio::main]
 async fn main() {
     // Default configuration file name
@@ -3377,19 +3383,17 @@ async fn main() {
         }
     };
 
+    // Create the consensus mechanism
+    let consensus = ProofOfCooperation::new();
+
     // Initialize the ModuleCoordinator, responsible for managing interactions between modules
-    let coordinator = ModuleCoordinator::new();
+    let mut coordinator = ModuleCoordinator::new(consensus);
 
-    // Create a NodeManager to handle the node's lifecycle
-    let mut node = NodeManager::new(config_loader, coordinator)
-        .expect("Failed to create NodeManager");
-
-    // Start the node manager and handle any errors that occur during startup
-    if let Err(e) = node.start().await {
-        error!("Node manager failed to start: {}", e);
+    // Start the coordinator and handle any errors that occur during startup
+    if let Err(e) = coordinator.start(config_loader.get_config()).await {
+        error!("Coordinator failed to start: {}", e);
     }
 }
-
 
 
 === ./icn_core/src/node/mod.rs ===
@@ -3455,29 +3459,56 @@ pub use errors::IcnError;
 
 === ./icn_core/src/coordinator/module_coordinator.rs ===
 use std::sync::{Arc, Mutex};
-use icn_blockchain::{Chain, Transaction, Block};
-use icn_consensus::ProofOfCooperation;
+use icn_blockchain::Chain;
+use icn_consensus::Consensus;
 use icn_networking::Networking;
 use icn_shared::{NodeState, IcnResult, IcnError};
-use config::Config; // Use the correct import for `Config`
+use config::Config;
 
-pub struct ModuleCoordinator {
-    blockchain: Arc<Mutex<Chain>>,
-    consensus: Arc<Mutex<ProofOfCooperation>>,
+/// The `ModuleCoordinator` is responsible for coordinating various modules within the 
+/// InterCooperative Network (ICN) node. It manages the blockchain, consensus, networking, 
+/// and node state, providing a centralized interface for starting and stopping the node.
+pub struct ModuleCoordinator<C: Consensus + Clone> {
+    blockchain: Arc<Mutex<Chain<C>>>,
+    consensus: Arc<Mutex<C>>,
     networking: Arc<Mutex<Networking>>,
     node_state: Arc<Mutex<NodeState>>,
 }
 
-impl ModuleCoordinator {
-    pub fn new() -> Self {
+impl<C: Consensus + Clone> ModuleCoordinator<C> {
+    /// Creates a new instance of `ModuleCoordinator`.
+    ///
+    /// This function initializes the blockchain, consensus, networking, and node state, 
+    /// encapsulating them within `Arc<Mutex<>>` for thread-safe shared access.
+    ///
+    /// # Arguments
+    ///
+    /// * `consensus` - The consensus mechanism to be used by the blockchain.
+    ///
+    /// # Returns
+    ///
+    /// * `ModuleCoordinator` - A new instance of `ModuleCoordinator`.
+    pub fn new(consensus: C) -> Self {
         ModuleCoordinator {
-            blockchain: Arc::new(Mutex::new(Chain::new())),
-            consensus: Arc::new(Mutex::new(ProofOfCooperation::new())),
+            blockchain: Arc::new(Mutex::new(Chain::new(consensus.clone()))),
+            consensus: Arc::new(Mutex::new(consensus)),
             networking: Arc::new(Mutex::new(Networking::new())),
             node_state: Arc::new(Mutex::new(NodeState::Initializing)),
         }
     }
 
+    /// Starts the node by loading the TLS identity and starting the networking server.
+    ///
+    /// This function reads the configuration to retrieve the paths for the certificate and key files, 
+    /// as well as the password for the certificate. It then loads the TLS identity and starts the server.
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - The configuration object containing network settings.
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<()>` - Returns `Ok(())` if the node starts successfully, or an `IcnError` otherwise.
     pub async fn start(&self, config: &Config) -> IcnResult<()> {
         let cert_file_path: String = config.get::<String>("network.cert_file_path")
             .map_err(|e| IcnError::Config(format!("Invalid cert file path: {}", e)))?;
@@ -3502,6 +3533,13 @@ impl ModuleCoordinator {
         Ok(())
     }
 
+    /// Stops the node by shutting down the networking server and updating the node state.
+    ///
+    /// This function safely stops the server and sets the node state to `ShuttingDown`.
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<()>` - Returns `Ok(())` if the node stops successfully, or an `IcnError` otherwise.
     pub async fn stop(&self) -> IcnResult<()> {
         self.networking
             .lock()
@@ -3516,12 +3554,23 @@ impl ModuleCoordinator {
         Ok(())
     }
 
-    pub fn add_block(&self, transactions: Vec<Transaction>) -> IcnResult<()> {
+    /// Adds a new block to the blockchain with the provided transactions.
+    ///
+    /// This function creates a new block with the given transactions and adds it to the blockchain.
+    ///
+    /// # Arguments
+    ///
+    /// * `transactions` - A vector of `String` objects representing the transactions to include in the new block.
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<()>` - Returns `Ok(())` if the block is successfully added, or an `IcnError` otherwise.
+    pub fn add_block(&self, transactions: Vec<String>) -> IcnResult<()> {
         let mut blockchain = self.blockchain
             .lock()
             .map_err(|_| IcnError::Blockchain("Failed to acquire blockchain lock".to_string()))?;
 
-        let previous_hash = blockchain.blocks.last()
+        let previous_hash = blockchain.latest_block()
             .map(|block| block.hash.clone())
             .unwrap_or_else(|| "0".repeat(64));
 
@@ -3530,23 +3579,23 @@ impl ModuleCoordinator {
             .map_err(|_| IcnError::Consensus("Failed to acquire consensus lock".to_string()))?
             .select_proposer()?;
 
-        let new_block = Block::new(
-            blockchain.blocks.len() as u64,
-            transactions,
-            previous_hash,
-            proposer_id,
-        );
-
-        blockchain.add_block(new_block.transactions, new_block.previous_hash, new_block.proposer_id);
-        Ok(())
+        blockchain.add_block(transactions, previous_hash, proposer_id)
     }
 
+    /// Validates the latest block in the blockchain.
+    ///
+    /// This function retrieves the latest block from the blockchain and validates it 
+    /// using the consensus mechanism.
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<bool>` - Returns `Ok(true)` if the block is valid, or an `IcnError` if validation fails.
     pub fn validate_latest_block(&self) -> IcnResult<bool> {
         let blockchain = self.blockchain
             .lock()
             .map_err(|_| IcnError::Blockchain("Failed to acquire blockchain lock".to_string()))?;
 
-        let latest_block = blockchain.blocks.last()
+        let latest_block = blockchain.latest_block()
             .ok_or_else(|| IcnError::Blockchain("Blockchain is empty".to_string()))?;
 
         self.consensus
@@ -3555,7 +3604,6 @@ impl ModuleCoordinator {
             .validate(latest_block)
     }
 }
-
 
 
 === ./icn_core/src/coordinator/mod.rs ===

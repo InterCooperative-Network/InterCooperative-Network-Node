@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"  # Added serde_json dependency
 tempfile = "3.2"
 native-tls = "0.2"
 tokio = { version = "1", features = ["full"] }
@@ -18,3 +19,4 @@ icn_governance = { path = "../icn_governance" }
 icn_networking = { path = "../icn_networking" }
 icn_shared = { path = "../icn_shared" }
 toml = "0.5"
+thiserror = "1.0"

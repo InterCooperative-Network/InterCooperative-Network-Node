@@ -1,9 +1,6 @@
-// icn_blockchain/src/block/mod.rs
-
 use serde::{Serialize, Deserialize};
 use sha2::{Sha256, Digest};
 use chrono::Utc;
-use crate::transaction::Transaction;
 
 /// Represents a block in the blockchain.
 ///
@@ -13,7 +10,7 @@ use crate::transaction::Transaction;
 pub struct Block {
     pub index: u64,
     pub timestamp: i64,
-    pub transactions: Vec<Transaction>,
+    pub transactions: Vec<String>,
     pub previous_hash: String,
     pub hash: String,
     pub proposer_id: String,
@@ -35,7 +32,7 @@ impl Block {
     /// * `Block` - A new `Block` instance with a calculated hash.
     pub fn new(
         index: u64,
-        transactions: Vec<Transaction>,
+        transactions: Vec<String>,
         previous_hash: String,
         proposer_id: String,
     ) -> Self {

@@ -1,6 +1,6 @@
 use icn_core::config::ConfigLoader;
-use icn_core::node::NodeManager;
 use icn_core::coordinator::ModuleCoordinator;
+use icn_consensus::ProofOfCooperation;
 use std::env;
 use log::error;
 
@@ -9,13 +9,13 @@ use log::error;
 /// This function initializes the node by performing the following steps:
 /// 1. Loads the configuration file.
 /// 2. Initializes the `ModuleCoordinator`, which manages the various components of the node.
-/// 3. Creates and starts the `NodeManager`, which is responsible for the node's lifecycle management.
+/// 3. Starts the coordinator, which is responsible for the node's lifecycle management.
 ///
 /// # Command-Line Arguments
 ///
 /// The program accepts an optional command-line argument:
 /// - `config_path` (optional): The path to the configuration file. If not provided, the default
-///   configuration file `config.toml` will be used.
+/// configuration file `config.toml` will be used.
 ///
 /// # Example
 ///
@@ -29,7 +29,7 @@ use log::error;
 ///
 /// # Error Handling
 ///
-/// If the configuration file cannot be loaded or if the node manager fails to start, an error
+/// If the configuration file cannot be loaded or if the coordinator fails to start, an error
 /// will be logged and the program will exit gracefully.
 ///
 /// # Dependencies
@@ -37,7 +37,7 @@ use log::error;
 /// This function relies on several core components:
 /// - `ConfigLoader`: Loads and parses the configuration file.
 /// - `ModuleCoordinator`: Initializes and manages the coordination between different modules.
-/// - `NodeManager`: Manages the node's lifecycle, including starting and stopping the node.
+/// - `ProofOfCooperation`: The consensus mechanism used by the network.
 #[tokio::main]
 async fn main() {
     // Default configuration file name
@@ -60,15 +60,14 @@ async fn main() {
         }
     };
 
+    // Create the consensus mechanism
+    let consensus = ProofOfCooperation::new();
+
     // Initialize the ModuleCoordinator, responsible for managing interactions between modules
-    let coordinator = ModuleCoordinator::new();
+    let mut coordinator = ModuleCoordinator::new(consensus);
 
-    // Create a NodeManager to handle the node's lifecycle
-    let mut node = NodeManager::new(config_loader, coordinator)
-        .expect("Failed to create NodeManager");
-
-    // Start the node manager and handle any errors that occur during startup
-    if let Err(e) = node.start().await {
-        error!("Node manager failed to start: {}", e);
+    // Start the coordinator and handle any errors that occur during startup
+    if let Err(e) = coordinator.start(config_loader.get_config()).await {
+        error!("Coordinator failed to start: {}", e);
     }
 }
