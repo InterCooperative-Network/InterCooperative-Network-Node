@@ -1,13 +1,8 @@
-// File: icn_shared/src/lib.rs
-
-/// The `icn_shared` crate provides common types and utilities used across the InterCooperative Network project.
-///
-/// This crate includes error types, result aliases, and shared data structures that are used by other crates
-/// in the project to ensure consistency and reduce code duplication.
-
 use std::error::Error;
 use std::fmt;
+use std::time::{SystemTime, UNIX_EPOCH}; // Import the missing time components
 use serde::{Serialize, Deserialize};
+use sha2::{Sha256, Digest}; // Import the missing sha2 crate
 
 /// Custom error type for the ICN project.
 ///
@@ -15,21 +10,13 @@ use serde::{Serialize, Deserialize};
 /// It is used across different crates to provide a consistent error handling mechanism.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum IcnError {
-    /// Configuration-related errors.
     Config(String),
-    /// Blockchain-related errors.
     Blockchain(String),
-    /// Consensus mechanism errors.
     Consensus(String),
-    /// Network-related errors.
     Network(String),
-    /// Smart contract errors.
     SmartContract(String),
-    /// Storage-related errors.
     Storage(String),
-    /// I/O errors.
     Io(String),
-    /// Any other errors that don't fit into the above categories.
     Other(String),
 }
 
@@ -50,62 +37,77 @@ impl fmt::Display for IcnError {
 
 impl Error for IcnError {}
 
+/// Converts a standard I/O error into an `IcnError`.
 impl From<std::io::Error> for IcnError {
     fn from(err: std::io::Error) -> Self {
         IcnError::Io(err.to_string())
     }
 }
 
-/// A type alias for Result with IcnError as the error type.
+/// A type alias for `Result` with `IcnError` as the error type.
 ///
 /// This alias is used throughout the project to provide a consistent result type
 /// that uses our custom `IcnError`.
 pub type IcnResult<T> = Result<T, IcnError>;
 
 /// Represents the current state of a node in the network.
+///
+/// This enum is used to track the lifecycle of nodes within the network.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum NodeState {
-    /// The node is in the process of starting up and initializing its components.
     Initializing,
-    /// The node is fully operational and participating in the network.
     Operational,
-    /// The node is in the process of shutting down.
     ShuttingDown,
+}
+
+/// Common block structure that can be used across crates
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Block {
+    pub index: u64,
+    pub timestamp: u64,
+    pub transactions: Vec<String>,
+    pub previous_hash: String,
+    pub hash: String,
+    pub proposer_id: String,
+}
+
+impl Block {
+    /// Creates a new block
+    pub fn new(index: u64, transactions: Vec<String>, previous_hash: String, proposer_id: String) -> Self {
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards")
+            .as_secs();
+
+        // Simulating hash calculation
+        let hash = format!("{:x}", Sha256::digest(format!("{:?}", index).as_bytes()));
+
+        Block {
+            index,
+            timestamp,
+            transactions,
+            previous_hash,
+            hash,
+            proposer_id,
+        }
+    }
 }
 
 /// This module contains utility functions used across the project.
 pub mod utils {
-    use super::*;
-
     /// Validates if a given string is a valid hexadecimal representation.
-    ///
-    /// # Arguments
-    ///
-    /// * `hex_string` - A string slice that should contain a hexadecimal value.
-    ///
-    /// # Returns
-    ///
-    /// * `true` if the string is a valid hexadecimal representation, `false` otherwise.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use icn_shared::utils::is_valid_hex;
-    ///
-    /// assert!(is_valid_hex("1a2b3c"));
-    /// assert!(!is_valid_hex("1a2g3c")); // 'g' is not a valid hex character
-    /// ```
     pub fn is_valid_hex(hex_string: &str) -> bool {
         hex_string.chars().all(|c| c.is_digit(16))
     }
 
-    // Add more utility functions as needed
+    // Additional utility functions can be added here as needed
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    /// Tests for the `is_valid_hex` utility function.
     #[test]
     fn test_is_valid_hex() {
         assert!(utils::is_valid_hex("1a2b3c"));

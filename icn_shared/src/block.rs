@@ -1,9 +1,6 @@
-// icn_blockchain/src/block/mod.rs
-
 use serde::{Serialize, Deserialize};
 use sha2::{Sha256, Digest};
-use chrono::Utc;
-use crate::transaction::Transaction;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Represents a block in the blockchain.
 ///
@@ -12,12 +9,12 @@ use crate::transaction::Transaction;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Block {
     pub index: u64,
-    pub timestamp: i64,
-    pub transactions: Vec<Transaction>,
+    pub timestamp: u64,
+    pub transactions: Vec<String>, // Transactions are represented as Strings
     pub previous_hash: String,
     pub hash: String,
     pub proposer_id: String,
-    pub nonce: u64, // Retained for potential future use, but not required in PoC
+    pub nonce: u64,
 }
 
 impl Block {
@@ -35,18 +32,23 @@ impl Block {
     /// * `Block` - A new `Block` instance with a calculated hash.
     pub fn new(
         index: u64,
-        transactions: Vec<Transaction>,
+        transactions: Vec<String>,
         previous_hash: String,
         proposer_id: String,
     ) -> Self {
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards")
+            .as_secs();
+
         let mut block = Block {
             index,
-            timestamp: Utc::now().timestamp(),
+            timestamp,
             transactions,
             previous_hash,
             hash: String::new(),
             proposer_id,
-            nonce: 0, // nonce is not used in PoC but is retained for compatibility
+            nonce: 0,
         };
         block.hash = block.calculate_hash();
         block
@@ -67,7 +69,7 @@ impl Block {
         hasher.update(serde_json::to_string(&self.transactions).unwrap());
         hasher.update(&self.previous_hash);
         hasher.update(&self.proposer_id);
-        hasher.update(self.nonce.to_be_bytes()); // nonce is included but not utilized in PoC
+        hasher.update(self.nonce.to_be_bytes());
         format!("{:x}", hasher.finalize())
     }
 

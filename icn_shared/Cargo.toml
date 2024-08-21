@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2018"
 
 [dependencies]
+sha2 = "0.10"  # Add this line
 serde = "1.0"
 serde_json = "1.0"
 log = "0.4"

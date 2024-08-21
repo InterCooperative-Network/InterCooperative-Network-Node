@@ -1,5 +1,3 @@
-// File: icn_networking/src/lib.rs
-
 use std::sync::{Arc, RwLock};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -8,18 +6,37 @@ use native_tls::Identity;
 use icn_shared::{IcnError, IcnResult};
 use log::{info, error};
 
+/// The `Networking` struct is responsible for managing peer-to-peer network connections
+/// in a secure manner using TLS (Transport Layer Security). It allows for starting a server,
+/// connecting to peers, and broadcasting messages to all connected peers.
 #[derive(Clone)]
 pub struct Networking {
     peers: Arc<RwLock<Vec<tokio_native_tls::TlsStream<TcpStream>>>>,
 }
 
 impl Networking {
+    /// Creates a new instance of the `Networking` struct.
+    ///
+    /// # Returns
+    /// 
+    /// * `Networking` - An instance of the `Networking` struct with an empty list of peers.
     pub fn new() -> Self {
         Networking {
             peers: Arc::new(RwLock::new(vec![])),
         }
     }
 
+    /// Loads a TLS identity from a certificate and key file.
+    ///
+    /// # Arguments
+    ///
+    /// * `cert_path` - The path to the TLS certificate file.
+    /// * `key_path` - The path to the TLS key file.
+    /// * `password` - The password for the TLS key.
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<Identity>` - The loaded TLS identity or an error if loading fails.
     pub fn load_tls_identity(cert_path: &str, key_path: &str, password: &str) -> IcnResult<Identity> {
         let cert = std::fs::read(cert_path)
             .map_err(|e| IcnError::Network(format!("Failed to read certificate file: {}", e)))?;
@@ -29,6 +46,16 @@ impl Networking {
             .map_err(|e| IcnError::Network(format!("Failed to load TLS identity: {}", e)))
     }
 
+    /// Starts a server that listens on the specified address using the provided TLS identity.
+    ///
+    /// # Arguments
+    ///
+    /// * `address` - The address to bind the server to.
+    /// * `identity` - The TLS identity to use for secure connections.
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<()>` - An empty result indicating success or an error if starting the server fails.
     pub async fn start_server(&self, address: &str, identity: Identity) -> IcnResult<()> {
         let acceptor = TlsAcceptor::from(
             native_tls::TlsAcceptor::new(identity)
@@ -56,6 +83,15 @@ impl Networking {
         }
     }
 
+    /// Connects to a peer at the specified address using TLS.
+    ///
+    /// # Arguments
+    ///
+    /// * `address` - The address of the peer to connect to.
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<()>` - An empty result indicating success or an error if the connection fails.
     pub async fn connect_to_peer(&self, address: &str) -> IcnResult<()> {
         let connector = TlsConnector::from(
             native_tls::TlsConnector::new()
@@ -73,6 +109,15 @@ impl Networking {
         Ok(())
     }
 
+    /// Broadcasts a message to all connected peers.
+    ///
+    /// # Arguments
+    ///
+    /// * `message` - The message to broadcast.
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<()>` - An empty result indicating success or an error if the message could not be sent.
     pub async fn broadcast_message(&self, message: &str) -> IcnResult<()> {
         let mut peers = self.peers.write().map_err(|_| IcnError::Network("Failed to acquire peers lock".to_string()))?;
         for peer in peers.iter_mut() {
@@ -82,10 +127,20 @@ impl Networking {
         Ok(())
     }
 
+    /// Initializes the networking component. Currently, this function is a placeholder.
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<()>` - An empty result indicating success or an error.
     pub async fn initialize(&self) -> IcnResult<()> {
         Ok(())
     }
 
+    /// Stops the networking component and disconnects all peers.
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<()>` - An empty result indicating success or an error if stopping fails.
     pub async fn stop(&self) -> IcnResult<()> {
         let mut peers = self.peers.write().map_err(|_| IcnError::Network("Failed to acquire peers lock".to_string()))?;
         for peer in peers.iter_mut() {
@@ -99,6 +154,18 @@ impl Networking {
     }
 }
 
+/// Handles an incoming client connection, establishing a secure TLS stream
+/// and managing communication with the peer.
+///
+/// # Arguments
+///
+/// * `stream` - The TCP stream representing the client connection.
+/// * `acceptor` - The TLS acceptor used to secure the connection.
+/// * `peers` - The list of currently connected peers.
+///
+/// # Returns
+///
+/// * `IcnResult<()>` - An empty result indicating success or an error if the connection fails.
 async fn handle_client_connection(
     stream: TcpStream,
     acceptor: TlsAcceptor,
@@ -110,7 +177,20 @@ async fn handle_client_connection(
     handle_client(tls_stream, peers).await
 }
 
-async fn handle_client(mut stream: tokio_native_tls::TlsStream<TcpStream>, peers: Arc<RwLock<Vec<tokio_native_tls::TlsStream<TcpStream>>>>) -> IcnResult<()> {
+/// Manages communication with a connected peer, reading and processing messages.
+///
+/// # Arguments
+///
+/// * `stream` - The secure TLS stream for the peer connection.
+/// * `peers` - The list of currently connected peers.
+///
+/// # Returns
+///
+/// * `IcnResult<()>` - An empty result indicating success or an error if the connection fails.
+async fn handle_client(
+    mut stream: tokio_native_tls::TlsStream<TcpStream>, 
+    peers: Arc<RwLock<Vec<tokio_native_tls::TlsStream<TcpStream>>>>
+) -> IcnResult<()> {
     let mut buffer = [0; 1024];
     loop {
         match stream.read(&mut buffer).await {
@@ -138,12 +218,14 @@ mod tests {
     use tokio::net::TcpListener;
 
     #[test]
+    /// Tests the creation of a new Networking instance.
     fn test_networking_creation() {
         let networking = Networking::new();
         assert_eq!(networking.peers.read().unwrap().len(), 0);
     }
 
     #[test]
+    /// Tests the ability to connect to a peer.
     fn test_connect_to_peer() {
         let runtime = Runtime::new().unwrap();
         let networking = Networking::new();
@@ -171,6 +253,7 @@ mod tests {
     }
 
     #[test]
+    /// Tests the loading of a TLS identity.
     fn test_load_tls_identity() {
         let cert_file = tempfile::NamedTempFile::new().unwrap();
         let key_file = tempfile::NamedTempFile::new().unwrap();
@@ -187,6 +270,7 @@ mod tests {
     }
 
     #[test]
+    /// Tests broadcasting a message to peers.
     fn test_broadcast_message() {
         let runtime = Runtime::new().unwrap();
         let networking = Networking::new();

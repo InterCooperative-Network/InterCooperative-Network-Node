@@ -2,7 +2,8 @@
 
 pub mod config;
 pub mod coordinator;
-pub mod node;
+pub mod errors;
 
-// Remove the unused imports
-// use icn_shared::{IcnError, IcnResult};
+pub use config::ConfigLoader;
+pub use coordinator::ModuleCoordinator;
+pub use errors::IcnError;

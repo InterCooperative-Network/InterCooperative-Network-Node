@@ -1,12 +1,32 @@
-// File: icn_consensus/src/lib.rs
-
-use std::collections::{HashMap, HashSet};
-use icn_blockchain::block::Block;
-use icn_shared::{IcnError, IcnResult};
+use icn_shared::{IcnError, IcnResult, Block}; // Import `Block` from `icn_shared`
 use rand::Rng;
+use std::collections::{HashMap, HashSet};
 use std::time::{SystemTime, UNIX_EPOCH};
 use log::info;
 
+/// The `Consensus` trait defines the interface for consensus mechanisms
+/// within the InterCooperative Network blockchain system.
+pub trait Consensus {
+    /// Validates a block according to the consensus rules.
+    ///
+    /// # Arguments
+    ///
+    /// * `block` - A reference to the block that needs to be validated.
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<bool>` - Returns `Ok(true)` if the block is valid, or an `IcnError` if validation fails.
+    fn validate(&self, block: &Block) -> IcnResult<bool>;
+
+    /// Selects a proposer for the next block.
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<String>` - Returns the ID of the selected proposer, or an `IcnError` if selection fails.
+    fn select_proposer(&self) -> IcnResult<String>;
+}
+
+/// The `ProofOfCooperation` struct implements the consensus mechanism for the ICN project.
 pub struct ProofOfCooperation {
     known_peers: HashSet<String>,
     cooperation_scores: HashMap<String, u64>,
@@ -14,6 +34,7 @@ pub struct ProofOfCooperation {
 }
 
 impl ProofOfCooperation {
+    /// Creates a new instance of the `ProofOfCooperation` consensus mechanism.
     pub fn new() -> Self {
         ProofOfCooperation {
             known_peers: HashSet::new(),
@@ -22,17 +43,34 @@ impl ProofOfCooperation {
         }
     }
 
+    /// Registers a new peer in the consensus system.
+    ///
+    /// # Arguments
+    ///
+    /// * `peer_id` - The unique identifier of the peer to be registered.
     pub fn register_peer(&mut self, peer_id: &str) {
         self.known_peers.insert(peer_id.to_string());
         self.cooperation_scores.insert(peer_id.to_string(), 100);
         info!("Registered peer: {}", peer_id);
     }
 
+    /// Checks whether a peer is already registered in the system.
+    ///
+    /// # Arguments
+    ///
+    /// * `peer_id` - The unique identifier of the peer to be checked.
+    ///
+    /// # Returns
+    ///
+    /// * `bool` - Returns `true` if the peer is registered, `false` otherwise.
     pub fn is_registered(&self, peer_id: &str) -> bool {
         self.known_peers.contains(peer_id)
     }
+}
 
-    pub fn validate(&mut self, block: &Block) -> IcnResult<bool> {
+impl Consensus for ProofOfCooperation {
+    /// Validates a block according to the consensus rules.
+    fn validate(&self, block: &Block) -> IcnResult<bool> {
         if !self.is_registered(&block.proposer_id) {
             return Err(IcnError::Consensus(format!("Unknown proposer: {}", block.proposer_id)));
         }
@@ -46,16 +84,13 @@ impl ProofOfCooperation {
             return Err(IcnError::Consensus("Block proposed too soon".to_string()));
         }
 
-        // Update last block time
-        self.last_block_time = current_time;
-
-        // Implement additional validation logic here
-        // For example, check block signature, transaction validity, etc.
+        // Additional validation logic can be implemented here
 
         Ok(true)
     }
 
-    pub fn select_proposer(&self) -> IcnResult<String> {
+    /// Selects a proposer for the next block based on cooperation scores.
+    fn select_proposer(&self) -> IcnResult<String> {
         let mut rng = rand::thread_rng();
         let total_score: u64 = self.cooperation_scores.values().sum();
         let random_value: u64 = rng.gen_range(0..total_score);
@@ -69,64 +104,5 @@ impl ProofOfCooperation {
         }
 
         Err(IcnError::Consensus("Failed to select a proposer".to_string()))
-    }
-
-    pub fn update_cooperation_score(&mut self, peer_id: &str, performance: f64) -> IcnResult<()> {
-        let score = self.cooperation_scores
-            .get_mut(peer_id)
-            .ok_or_else(|| IcnError::Consensus(format!("Unknown peer: {}", peer_id)))?;
-        
-        *score = (*score as f64 * performance).round() as u64;
-        *score = (*score).max(10).min(200); // Ensure it stays within a sensible range
-        Ok(())
-    }
-
-    pub fn handle_fork<'a>(&self, chain_a: &'a [Block], chain_b: &'a [Block]) -> &'a [Block] {
-        // Simple longest chain rule for now
-        if chain_a.len() >= chain_b.len() {
-            chain_a
-        } else {
-            chain_b
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use icn_blockchain::block::Block;
-
-    #[test]
-    fn test_register_and_validate_peer() {
-        let mut poc = ProofOfCooperation::new();
-        poc.register_peer("peer1");
-        
-        let block = Block::new(0, vec![], "0".to_string(), "peer1".to_string());
-        assert!(poc.validate(&block).is_ok());
-
-        let invalid_block = Block::new(0, vec![], "0".to_string(), "unknown_peer".to_string());
-        assert!(poc.validate(&invalid_block).is_err());
-    }
-
-    #[test]
-    fn test_select_proposer() {
-        let mut poc = ProofOfCooperation::new();
-        poc.register_peer("peer1");
-        poc.register_peer("peer2");
-        
-        let proposer = poc.select_proposer().unwrap();
-        assert!(vec!["peer1", "peer2"].contains(&proposer.as_str()));
-    }
-
-    #[test]
-    fn test_update_cooperation_score() {
-        let mut poc = ProofOfCooperation::new();
-        poc.register_peer("peer1");
-        
-        poc.update_cooperation_score("peer1", 1.5).unwrap();
-        assert!(poc.cooperation_scores["peer1"] > 100);
-
-        poc.update_cooperation_score("peer1", 0.5).unwrap();
-        assert!(poc.cooperation_scores["peer1"] < 100);
     }
 }

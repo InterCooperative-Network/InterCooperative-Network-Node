@@ -1,10 +1,9 @@
 [package]
 name = "icn_consensus"
 version = "0.1.0"
-edition = "2018"
+edition = "2021"
 
 [dependencies]
 icn_shared = { path = "../icn_shared" }
-icn_blockchain = { path = "../icn_blockchain" }
 log = "0.4"
-rand = "0.8"  # Add this line
+rand = "0.8"

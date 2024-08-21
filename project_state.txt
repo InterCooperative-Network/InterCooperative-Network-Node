@@ -37,6 +37,7 @@
 ├── icn_consensus
 │   ├── Cargo.toml
 │   └── src
+│       ├── consensus.rs
 │       ├── lib
 │       │   └── mod.rs
 │       ├── lib.rs
@@ -79,6 +80,9 @@
 ├── icn_shared
 │   ├── Cargo.toml
 │   └── src
+│       ├── block.rs
+│       ├── consensus.rs
+│       ├── error.rs
 │       └── lib.rs
 ├── icn_smart_contracts
 │   ├── Cargo.toml
@@ -111,7 +115,7 @@
 └── .vscode
     └── settings.json
 
-44 directories, 67 files
+44 directories, 71 files
 
 
 
@@ -176,8 +180,6 @@ tempfile = "3.2"
 
 
 === ./icn_networking/src/lib.rs ===
-// File: icn_networking/src/lib.rs
-
 use std::sync::{Arc, RwLock};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -186,18 +188,37 @@ use native_tls::Identity;
 use icn_shared::{IcnError, IcnResult};
 use log::{info, error};
 
+/// The `Networking` struct is responsible for managing peer-to-peer network connections
+/// in a secure manner using TLS (Transport Layer Security). It allows for starting a server,
+/// connecting to peers, and broadcasting messages to all connected peers.
 #[derive(Clone)]
 pub struct Networking {
     peers: Arc<RwLock<Vec<tokio_native_tls::TlsStream<TcpStream>>>>,
 }
 
 impl Networking {
+    /// Creates a new instance of the `Networking` struct.
+    ///
+    /// # Returns
+    /// 
+    /// * `Networking` - An instance of the `Networking` struct with an empty list of peers.
     pub fn new() -> Self {
         Networking {
             peers: Arc::new(RwLock::new(vec![])),
         }
     }
 
+    /// Loads a TLS identity from a certificate and key file.
+    ///
+    /// # Arguments
+    ///
+    /// * `cert_path` - The path to the TLS certificate file.
+    /// * `key_path` - The path to the TLS key file.
+    /// * `password` - The password for the TLS key.
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<Identity>` - The loaded TLS identity or an error if loading fails.
     pub fn load_tls_identity(cert_path: &str, key_path: &str, password: &str) -> IcnResult<Identity> {
         let cert = std::fs::read(cert_path)
             .map_err(|e| IcnError::Network(format!("Failed to read certificate file: {}", e)))?;
@@ -207,6 +228,16 @@ impl Networking {
             .map_err(|e| IcnError::Network(format!("Failed to load TLS identity: {}", e)))
     }
 
+    /// Starts a server that listens on the specified address using the provided TLS identity.
+    ///
+    /// # Arguments
+    ///
+    /// * `address` - The address to bind the server to.
+    /// * `identity` - The TLS identity to use for secure connections.
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<()>` - An empty result indicating success or an error if starting the server fails.
     pub async fn start_server(&self, address: &str, identity: Identity) -> IcnResult<()> {
         let acceptor = TlsAcceptor::from(
             native_tls::TlsAcceptor::new(identity)
@@ -234,6 +265,15 @@ impl Networking {
         }
     }
 
+    /// Connects to a peer at the specified address using TLS.
+    ///
+    /// # Arguments
+    ///
+    /// * `address` - The address of the peer to connect to.
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<()>` - An empty result indicating success or an error if the connection fails.
     pub async fn connect_to_peer(&self, address: &str) -> IcnResult<()> {
         let connector = TlsConnector::from(
             native_tls::TlsConnector::new()
@@ -251,6 +291,15 @@ impl Networking {
         Ok(())
     }
 
+    /// Broadcasts a message to all connected peers.
+    ///
+    /// # Arguments
+    ///
+    /// * `message` - The message to broadcast.
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<()>` - An empty result indicating success or an error if the message could not be sent.
     pub async fn broadcast_message(&self, message: &str) -> IcnResult<()> {
         let mut peers = self.peers.write().map_err(|_| IcnError::Network("Failed to acquire peers lock".to_string()))?;
         for peer in peers.iter_mut() {
@@ -260,10 +309,20 @@ impl Networking {
         Ok(())
     }
 
+    /// Initializes the networking component. Currently, this function is a placeholder.
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<()>` - An empty result indicating success or an error.
     pub async fn initialize(&self) -> IcnResult<()> {
         Ok(())
     }
 
+    /// Stops the networking component and disconnects all peers.
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<()>` - An empty result indicating success or an error if stopping fails.
     pub async fn stop(&self) -> IcnResult<()> {
         let mut peers = self.peers.write().map_err(|_| IcnError::Network("Failed to acquire peers lock".to_string()))?;
         for peer in peers.iter_mut() {
@@ -277,6 +336,18 @@ impl Networking {
     }
 }
 
+/// Handles an incoming client connection, establishing a secure TLS stream
+/// and managing communication with the peer.
+///
+/// # Arguments
+///
+/// * `stream` - The TCP stream representing the client connection.
+/// * `acceptor` - The TLS acceptor used to secure the connection.
+/// * `peers` - The list of currently connected peers.
+///
+/// # Returns
+///
+/// * `IcnResult<()>` - An empty result indicating success or an error if the connection fails.
 async fn handle_client_connection(
     stream: TcpStream,
     acceptor: TlsAcceptor,
@@ -288,7 +359,20 @@ async fn handle_client_connection(
     handle_client(tls_stream, peers).await
 }
 
-async fn handle_client(mut stream: tokio_native_tls::TlsStream<TcpStream>, peers: Arc<RwLock<Vec<tokio_native_tls::TlsStream<TcpStream>>>>) -> IcnResult<()> {
+/// Manages communication with a connected peer, reading and processing messages.
+///
+/// # Arguments
+///
+/// * `stream` - The secure TLS stream for the peer connection.
+/// * `peers` - The list of currently connected peers.
+///
+/// # Returns
+///
+/// * `IcnResult<()>` - An empty result indicating success or an error if the connection fails.
+async fn handle_client(
+    mut stream: tokio_native_tls::TlsStream<TcpStream>, 
+    peers: Arc<RwLock<Vec<tokio_native_tls::TlsStream<TcpStream>>>>
+) -> IcnResult<()> {
     let mut buffer = [0; 1024];
     loop {
         match stream.read(&mut buffer).await {
@@ -316,12 +400,14 @@ mod tests {
     use tokio::net::TcpListener;
 
     #[test]
+    /// Tests the creation of a new Networking instance.
     fn test_networking_creation() {
         let networking = Networking::new();
         assert_eq!(networking.peers.read().unwrap().len(), 0);
     }
 
     #[test]
+    /// Tests the ability to connect to a peer.
     fn test_connect_to_peer() {
         let runtime = Runtime::new().unwrap();
         let networking = Networking::new();
@@ -349,6 +435,7 @@ mod tests {
     }
 
     #[test]
+    /// Tests the loading of a TLS identity.
     fn test_load_tls_identity() {
         let cert_file = tempfile::NamedTempFile::new().unwrap();
         let key_file = tempfile::NamedTempFile::new().unwrap();
@@ -365,6 +452,7 @@ mod tests {
     }
 
     #[test]
+    /// Tests broadcasting a message to peers.
     fn test_broadcast_message() {
         let runtime = Runtime::new().unwrap();
         let networking = Networking::new();
@@ -402,6 +490,7 @@ version = "0.1.0"
 edition = "2018"
 
 [dependencies]
+sha2 = "0.10"  # Add this line
 serde = "1.0"
 serde_json = "1.0"
 log = "0.4"
@@ -409,17 +498,111 @@ native-tls = "0.2"  # Add this line
 
 
 
-=== ./icn_shared/src/lib.rs ===
-// File: icn_shared/src/lib.rs
+=== ./icn_shared/src/error.rs ===
 
-/// The `icn_shared` crate provides common types and utilities used across the InterCooperative Network project.
+
+
+=== ./icn_shared/src/block.rs ===
+use serde::{Serialize, Deserialize};
+use sha2::{Sha256, Digest};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+/// Represents a block in the blockchain.
 ///
-/// This crate includes error types, result aliases, and shared data structures that are used by other crates
-/// in the project to ensure consistency and reduce code duplication.
+/// Each block contains a list of transactions, a reference to the previous block's hash,
+/// a unique hash calculated from its contents, and the ID of the proposer who created the block.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Block {
+    pub index: u64,
+    pub timestamp: u64,
+    pub transactions: Vec<String>, // Transactions are represented as Strings
+    pub previous_hash: String,
+    pub hash: String,
+    pub proposer_id: String,
+    pub nonce: u64,
+}
 
+impl Block {
+    /// Creates a new `Block` instance.
+    ///
+    /// # Arguments
+    ///
+    /// * `index` - The index of the block in the blockchain.
+    /// * `transactions` - A vector of transactions included in the block.
+    /// * `previous_hash` - The hash of the previous block in the chain.
+    /// * `proposer_id` - The ID of the node proposing the block.
+    ///
+    /// # Returns
+    ///
+    /// * `Block` - A new `Block` instance with a calculated hash.
+    pub fn new(
+        index: u64,
+        transactions: Vec<String>,
+        previous_hash: String,
+        proposer_id: String,
+    ) -> Self {
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards")
+            .as_secs();
+
+        let mut block = Block {
+            index,
+            timestamp,
+            transactions,
+            previous_hash,
+            hash: String::new(),
+            proposer_id,
+            nonce: 0,
+        };
+        block.hash = block.calculate_hash();
+        block
+    }
+
+    /// Calculates the hash of the block based on its contents.
+    ///
+    /// The hash is computed using SHA-256 and includes the block's index, timestamp,
+    /// transactions, previous hash, proposer ID, and nonce.
+    ///
+    /// # Returns
+    ///
+    /// * `String` - The calculated hash of the block.
+    pub fn calculate_hash(&self) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(self.index.to_be_bytes());
+        hasher.update(self.timestamp.to_be_bytes());
+        hasher.update(serde_json::to_string(&self.transactions).unwrap());
+        hasher.update(&self.previous_hash);
+        hasher.update(&self.proposer_id);
+        hasher.update(self.nonce.to_be_bytes());
+        format!("{:x}", hasher.finalize())
+    }
+
+    /// Validates the block's hash to ensure it matches the calculated hash.
+    ///
+    /// This method checks the integrity of the block by verifying that its hash is consistent
+    /// with its contents.
+    ///
+    /// # Returns
+    ///
+    /// * `bool` - Returns `true` if the block is valid, `false` otherwise.
+    pub fn is_valid(&self) -> bool {
+        self.hash == self.calculate_hash()
+    }
+}
+
+
+
+=== ./icn_shared/src/consensus.rs ===
+
+
+
+=== ./icn_shared/src/lib.rs ===
 use std::error::Error;
 use std::fmt;
+use std::time::{SystemTime, UNIX_EPOCH}; // Import the missing time components
 use serde::{Serialize, Deserialize};
+use sha2::{Sha256, Digest}; // Import the missing sha2 crate
 
 /// Custom error type for the ICN project.
 ///
@@ -427,21 +610,13 @@ use serde::{Serialize, Deserialize};
 /// It is used across different crates to provide a consistent error handling mechanism.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum IcnError {
-    /// Configuration-related errors.
     Config(String),
-    /// Blockchain-related errors.
     Blockchain(String),
-    /// Consensus mechanism errors.
     Consensus(String),
-    /// Network-related errors.
     Network(String),
-    /// Smart contract errors.
     SmartContract(String),
-    /// Storage-related errors.
     Storage(String),
-    /// I/O errors.
     Io(String),
-    /// Any other errors that don't fit into the above categories.
     Other(String),
 }
 
@@ -462,62 +637,77 @@ impl fmt::Display for IcnError {
 
 impl Error for IcnError {}
 
+/// Converts a standard I/O error into an `IcnError`.
 impl From<std::io::Error> for IcnError {
     fn from(err: std::io::Error) -> Self {
         IcnError::Io(err.to_string())
     }
 }
 
-/// A type alias for Result with IcnError as the error type.
+/// A type alias for `Result` with `IcnError` as the error type.
 ///
 /// This alias is used throughout the project to provide a consistent result type
 /// that uses our custom `IcnError`.
 pub type IcnResult<T> = Result<T, IcnError>;
 
 /// Represents the current state of a node in the network.
+///
+/// This enum is used to track the lifecycle of nodes within the network.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum NodeState {
-    /// The node is in the process of starting up and initializing its components.
     Initializing,
-    /// The node is fully operational and participating in the network.
     Operational,
-    /// The node is in the process of shutting down.
     ShuttingDown,
+}
+
+/// Common block structure that can be used across crates
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Block {
+    pub index: u64,
+    pub timestamp: u64,
+    pub transactions: Vec<String>,
+    pub previous_hash: String,
+    pub hash: String,
+    pub proposer_id: String,
+}
+
+impl Block {
+    /// Creates a new block
+    pub fn new(index: u64, transactions: Vec<String>, previous_hash: String, proposer_id: String) -> Self {
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards")
+            .as_secs();
+
+        // Simulating hash calculation
+        let hash = format!("{:x}", Sha256::digest(format!("{:?}", index).as_bytes()));
+
+        Block {
+            index,
+            timestamp,
+            transactions,
+            previous_hash,
+            hash,
+            proposer_id,
+        }
+    }
 }
 
 /// This module contains utility functions used across the project.
 pub mod utils {
-    use super::*;
-
     /// Validates if a given string is a valid hexadecimal representation.
-    ///
-    /// # Arguments
-    ///
-    /// * `hex_string` - A string slice that should contain a hexadecimal value.
-    ///
-    /// # Returns
-    ///
-    /// * `true` if the string is a valid hexadecimal representation, `false` otherwise.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use icn_shared::utils::is_valid_hex;
-    ///
-    /// assert!(is_valid_hex("1a2b3c"));
-    /// assert!(!is_valid_hex("1a2g3c")); // 'g' is not a valid hex character
-    /// ```
     pub fn is_valid_hex(hex_string: &str) -> bool {
         hex_string.chars().all(|c| c.is_digit(16))
     }
 
-    // Add more utility functions as needed
+    // Additional utility functions can be added here as needed
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    /// Tests for the `is_valid_hex` utility function.
     #[test]
     fn test_is_valid_hex() {
         assert!(utils::is_valid_hex("1a2b3c"));
@@ -526,6 +716,7 @@ mod tests {
         assert!(!utils::is_valid_hex("xyz"));
     }
 }
+
 
 
 === ./config/default_config.toml ===
@@ -591,6 +782,10 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+icn_shared = { path = "../icn_shared" }
+icn_consensus = { path = "../icn_consensus" }
+log = "0.4"
+
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha2 = "0.10"
@@ -607,32 +802,52 @@ chrono = "0.4"
 
 use serde::{Serialize, Deserialize};
 
-/// Represents the different types of transactions supported by the blockchain
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)] 
+/// Represents the different types of transactions supported by the blockchain.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TransactionType {
     Transfer,
     DeployContract,
     // Add more variants as needed
 }
 
+/// The `Transaction` struct defines a blockchain transaction, including its sender,
+/// receiver, amount, and type of transaction.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Transaction {
     pub sender: String,
     pub receiver: String,
     pub amount: u64,
-    pub transaction_type: TransactionType, 
+    pub transaction_type: TransactionType,
 }
 
 impl Transaction {
+    /// Creates a new `Transaction` instance with the given sender, receiver, and amount.
+    ///
+    /// # Arguments
+    ///
+    /// * `sender` - The ID of the sender.
+    /// * `receiver` - The ID of the receiver.
+    /// * `amount` - The amount being transferred in the transaction.
+    ///
+    /// # Returns
+    ///
+    /// * `Transaction` - A new `Transaction` instance of type `Transfer`.
     pub fn new(sender: &str, receiver: &str, amount: u64) -> Self {
         Transaction {
             sender: sender.to_string(),
             receiver: receiver.to_string(),
             amount,
-            transaction_type: TransactionType::Transfer, 
+            transaction_type: TransactionType::Transfer,
         }
     }
 
+    /// Validates the transaction based on its type.
+    ///
+    /// # Returns
+    ///
+    /// * `bool` - Returns `true` if the transaction is valid, `false` otherwise.
+    ///
+    /// This method performs basic validation depending on the transaction type.
     pub fn validate_transaction(&self) -> bool {
         match self.transaction_type {
             TransactionType::Transfer => {
@@ -666,11 +881,11 @@ pub enum TransactionType {
 
 pub mod block;
 pub mod chain;
-pub mod transaction; // Ensure this line is included to expose the transaction module
+pub mod transaction;
 
 pub use block::Block;
 pub use chain::Chain;
-pub use transaction::Transaction; // Add this to expose Transaction if needed
+pub use transaction::Transaction;
 
 
 
@@ -680,8 +895,12 @@ pub use transaction::Transaction; // Add this to expose Transaction if needed
 use serde::{Serialize, Deserialize};
 use sha2::{Sha256, Digest};
 use chrono::Utc;
-use crate::transaction::Transaction; // Corrected import path
+use crate::transaction::Transaction;
 
+/// Represents a block in the blockchain.
+///
+/// Each block contains a list of transactions, a reference to the previous block's hash,
+/// a unique hash calculated from its contents, and the ID of the proposer who created the block.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Block {
     pub index: u64,
@@ -690,10 +909,22 @@ pub struct Block {
     pub previous_hash: String,
     pub hash: String,
     pub proposer_id: String,
-    pub nonce: u64,
+    pub nonce: u64, // Retained for potential future use, but not required in PoC
 }
 
 impl Block {
+    /// Creates a new `Block` instance.
+    ///
+    /// # Arguments
+    ///
+    /// * `index` - The index of the block in the blockchain.
+    /// * `transactions` - A vector of transactions included in the block.
+    /// * `previous_hash` - The hash of the previous block in the chain.
+    /// * `proposer_id` - The ID of the node proposing the block.
+    ///
+    /// # Returns
+    ///
+    /// * `Block` - A new `Block` instance with a calculated hash.
     pub fn new(
         index: u64,
         transactions: Vec<Transaction>,
@@ -707,12 +938,20 @@ impl Block {
             previous_hash,
             hash: String::new(),
             proposer_id,
-            nonce: 0,
+            nonce: 0, // nonce is not used in PoC but is retained for compatibility
         };
         block.hash = block.calculate_hash();
         block
     }
 
+    /// Calculates the hash of the block based on its contents.
+    ///
+    /// The hash is computed using SHA-256 and includes the block's index, timestamp,
+    /// transactions, previous hash, proposer ID, and nonce.
+    ///
+    /// # Returns
+    ///
+    /// * `String` - The calculated hash of the block.
     pub fn calculate_hash(&self) -> String {
         let mut hasher = Sha256::new();
         hasher.update(self.index.to_be_bytes());
@@ -720,20 +959,18 @@ impl Block {
         hasher.update(serde_json::to_string(&self.transactions).unwrap());
         hasher.update(&self.previous_hash);
         hasher.update(&self.proposer_id);
-        hasher.update(self.nonce.to_be_bytes());
+        hasher.update(self.nonce.to_be_bytes()); // nonce is included but not utilized in PoC
         format!("{:x}", hasher.finalize())
     }
 
-    pub fn mine(&mut self, difficulty: usize) {
-        let target = vec![0; difficulty];
-        let target_str = String::from_utf8(target).unwrap();
-
-        while !self.hash.starts_with(&target_str) {
-            self.nonce += 1;
-            self.hash = self.calculate_hash();
-        }
-    }
-
+    /// Validates the block's hash to ensure it matches the calculated hash.
+    ///
+    /// This method checks the integrity of the block by verifying that its hash is consistent
+    /// with its contents.
+    ///
+    /// # Returns
+    ///
+    /// * `bool` - Returns `true` if the block is valid, `false` otherwise.
     pub fn is_valid(&self) -> bool {
         self.hash == self.calculate_hash()
     }
@@ -742,38 +979,73 @@ impl Block {
 
 
 === ./icn_blockchain/src/chain/mod.rs ===
-// icn_blockchain/src/chain/mod.rs
+use icn_shared::{Block, IcnError, IcnResult};
+use crate::transaction::Transaction; // Assuming Transaction is defined in this crate
+use icn_consensus::Consensus;
+use std::collections::VecDeque;
+use std::time::{SystemTime, UNIX_EPOCH};
+use log::info;
 
-use crate::block::Block;
-use crate::transaction::Transaction;
-
-pub struct Chain {
-    pub blocks: Vec<Block>,
+/// Represents the blockchain, which is a sequence of blocks.
+pub struct Chain<C: Consensus> {
+    pub blocks: VecDeque<Block>,
+    pub consensus: C,
 }
 
-impl Chain {
-    pub fn new() -> Self {
-        let genesis_block = Block::new(
-            0, 
-            vec![], 
-            String::from("0"), 
-            String::from("genesis_proposer")
-        );
-
+impl<C: Consensus> Chain<C> {
+    /// Creates a new blockchain with the given consensus mechanism.
+    pub fn new(consensus: C) -> Self {
         Chain {
-            blocks: vec![genesis_block],
+            blocks: VecDeque::new(),
+            consensus,
         }
     }
 
-    pub fn add_block(&mut self, transactions: Vec<Transaction>, previous_hash: String, proposer_id: String) {
-        let previous_block = self.blocks.last().unwrap();
+    /// Adds a new block to the blockchain.
+    ///
+    /// # Arguments
+    ///
+    /// * `transactions` - A vector of `Transaction` instances to include in the block.
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<()>` - Returns `Ok(())` if the block is successfully added, or an `IcnError` if validation fails.
+    pub fn add_block(&mut self, transactions: Vec<Transaction>) -> IcnResult<()> {
+        let proposer_id = self.consensus.select_proposer()?;
+
+        let previous_block = self.latest_block();
+        let previous_hash = match previous_block {
+            Some(block) => block.hash.clone(),
+            None => "0".to_string(), // Genesis block case
+        };
+
+        let index = match previous_block {
+            Some(block) => block.index + 1,
+            None => 0, // Genesis block case
+        };
+
+        // Convert transactions to strings for inclusion in the block
+        let transactions_strings = transactions.iter().map(|tx| serde_json::to_string(tx).unwrap()).collect();
+
         let new_block = Block::new(
-            previous_block.index + 1,
-            transactions,
+            index,
+            transactions_strings,
             previous_hash,
-            proposer_id
+            proposer_id,
         );
-        self.blocks.push(new_block);
+
+        if self.consensus.validate(&new_block)? {
+            self.blocks.push_back(new_block);
+            info!("Block added successfully.");
+            Ok(())
+        } else {
+            Err(IcnError::Blockchain("Block validation failed.".to_string()))
+        }
+    }
+
+    /// Returns the latest block in the blockchain.
+    pub fn latest_block(&self) -> Option<&Block> {
+        self.blocks.back()
     }
 }
 
@@ -887,11 +1159,18 @@ pub struct Bytecode {
 
 impl Bytecode {
     /// Creates a new instance of `Bytecode`.
+    ///
+    /// # Arguments
+    ///
+    /// * `code` - A vector of bytes representing the compiled code of a smart contract.
+    ///
+    /// # Returns
+    ///
+    /// * `Bytecode` - A new instance of `Bytecode` containing the provided bytecode.
     pub fn new(code: Vec<u8>) -> Self {
         Bytecode { code }
     }
 }
-
 
 
 === ./icn_virtual_machine/src/lib.rs ===
@@ -951,29 +1230,52 @@ mod tests {
 
 
 === ./icn_virtual_machine/src/execution_engine.rs ===
-// icn_virtual_machine/src/execution_engine.rs
-
 use crate::bytecode::Bytecode;
 
-/// The `ExecutionEngine` struct is responsible for processing bytecode
-/// and executing smart contracts.
+/// The `ExecutionEngine` struct is responsible for interpreting and executing smart contract bytecode.
+/// It forms the core logic of the virtual machine within the ICN project.
 pub struct ExecutionEngine;
 
 impl ExecutionEngine {
-    /// Creates a new `ExecutionEngine` instance.
+    /// Creates a new instance of `ExecutionEngine`.
+    ///
+    /// # Returns
+    ///
+    /// * `ExecutionEngine` - A new instance of the `ExecutionEngine` struct.
     pub fn new() -> Self {
         ExecutionEngine
     }
 
     /// Executes the provided bytecode.
-    /// The logic here will interpret and run the bytecode.
+    ///
+    /// # Arguments
+    ///
+    /// * `bytecode` - The bytecode to be executed, represented as a `Bytecode` struct.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<(), String>` - Returns `Ok(())` if the execution succeeds, or an error message if it fails.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// let engine = ExecutionEngine::new();
+    /// let bytecode = Bytecode::new(vec![0x01, 0x02]);
+    /// let result = engine.execute(bytecode);
+    /// assert!(result.is_ok());
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// - Returns an error if the bytecode is empty.
+    /// - Returns an error if the bytecode contains unknown instructions.
     pub fn execute(&self, bytecode: Bytecode) -> Result<(), String> {
         if bytecode.code.is_empty() {
             return Err("Bytecode is empty".to_string());
         }
 
-        // Example: Interpreting and executing the bytecode
-        // This is a placeholder, actual implementation should parse and execute bytecode instructions.
+        // Example: Interpreting and executing the bytecode.
+        // This implementation should be expanded to handle actual instructions.
         for instruction in bytecode.code {
             match instruction {
                 0x01 => println!("Instruction: 0x01 - No-op"),
@@ -982,6 +1284,28 @@ impl ExecutionEngine {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::bytecode::Bytecode;
+
+    #[test]
+    /// Tests the execution of non-empty bytecode.
+    fn test_execution_with_non_empty_bytecode() {
+        let engine = ExecutionEngine::new();
+        let bytecode = Bytecode::new(vec![0x01, 0x02, 0x03]);
+        assert!(engine.execute(bytecode).is_ok());
+    }
+
+    #[test]
+    /// Tests the execution of empty bytecode, expecting an error.
+    fn test_execution_with_empty_bytecode() {
+        let engine = ExecutionEngine::new();
+        let empty_bytecode = Bytecode::new(vec![]);
+        assert!(engine.execute(empty_bytecode).is_err());
     }
 }
 
@@ -995,13 +1319,44 @@ impl ExecutionEngine {
 [package]
 name = "icn_consensus"
 version = "0.1.0"
-edition = "2018"
+edition = "2021"
 
 [dependencies]
 icn_shared = { path = "../icn_shared" }
-icn_blockchain = { path = "../icn_blockchain" }
 log = "0.4"
-rand = "0.8"  # Add this line
+rand = "0.8"
+
+
+
+=== ./icn_consensus/src/consensus.rs ===
+use icn_blockchain::block::Block;
+
+/// The `Consensus` trait defines the interface for consensus mechanisms
+/// within the InterCooperative Network blockchain system.
+///
+/// Implementing this trait allows different consensus algorithms to be
+/// used interchangeably within the blockchain.
+pub trait Consensus {
+    /// Validates a block according to the consensus rules.
+    ///
+    /// # Arguments
+    ///
+    /// * `block` - A reference to the block that needs to be validated.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<bool, String>` - Returns `Ok(true)` if the block is valid,
+    ///   or an error message if validation fails.
+    fn validate(&self, block: &Block) -> Result<bool, String>;
+
+    /// Selects a proposer for the next block based on the consensus mechanism's rules.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<String, String>` - Returns the ID of the selected proposer,
+    ///   or an error message if selection fails.
+    fn select_proposer(&self) -> Result<String, String>;
+}
 
 
 
@@ -1010,15 +1365,35 @@ rand = "0.8"  # Add this line
 
 
 === ./icn_consensus/src/lib.rs ===
-// File: icn_consensus/src/lib.rs
-
-use std::collections::{HashMap, HashSet};
-use icn_blockchain::block::Block;
-use icn_shared::{IcnError, IcnResult};
+use icn_shared::{IcnError, IcnResult, Block}; // Import `Block` from `icn_shared`
 use rand::Rng;
+use std::collections::{HashMap, HashSet};
 use std::time::{SystemTime, UNIX_EPOCH};
 use log::info;
 
+/// The `Consensus` trait defines the interface for consensus mechanisms
+/// within the InterCooperative Network blockchain system.
+pub trait Consensus {
+    /// Validates a block according to the consensus rules.
+    ///
+    /// # Arguments
+    ///
+    /// * `block` - A reference to the block that needs to be validated.
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<bool>` - Returns `Ok(true)` if the block is valid, or an `IcnError` if validation fails.
+    fn validate(&self, block: &Block) -> IcnResult<bool>;
+
+    /// Selects a proposer for the next block.
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<String>` - Returns the ID of the selected proposer, or an `IcnError` if selection fails.
+    fn select_proposer(&self) -> IcnResult<String>;
+}
+
+/// The `ProofOfCooperation` struct implements the consensus mechanism for the ICN project.
 pub struct ProofOfCooperation {
     known_peers: HashSet<String>,
     cooperation_scores: HashMap<String, u64>,
@@ -1026,6 +1401,7 @@ pub struct ProofOfCooperation {
 }
 
 impl ProofOfCooperation {
+    /// Creates a new instance of the `ProofOfCooperation` consensus mechanism.
     pub fn new() -> Self {
         ProofOfCooperation {
             known_peers: HashSet::new(),
@@ -1034,17 +1410,34 @@ impl ProofOfCooperation {
         }
     }
 
+    /// Registers a new peer in the consensus system.
+    ///
+    /// # Arguments
+    ///
+    /// * `peer_id` - The unique identifier of the peer to be registered.
     pub fn register_peer(&mut self, peer_id: &str) {
         self.known_peers.insert(peer_id.to_string());
         self.cooperation_scores.insert(peer_id.to_string(), 100);
         info!("Registered peer: {}", peer_id);
     }
 
+    /// Checks whether a peer is already registered in the system.
+    ///
+    /// # Arguments
+    ///
+    /// * `peer_id` - The unique identifier of the peer to be checked.
+    ///
+    /// # Returns
+    ///
+    /// * `bool` - Returns `true` if the peer is registered, `false` otherwise.
     pub fn is_registered(&self, peer_id: &str) -> bool {
         self.known_peers.contains(peer_id)
     }
+}
 
-    pub fn validate(&mut self, block: &Block) -> IcnResult<bool> {
+impl Consensus for ProofOfCooperation {
+    /// Validates a block according to the consensus rules.
+    fn validate(&self, block: &Block) -> IcnResult<bool> {
         if !self.is_registered(&block.proposer_id) {
             return Err(IcnError::Consensus(format!("Unknown proposer: {}", block.proposer_id)));
         }
@@ -1058,16 +1451,13 @@ impl ProofOfCooperation {
             return Err(IcnError::Consensus("Block proposed too soon".to_string()));
         }
 
-        // Update last block time
-        self.last_block_time = current_time;
-
-        // Implement additional validation logic here
-        // For example, check block signature, transaction validity, etc.
+        // Additional validation logic can be implemented here
 
         Ok(true)
     }
 
-    pub fn select_proposer(&self) -> IcnResult<String> {
+    /// Selects a proposer for the next block based on cooperation scores.
+    fn select_proposer(&self) -> IcnResult<String> {
         let mut rng = rand::thread_rng();
         let total_score: u64 = self.cooperation_scores.values().sum();
         let random_value: u64 = rng.gen_range(0..total_score);
@@ -1082,67 +1472,7 @@ impl ProofOfCooperation {
 
         Err(IcnError::Consensus("Failed to select a proposer".to_string()))
     }
-
-    pub fn update_cooperation_score(&mut self, peer_id: &str, performance: f64) -> IcnResult<()> {
-        let score = self.cooperation_scores
-            .get_mut(peer_id)
-            .ok_or_else(|| IcnError::Consensus(format!("Unknown peer: {}", peer_id)))?;
-        
-        *score = (*score as f64 * performance).round() as u64;
-        *score = (*score).max(10).min(200); // Ensure it stays within a sensible range
-        Ok(())
-    }
-
-    pub fn handle_fork<'a>(&self, chain_a: &'a [Block], chain_b: &'a [Block]) -> &'a [Block] {
-        // Simple longest chain rule for now
-        if chain_a.len() >= chain_b.len() {
-            chain_a
-        } else {
-            chain_b
-        }
-    }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use icn_blockchain::block::Block;
-
-    #[test]
-    fn test_register_and_validate_peer() {
-        let mut poc = ProofOfCooperation::new();
-        poc.register_peer("peer1");
-        
-        let block = Block::new(0, vec![], "0".to_string(), "peer1".to_string());
-        assert!(poc.validate(&block).is_ok());
-
-        let invalid_block = Block::new(0, vec![], "0".to_string(), "unknown_peer".to_string());
-        assert!(poc.validate(&invalid_block).is_err());
-    }
-
-    #[test]
-    fn test_select_proposer() {
-        let mut poc = ProofOfCooperation::new();
-        poc.register_peer("peer1");
-        poc.register_peer("peer2");
-        
-        let proposer = poc.select_proposer().unwrap();
-        assert!(vec!["peer1", "peer2"].contains(&proposer.as_str()));
-    }
-
-    #[test]
-    fn test_update_cooperation_score() {
-        let mut poc = ProofOfCooperation::new();
-        poc.register_peer("peer1");
-        
-        poc.update_cooperation_score("peer1", 1.5).unwrap();
-        assert!(poc.cooperation_scores["peer1"] > 100);
-
-        poc.update_cooperation_score("peer1", 0.5).unwrap();
-        assert!(poc.cooperation_scores["peer1"] < 100);
-    }
-}
-
 
 
 === ./icn_consensus/src/proof_of_cooperation.rs ===
@@ -1784,6 +2114,9 @@ name = "icn_blockchain"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "icn_consensus",
+ "icn_shared",
+ "log",
  "serde",
  "serde_json",
  "sha2",
@@ -1793,7 +2126,6 @@ dependencies = [
 name = "icn_consensus"
 version = "0.1.0"
 dependencies = [
- "icn_blockchain",
  "icn_shared",
  "log",
  "rand",
@@ -1850,6 +2182,7 @@ dependencies = [
  "native-tls",
  "serde",
  "serde_json",
+ "sha2",
 ]
 
 [[package]]
@@ -2759,8 +3092,8 @@ tokio = { version = "1", features = ["full"] }
 config = "0.13"
 env_logger = "0.10"
 log = "0.4"
-icn_consensus = { path = "../icn_consensus" }
 icn_blockchain = { path = "../icn_blockchain" }
+icn_consensus = { path = "../icn_consensus" }
 icn_identity = { path = "../icn_identity" }
 icn_governance = { path = "../icn_governance" }
 icn_networking = { path = "../icn_networking" }
@@ -2779,36 +3112,51 @@ pub use config_loader::{Config, ConfigLoader};
 
 
 === ./icn_core/src/config/config_loader.rs ===
-// File: icn_core/src/config/config_loader.rs
-// This file defines the `ConfigLoader` struct responsible for loading and parsing TOML configuration files.
-// It also defines the `Config` struct representing the application's configuration.
-
 use std::fs;
 use serde::Deserialize;
 use icn_shared::{IcnError, IcnResult};
 
 /// Represents the application configuration loaded from a TOML file.
+///
+/// This struct holds configuration details necessary for the server and database
+/// components of the application. It is deserialized from a TOML file.
 #[derive(Debug, Deserialize, Clone)]
 pub struct Config {
+    /// Configuration for the server, such as host, port, and debug mode.
     pub server: ServerConfig,
+    /// Configuration for the database, including connection URLs.
     pub database: DatabaseConfig,
 }
 
+/// Configuration for the server, including network settings.
+///
+/// This struct is used to configure the server's network-related parameters.
 #[derive(Debug, Deserialize, Clone)]
 pub struct ServerConfig {
+    /// The host address where the server will run.
     pub host: String,
+    /// The port on which the server will listen.
     pub port: u16,
+    /// Debug mode flag for enabling or disabling verbose output.
     pub debug: bool,
 }
 
+/// Configuration for the database, including connection URLs.
+///
+/// This struct holds the configuration required to connect to one or more databases.
 #[derive(Debug, Deserialize, Clone)]
 pub struct DatabaseConfig {
+    /// A list of database connection URLs.
     pub urls: Vec<String>,
 }
 
 /// `ConfigLoader` handles the loading and parsing of TOML configuration files.
+///
+/// This struct is responsible for reading the configuration file from disk,
+/// parsing its content, and providing access to the application's configuration.
 #[derive(Debug, Clone)]
 pub struct ConfigLoader {
+    /// The application's configuration as loaded from the TOML file.
     config: Config,
 }
 
@@ -2822,11 +3170,19 @@ impl ConfigLoader {
     /// # Returns
     ///
     /// * `IcnResult<Self>` - A new `ConfigLoader` instance if successful, otherwise an `IcnError`.
+    ///
+    /// # Errors
+    ///
+    /// * Returns an `IcnError::Config` if the file cannot be read or parsed.
     pub fn new(config_path: &str) -> IcnResult<Self> {
+        // Read the contents of the configuration file
         let config_content = fs::read_to_string(config_path)
             .map_err(|e| IcnError::Config(format!("Failed to read config file '{}': {}", config_path, e)))?;
+        
+        // Parse the TOML content into a Config struct
         let config: Config = toml::from_str(&config_content)
             .map_err(|e| IcnError::Config(format!("Failed to parse TOML from '{}': {}", config_path, e)))?;
+        
         Ok(ConfigLoader { config })
     }
 
@@ -2835,6 +3191,14 @@ impl ConfigLoader {
     /// # Returns
     ///
     /// * `&Config` - A reference to the configuration.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// let config_loader = ConfigLoader::new("config.toml").unwrap();
+    /// let config = config_loader.get_config();
+    /// println!("Server host: {}", config.server.host);
+    /// ```
     pub fn get_config(&self) -> &Config {
         &self.config
     }
@@ -2846,6 +3210,7 @@ mod tests {
     use tempfile::NamedTempFile;
     use std::io::Write;
 
+    /// Helper function to create a temporary configuration file for testing.
     fn create_test_config() -> NamedTempFile {
         let mut file = NamedTempFile::new().unwrap();
         write!(file, r#"
@@ -2861,10 +3226,11 @@ mod tests {
     }
 
     #[test]
+    /// Tests the `ConfigLoader` by loading a test configuration and verifying its content.
     fn test_config_loader() {
-        let config_file = create_test_config();
-        let config_loader = ConfigLoader::new(config_file.path().to_str().unwrap()).unwrap();
-
+        let test_config = create_test_config();
+        let config_loader = ConfigLoader::new(test_config.path().to_str().unwrap()).unwrap();
+        
         let config = config_loader.get_config();
 
         assert_eq!(config.server.host, "localhost");
@@ -2949,20 +3315,52 @@ impl fmt::Display for IcnError {
 
 
 === ./icn_core/src/main.rs ===
-// icn_core/src/main.rs
-
 use icn_core::config::ConfigLoader;
 use icn_core::node::NodeManager;
 use icn_core::coordinator::ModuleCoordinator;
 use std::env;
 use log::error;
 
+/// The main entry point for the ICN Core module.
+///
+/// This function initializes the node by performing the following steps:
+/// 1. Loads the configuration file.
+/// 2. Initializes the `ModuleCoordinator`, which manages the various components of the node.
+/// 3. Creates and starts the `NodeManager`, which is responsible for the node's lifecycle management.
+///
+/// # Command-Line Arguments
+///
+/// The program accepts an optional command-line argument:
+/// - `config_path` (optional): The path to the configuration file. If not provided, the default
+///   configuration file `config.toml` will be used.
+///
+/// # Example
+///
+/// ```bash
+/// # Run the program with the default configuration file
+/// cargo run
+///
+/// # Run the program with a custom configuration file
+/// cargo run -- config/custom_config.toml
+/// ```
+///
+/// # Error Handling
+///
+/// If the configuration file cannot be loaded or if the node manager fails to start, an error
+/// will be logged and the program will exit gracefully.
+///
+/// # Dependencies
+///
+/// This function relies on several core components:
+/// - `ConfigLoader`: Loads and parses the configuration file.
+/// - `ModuleCoordinator`: Initializes and manages the coordination between different modules.
+/// - `NodeManager`: Manages the node's lifecycle, including starting and stopping the node.
 #[tokio::main]
 async fn main() {
     // Default configuration file name
     let default_config_file = "config.toml";
 
-    // Obtain config_path from command-line arguments or use the default
+    // Obtain the config_path from command-line arguments or use the default
     let args: Vec<String> = env::args().collect();
     let config_path = if args.len() > 1 {
         &args[1]
@@ -2970,7 +3368,7 @@ async fn main() {
         default_config_file
     };
 
-    // Initialize the ConfigLoader and handle potential errors
+    // Initialize the ConfigLoader with the specified or default configuration file
     let config_loader = match ConfigLoader::new(config_path) {
         Ok(loader) => loader,
         Err(e) => {
@@ -2979,17 +3377,19 @@ async fn main() {
         }
     };
 
-    // Initialize the ModuleCoordinator
+    // Initialize the ModuleCoordinator, responsible for managing interactions between modules
     let coordinator = ModuleCoordinator::new();
 
-    // Create a NodeManager
-    let mut node = NodeManager::new(config_loader, coordinator).expect("Failed to create NodeManager");
+    // Create a NodeManager to handle the node's lifecycle
+    let mut node = NodeManager::new(config_loader, coordinator)
+        .expect("Failed to create NodeManager");
 
-    // Start the node manager and handle potential errors
+    // Start the node manager and handle any errors that occur during startup
     if let Err(e) = node.start().await {
         error!("Node manager failed to start: {}", e);
     }
 }
+
 
 
 === ./icn_core/src/node/mod.rs ===
@@ -3045,10 +3445,11 @@ impl NodeManager {
 
 pub mod config;
 pub mod coordinator;
-pub mod node;
+pub mod errors;
 
-// Remove the unused imports
-// use icn_shared::{IcnError, IcnResult};
+pub use config::ConfigLoader;
+pub use coordinator::ModuleCoordinator;
+pub use errors::IcnError;
 
 
 
@@ -3179,10 +3580,7 @@ icn_blockchain = { path = "../icn_blockchain" }
 
 
 === ./icn_storage/src/block_storage.rs ===
-// icn_storage/src/block_storage.rs
-
 use icn_blockchain::block::Block;  // Correctly reference icn_blockchain
-
 use std::collections::HashMap;
 
 /// The `BlockStorage` struct is responsible for storing and retrieving blocks.
@@ -3193,6 +3591,10 @@ pub struct BlockStorage {
 
 impl BlockStorage {
     /// Creates a new `BlockStorage` instance.
+    ///
+    /// # Returns
+    ///
+    /// * `BlockStorage` - A new instance of `BlockStorage`.
     pub fn new() -> Self {
         BlockStorage {
             storage: HashMap::new(),
@@ -3200,6 +3602,19 @@ impl BlockStorage {
     }
 
     /// Adds a new block to the storage.
+    ///
+    /// # Arguments
+    ///
+    /// * `block` - The `Block` to be added to the storage.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<(), String>` - Returns `Ok(())` if the block is successfully added,
+    ///   or an error message if a block with the same hash already exists.
+    ///
+    /// # Errors
+    ///
+    /// * Returns an error if a block with the same hash already exists in the storage.
     pub fn add_block(&mut self, block: Block) -> Result<(), String> {
         let hash = block.hash.clone();
         if self.storage.contains_key(&hash) {
@@ -3210,6 +3625,25 @@ impl BlockStorage {
     }
 
     /// Retrieves a block by its hash.
+    ///
+    /// # Arguments
+    ///
+    /// * `hash` - A string representing the hash of the block to be retrieved.
+    ///
+    /// # Returns
+    ///
+    /// * `Option<Block>` - Returns `Some(Block)` if a block with the given hash is found,
+    ///   or `None` if no such block exists.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// let storage = BlockStorage::new();
+    /// let block = Block::new(...);
+    /// storage.add_block(block.clone()).unwrap();
+    /// let retrieved_block = storage.get_block(&block.hash);
+    /// assert_eq!(retrieved_block, Some(block));
+    /// ```
     pub fn get_block(&self, hash: &str) -> Option<Block> {
         self.storage.get(hash).cloned()
     }

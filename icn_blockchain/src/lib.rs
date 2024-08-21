@@ -2,8 +2,8 @@
 
 pub mod block;
 pub mod chain;
-pub mod transaction; // Ensure this line is included to expose the transaction module
+pub mod transaction;
 
 pub use block::Block;
 pub use chain::Chain;
-pub use transaction::Transaction; // Add this to expose Transaction if needed
+pub use transaction::Transaction;

@@ -8,6 +8,14 @@ pub struct Bytecode {
 
 impl Bytecode {
     /// Creates a new instance of `Bytecode`.
+    ///
+    /// # Arguments
+    ///
+    /// * `code` - A vector of bytes representing the compiled code of a smart contract.
+    ///
+    /// # Returns
+    ///
+    /// * `Bytecode` - A new instance of `Bytecode` containing the provided bytecode.
     pub fn new(code: Vec<u8>) -> Self {
         Bytecode { code }
     }
