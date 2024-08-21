@@ -6,11 +6,21 @@ use rand::Rng;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// The `ProofOfCooperation` struct implements the Proof of Cooperation consensus mechanism.
-#[derive(Clone)]  // Implement Clone trait for ProofOfCooperation
 pub struct ProofOfCooperation {
     known_peers: HashSet<String>,
     cooperation_scores: HashMap<String, f64>,
     last_block_time: u64,
+}
+
+// Manually implement the Clone trait for ProofOfCooperation
+impl Clone for ProofOfCooperation {
+    fn clone(&self) -> Self {
+        ProofOfCooperation {
+            known_peers: self.known_peers.clone(),
+            cooperation_scores: self.cooperation_scores.clone(),
+            last_block_time: self.last_block_time,
+        }
+    }
 }
 
 impl ProofOfCooperation {
