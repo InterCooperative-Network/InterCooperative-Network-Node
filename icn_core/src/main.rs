@@ -1,3 +1,5 @@
+// icn_core/src/main.rs
+
 use icn_core::config::ConfigLoader;
 use icn_core::coordinator::ModuleCoordinator;
 use icn_consensus::ProofOfCooperation;
@@ -64,7 +66,7 @@ async fn main() {
     let consensus = ProofOfCooperation::new();
 
     // Initialize the ModuleCoordinator, responsible for managing interactions between modules
-    let mut coordinator = ModuleCoordinator::new(consensus);
+    let mut coordinator = ModuleCoordinator::new(consensus.clone());
 
     // Start the coordinator and handle any errors that occur during startup
     if let Err(e) = coordinator.start(config_loader.get_config()).await {

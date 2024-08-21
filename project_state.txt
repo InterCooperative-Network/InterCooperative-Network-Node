@@ -1477,7 +1477,7 @@ use rand::Rng;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// The `ProofOfCooperation` struct implements the Proof of Cooperation consensus mechanism.
-#[derive(Clone)]  // Implement Clone
+#[derive(Clone)]  // Implement Clone trait for ProofOfCooperation
 pub struct ProofOfCooperation {
     known_peers: HashSet<String>,
     cooperation_scores: HashMap<String, f64>,
@@ -3323,6 +3323,8 @@ impl From<toml::de::Error> for IcnError {
 
 
 === ./icn_core/src/main.rs ===
+// icn_core/src/main.rs
+
 use icn_core::config::ConfigLoader;
 use icn_core::coordinator::ModuleCoordinator;
 use icn_consensus::ProofOfCooperation;
@@ -3389,13 +3391,14 @@ async fn main() {
     let consensus = ProofOfCooperation::new();
 
     // Initialize the ModuleCoordinator, responsible for managing interactions between modules
-    let mut coordinator = ModuleCoordinator::new(consensus);
+    let mut coordinator = ModuleCoordinator::new(consensus.clone());
 
     // Start the coordinator and handle any errors that occur during startup
     if let Err(e) = coordinator.start(config_loader.get_config()).await {
         error!("Coordinator failed to start: {}", e);
     }
 }
+
 
 
 === ./icn_core/src/node/mod.rs ===
