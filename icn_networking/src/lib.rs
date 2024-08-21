@@ -1,4 +1,7 @@
 use std::sync::{Arc, RwLock};
+use std::fs::File;
+use std::io::Read;
+use std::path::Path;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio_native_tls::{TlsAcceptor, TlsConnector};
@@ -37,12 +40,28 @@ impl Networking {
     /// # Returns
     ///
     /// * `IcnResult<Identity>` - The loaded TLS identity or an error if loading fails.
-    pub fn load_tls_identity(cert_path: &str, key_path: &str, password: &str) -> IcnResult<Identity> {
-        let cert = std::fs::read(cert_path)
+    pub fn load_tls_identity(cert_path: &str, key_path: &str, _password: &str) -> IcnResult<Identity> {
+        if !Path::new(cert_path).exists() {
+            return Err(IcnError::Network(format!("Certificate file not found: {}", cert_path)));
+        }
+
+        if !Path::new(key_path).exists() {
+            return Err(IcnError::Network(format!("Key file not found: {}", key_path)));
+        }
+
+        let mut cert_file = File::open(cert_path)
+            .map_err(|e| IcnError::Network(format!("Failed to open certificate file: {}", e)))?;
+        let mut cert = Vec::new();
+        cert_file.read_to_end(&mut cert)
             .map_err(|e| IcnError::Network(format!("Failed to read certificate file: {}", e)))?;
-        let _key = std::fs::read(key_path)
+
+        let mut key_file = File::open(key_path)
+            .map_err(|e| IcnError::Network(format!("Failed to open key file: {}", e)))?;
+        let mut key = Vec::new();
+        key_file.read_to_end(&mut key)
             .map_err(|e| IcnError::Network(format!("Failed to read key file: {}", e)))?;
-        Identity::from_pkcs12(&cert, password)
+
+        Identity::from_pkcs8(&cert, &key)
             .map_err(|e| IcnError::Network(format!("Failed to load TLS identity: {}", e)))
     }
 

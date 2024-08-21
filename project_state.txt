@@ -1,9 +1,8 @@
 === Project Directory Tree ===
 .
-├── ca-bundle.crt
 ├── Cargo.lock
 ├── Cargo.toml
-├── cert.crt
+├── cert.pem
 ├── commit_message.txt
 ├── config
 │   ├── config.toml
@@ -106,7 +105,7 @@
 │       ├── lib
 │       │   └── mod.rs
 │       └── lib.rs
-├── private.key
+├── key.pem
 ├── project_parts
 │   └── core_files_00
 ├── project_state.txt
@@ -115,7 +114,7 @@
 └── .vscode
     └── settings.json
 
-43 directories, 72 files
+43 directories, 71 files
 
 
 
@@ -181,6 +180,9 @@ tempfile = "3.2"
 
 === ./icn_networking/src/lib.rs ===
 use std::sync::{Arc, RwLock};
+use std::fs::File;
+use std::io::Read;
+use std::path::Path;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio_native_tls::{TlsAcceptor, TlsConnector};
@@ -219,12 +221,28 @@ impl Networking {
     /// # Returns
     ///
     /// * `IcnResult<Identity>` - The loaded TLS identity or an error if loading fails.
-    pub fn load_tls_identity(cert_path: &str, key_path: &str, password: &str) -> IcnResult<Identity> {
-        let cert = std::fs::read(cert_path)
+    pub fn load_tls_identity(cert_path: &str, key_path: &str, _password: &str) -> IcnResult<Identity> {
+        if !Path::new(cert_path).exists() {
+            return Err(IcnError::Network(format!("Certificate file not found: {}", cert_path)));
+        }
+
+        if !Path::new(key_path).exists() {
+            return Err(IcnError::Network(format!("Key file not found: {}", key_path)));
+        }
+
+        let mut cert_file = File::open(cert_path)
+            .map_err(|e| IcnError::Network(format!("Failed to open certificate file: {}", e)))?;
+        let mut cert = Vec::new();
+        cert_file.read_to_end(&mut cert)
             .map_err(|e| IcnError::Network(format!("Failed to read certificate file: {}", e)))?;
-        let _key = std::fs::read(key_path)
+
+        let mut key_file = File::open(key_path)
+            .map_err(|e| IcnError::Network(format!("Failed to open key file: {}", e)))?;
+        let mut key = Vec::new();
+        key_file.read_to_end(&mut key)
             .map_err(|e| IcnError::Network(format!("Failed to read key file: {}", e)))?;
-        Identity::from_pkcs12(&cert, password)
+
+        Identity::from_pkcs8(&cert, &key)
             .map_err(|e| IcnError::Network(format!("Failed to load TLS identity: {}", e)))
     }
 
@@ -1225,6 +1243,41 @@ mod tests {
 
 
 
+=== ./cert.pem ===
+-----BEGIN CERTIFICATE-----
+MIIFazCCA1OgAwIBAgIUKz5dfZ9jTOfAmPkt/87h5PFHc0AwDQYJKoZIhvcNAQEL
+BQAwRTELMAkGA1UEBhMCQVUxEzARBgNVBAgMClNvbWUtU3RhdGUxITAfBgNVBAoM
+GEludGVybmV0IFdpZGdpdHMgUHR5IEx0ZDAeFw0yNDA4MjEyMDE5NDdaFw0yNTA4
+MjEyMDE5NDdaMEUxCzAJBgNVBAYTAkFVMRMwEQYDVQQIDApTb21lLVN0YXRlMSEw
+HwYDVQQKDBhJbnRlcm5ldCBXaWRnaXRzIFB0eSBMdGQwggIiMA0GCSqGSIb3DQEB
+AQUAA4ICDwAwggIKAoICAQCyX/kj6bH9NeS4RZjWVQslhM2W0TctsvFZ2hw6tK3b
+dmTmZX+KLejd+0FGTRTcInspbIkIedCeqsgBYoJie4/PvECG9OFN0unremCJZ0OY
+54VsTur2RX0JbwjS2cmKQvK7Ex7xHndWckEPomRONEbFpUY0+S0ZQs2Qxw4LDI83
+TJNM1s7mzjHGXXERg7rnuA4A4zDD0wkZ73Z1rGEFQ1cSs92KfSRYB3B0FVrXCtVa
+VoFxTPscGQOX7w2AG98P2sla6uao/set3NEj2ZYOAYiF81PMNHRqR46Ecenm6Ao4
+L+m+f7tUqViWtzm9/uThl8ekkzAZV5orLMqKqnlfcJlsmDNr2QquCxjPsmvXi3/1
+TusmP6la/hgQ/0orbVVZQXg00xbziBIuFiixMkhPcn972mVbIQfEbcntGo/54shY
+cvrrAPedBOGHuOhfvp50rA9Sp7kiIsxfxum54QyUAJBjx2d7DV0Qgzhbo8mCUDQh
+HycNVJJlnZlE8TuelvXoG4N1DYxV21w2hy98YVnkSdaYB02dCiEMlczo6mSmVJHP
+bt9t+/ODSRP+g7GurMTZXMcd4UeNDViuZy8S53ym6fbkLZNcrZ6Fk41o/3EbwZkF
+alORB4xE3fTIacQes2ctc34b9rVYeZ5zXWwU4wPuE5EFD5R7Hs6Iw/rp8+4CDXeP
+XwIDAQABo1MwUTAdBgNVHQ4EFgQUqJe/RlkHNUXMyhweeZSj7KfkJGswHwYDVR0j
+BBgwFoAUqJe/RlkHNUXMyhweeZSj7KfkJGswDwYDVR0TAQH/BAUwAwEB/zANBgkq
+hkiG9w0BAQsFAAOCAgEAjYs6tXpdAKY/WKhuTML/jneDghX0FPJWXwG5KHMF3oqJ
+Bd4mQO5dQ+cBcgYReXgsLj2/HNaVhlr0kChhrwN/1LozhFJD+HEFJCTHPscBiVQf
+rnsUozcDJUhj0g8K1ZC+v8Ld6A3xka1Ga3htbqTuBUZnIP/Tdvqq5Xjl+vQpclE1
+1PUxazD28dUhaDrjgPGWlsu4xVuPekbsBpbR5vMDx7jh7A0J5Et5ST6GOgD0BSrg
+5fwzRGgzfzEfpYe3Jegtk1YV/R2ZGUPihUXJxeuxqBwlLBAARaXg29cvXwpG4nDq
+Ok89eCArXi378cj9TThDOIwFI+Ztw1ysaSaX8EUaeepeclHYnUgY9puppc7tYqch
+fAznRCe7zmA+5RYPs894xgxQ1t+GjK614pC0STQ4+jHnhO+6qPkpx5rumUOXaaJc
+3ZBkvGmeV7XG7qdYz0tB/VwX803xwmZB7vezf+E7brxLfEXz1NsGxRufwvQv0IPp
+VL4ysn3jVrmMlCyNm6Maew/c/BvZVBm+g1HKoCrQ0+PhrK5DOx3xWQ8jzaYTx1fS
+WW2PdhoD8/urJU+X70KTLqVdlhQVwi3MPEBtNkKceSZlmGnkrKZN3LuupokkToIH
+ZRVOhSKJMi86jkWwzAGA0kLWDdAEEferP3X8TDyvPXX9htPjzvepYQS/ELxy8HY=
+-----END CERTIFICATE-----
+
+
+
 === ./icn_consensus/Cargo.toml ===
 [package]
 name = "icn_consensus"
@@ -1532,42 +1585,6 @@ impl Proposal {
         self.votes_against += 1;
     }
 }
-
-
-
-=== ./ca-bundle.crt ===
-
-
-
-=== ./private.key ===
------BEGIN PRIVATE KEY-----
-MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQCimkgO66phw4qN
-6+fC37JTRI91L8Efir0T+Q7yHYUU2R1LKfIyHxY1CZzxb0JGi7VTI1Ps5kH7pzfw
-s++wyWDo6by1byJMW8ngiP0fLTe1iRfnQWw7bV36ndh0rFakfw9EmmCuWSHuMDcI
-YwJ2JUG3XHh7NXc4vls3J2SYF3/aq5/Ak++Ga4/OOJDRlGILaidw3whc0zB7K4JV
-p5yqHYoMq2cjwtBFpElvzVp/TDwd25JBXug/d5W1aIi7KPWYJzQL4Nf2ZL/P8kEv
-tRi2TkLIRawTl9Wdf6YT87Up9qYQDhu/n4GzVExJbc0wFP130pUW/pvsuksef0cy
-wB/FvA3pAgMBAAECggEADG8WzolH5KTyzep5tQWtGb/25mOp9XMDBWl4spv+RrtZ
-iZtiCWImLRUYmr/Cxik9yuc7LjTnW8qMNQxVamPj1Lu28frXGRa1x8VB8eXfyjJ7
-EPSIRb0VwCnc2QMqtvZ+YOUbOonXVeL6+lmz4Pv1XAOmtOlAPicUS5HoF9dIMBzr
-Z174rfyYKMMLacxxj293Vtg8PnkZeoOXZfK23I7z4QFubAvDR/RBsNq7kQvis5Hr
-VxRFB/lr47jqvsFWm12MsELaqkY7DNQEtadsANEE256SZqivveXV3xSk3kvYbkTE
-fRHoytV06VUxo1d4BHBMcFmkpp+aLT8TVKKK2DxXGQKBgQDTubwByvbwsp0zg7K3
-qufMqxG49eW4WDe5fRxJTdD7yJMRDNgM65k9zpMisfqUOrq/3c6Vd35bOQh2FTM8
-blbvMizZTB0odNuG25C6skVFFwdNTcZb92s4OK9N58M+PWIKo4y1iLHCdJVqT3Ed
-qH/Ya88JmvHCLmSg1k757XUvlQKBgQDEmtyGAufuzcw90eLSdRgWxBZAX4dVEAXL
-rc7XRGbkV5e9YSfxd9kNxQO+FWyj57GlNN5luGVTdTVEcecLSymVfmqeV68/IiDX
-GtinqiD3HwYGcHR1gbsL6Ptot6398tgPsAoEs9Ru+QgmXlK8pO8h4Y8Yhm+8+SIA
-dbv8GKGgBQKBgCQTjtyDWAZ1eOHRO/+dyHeQYqmwhJ8fsQcTMWGwN77fU2fhV2ME
-Ng1ZCKstxnPBeha9VbkULlye4Dk2rY9LgdaqJwgztvgwyUM2YHffbnwyS1U5vmXn
-R8bBqeVNa3BMh0smyRAZpahrsxX1SWHzVy1qWVHaq/0ZaJ4bRkPB2WjtAoGABDud
-UdlQKwkNQ6t4KbXRrfPM0tf7ru4oYck9Mc9MM9Ba+P3VgVJmPvCl8vq9Gw5K+daY
-jzIYJGLaob2eDtUwcQKGwx/6Ku7OLDNsxLdZ/FgTpiHXsAv5/finKQsDWPtYgYX1
-wUIp6bW84i6Xs24No/oaPZnvX+8xNzdRs8zH9g0CgYA8R6Agf9A2xki3oUQQoOAP
-IjQW43RvN5HsD5UW5UqLJEMgf1hOyh0jwDAYVIxya+36yRnLxtePh1C8W8+3xeod
-q8lbFk+CJMNprbCliRm7vlUAlK9c9ddUGuuCxjQ5QihGLHh/MdKmdLdD4VNqt4cO
-dQTRbDPlNRzDQQfAqfQYMw==
------END PRIVATE KEY-----
 
 
 
@@ -3723,36 +3740,16 @@ impl Storage {
 
 
 === ./config.toml ===
-# config.toml
-
 [server]
-# The host address where the server will run.
 host = "127.0.0.1"
-
-# The port on which the server will listen.
 port = 8080
-
-# Debug mode flag for enabling or disabling verbose output.
 debug = true
+cert_file_path = "/opt/InterCooperative-Network-Node/cert.pem"
+key_file_path = "/opt/InterCooperative-Network-Node/key.pem"
+cert_password = ""  # Leave empty if there is no password
 
 [database]
-# A list of database connection URLs.
-urls = [
-    "postgresql://user:password@localhost/db1",
-    "postgresql://user:password@localhost/db2"
-]
-
-# Optional: Additional configuration for TLS (Transport Layer Security)
-[tls]
-# Path to the TLS certificate file.
-cert_file_path = "path/to/cert.pem"
-
-# Path to the TLS key file.
-key_file_path = "private.key"
-
-# Password for the TLS certificate file (if required).
-cert_password = "your_cert_password"
-
+urls = ["postgresql://user:password@localhost/db1", "postgresql://user:password@localhost/db2"]
 
 
 
@@ -3864,31 +3861,6 @@ echo "Changes have been successfully committed and pushed."
 /target
 **/*.rs.bk
 Cargo.lock
-
-
-
-=== ./cert.crt ===
------BEGIN CERTIFICATE-----
-MIIDazCCAlOgAwIBAgIUJ7jodMjKnM44chKNoNnbLAu4dtgwDQYJKoZIhvcNAQEL
-BQAwRTELMAkGA1UEBhMCQVUxEzARBgNVBAgMClNvbWUtU3RhdGUxITAfBgNVBAoM
-GEludGVybmV0IFdpZGdpdHMgUHR5IEx0ZDAeFw0yNDA4MjAwOTQ5NThaFw0yNTA4
-MjAwOTQ5NThaMEUxCzAJBgNVBAYTAkFVMRMwEQYDVQQIDApTb21lLVN0YXRlMSEw
-HwYDVQQKDBhJbnRlcm5ldCBXaWRnaXRzIFB0eSBMdGQwggEiMA0GCSqGSIb3DQEB
-AQUAA4IBDwAwggEKAoIBAQCimkgO66phw4qN6+fC37JTRI91L8Efir0T+Q7yHYUU
-2R1LKfIyHxY1CZzxb0JGi7VTI1Ps5kH7pzfws++wyWDo6by1byJMW8ngiP0fLTe1
-iRfnQWw7bV36ndh0rFakfw9EmmCuWSHuMDcIYwJ2JUG3XHh7NXc4vls3J2SYF3/a
-q5/Ak++Ga4/OOJDRlGILaidw3whc0zB7K4JVp5yqHYoMq2cjwtBFpElvzVp/TDwd
-25JBXug/d5W1aIi7KPWYJzQL4Nf2ZL/P8kEvtRi2TkLIRawTl9Wdf6YT87Up9qYQ
-Dhu/n4GzVExJbc0wFP130pUW/pvsuksef0cywB/FvA3pAgMBAAGjUzBRMB0GA1Ud
-DgQWBBTfzrbbJMAfLYUPJ6jK56a7o67KaDAfBgNVHSMEGDAWgBTfzrbbJMAfLYUP
-J6jK56a7o67KaDAPBgNVHRMBAf8EBTADAQH/MA0GCSqGSIb3DQEBCwUAA4IBAQAd
-WjR2E/VjWEZevLwg2o/U61TgTT998xoNBRkUnxQtMr65+c1vaHri8Pup5UdL78DY
-HWbDSWRhdOXwgkKfVO/nra2q7wuKhzhtc93UJmMIpX6y/6n4rfiDPxhoTsvQFFbR
-SbM5unhTC3z8YRtpviH3uNpV9MLUl97WjnGtyO8JmeQJpShg+7QfODh9qeQdGhZE
-44w3iKwfxFh7QkrC1uxtJSNOEDojqd764jutLzkIwqGLmrTE8hdqsp0K1b4ndnr3
-HdblGrbmmRMcvNXnQBHuqGWisBJwyBOXe8xdrp2G6p+ugQwwjfYxQ84hARb4yfsV
-opofgoP+yqNGPhtUGpOJ
------END CERTIFICATE-----
 
 
 
@@ -4019,6 +3991,62 @@ mod tests {
         assert!(result.is_err());
     }
 }
+
+
+=== ./key.pem ===
+-----BEGIN PRIVATE KEY-----
+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
+lOPY2ph9WIs4o1YpwEzHTl0BThZX
+-----END PRIVATE KEY-----
+
 
 
 === ./icn_api/Cargo.toml ===
