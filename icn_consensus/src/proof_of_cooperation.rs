@@ -1,10 +1,12 @@
+// icn_consensus/src/proof_of_cooperation.rs
+
 use std::collections::{HashMap, HashSet};
-use icn_blockchain::block::Block;
-use icn_shared::{IcnError, IcnResult};
+use icn_shared::{IcnError, IcnResult, Block};
 use rand::Rng;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// The `ProofOfCooperation` struct implements the Proof of Cooperation consensus mechanism.
+#[derive(Clone)]  // Implement Clone
 pub struct ProofOfCooperation {
     known_peers: HashSet<String>,
     cooperation_scores: HashMap<String, f64>,
