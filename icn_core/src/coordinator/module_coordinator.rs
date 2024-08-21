@@ -1,9 +1,11 @@
+// File: icn_core/src/coordinator/module_coordinator.rs
+
 use std::sync::{Arc, Mutex};
 use icn_blockchain::Chain;
 use icn_consensus::{ProofOfCooperation, Consensus};
 use icn_networking::Networking;
 use icn_shared::{NodeState, IcnResult, IcnError, Block};
-use crate::config::Config;  // Ensure correct import from crate
+use crate::config::Config;
 use log::info;
 
 /// The `ModuleCoordinator` is responsible for coordinating various modules within the 
@@ -19,9 +21,6 @@ pub struct ModuleCoordinator {
 impl ModuleCoordinator {
     /// Creates a new instance of `ModuleCoordinator`.
     ///
-    /// This function initializes the blockchain, consensus, networking, and node state, 
-    /// encapsulating them within `Arc<Mutex<>>` for thread-safe shared access.
-    ///
     /// # Arguments
     ///
     /// * `consensus` - The consensus mechanism to be used by the blockchain.
@@ -33,7 +32,7 @@ impl ModuleCoordinator {
         info!("Initializing ModuleCoordinator");
         ModuleCoordinator {
             blockchain: Arc::new(Mutex::new(Chain::new(Arc::clone(&consensus)))),
-            consensus: Arc::clone(&consensus),  // Clone the Arc to avoid moving the value
+            consensus: Arc::clone(&consensus),
             networking: Arc::new(Mutex::new(Networking::new())),
             node_state: Arc::new(Mutex::new(NodeState::Initializing)),
         }
@@ -43,7 +42,7 @@ impl ModuleCoordinator {
     ///
     /// # Arguments
     ///
-    /// * `config` - The configuration object containing network settings.
+    /// * `config` - The configuration object containing network and TLS settings.
     ///
     /// # Returns
     ///
@@ -51,17 +50,36 @@ impl ModuleCoordinator {
     pub async fn start(&self, config: &Config) -> IcnResult<()> {
         info!("Starting node");
 
-        let cert_file_path = config.server.host.clone();
-        let key_file_path = config.database.urls[0].clone(); // Example of accessing a database URL
-        let cert_password = "default_password"; // Replace with actual logic
+        let identity = Networking::load_tls_identity(
+            &config.server.cert_file_path,
+            &config.server.key_file_path,
+            &config.server.cert_password
+        ).map_err(|e| IcnError::Network(format!("Failed to load TLS identity: {}", e)))?;
 
-        let identity = Networking::load_tls_identity(&cert_file_path, &key_file_path, &cert_password)
-            .map_err(|e| IcnError::Network(format!("Failed to load TLS identity: {}", e)))?;
-
-        let networking = self.networking.lock()
+        let mut networking = self.networking.lock()
             .map_err(|_| IcnError::Network("Failed to acquire networking lock".to_string()))?;
 
-        networking.start_server("0.0.0.0:8080", identity).await?;
+        let mut port = config.server.port;
+        let max_retry = 10;
+        let mut retry_count = 0;
+
+        while retry_count < max_retry {
+            let address = format!("{}:{}", config.server.host, port);
+            match networking.start_server(&address, identity.clone()).await {
+                Ok(_) => {
+                    info!("Server started on {}", address);
+                    break;
+                }
+                Err(e) => {
+                    if retry_count == max_retry - 1 {
+                        return Err(IcnError::Network(format!("Failed to bind to any port after {} attempts: {}", max_retry, e)));
+                    }
+                    info!("Port {} is in use, trying next port", port);
+                    port += 1;
+                    retry_count += 1;
+                }
+            }
+        }
 
         {
             let mut state = self.node_state.lock()
@@ -138,11 +156,7 @@ impl ModuleCoordinator {
         let latest_block = blockchain.latest_block()
             .ok_or_else(|| IcnError::Blockchain("Blockchain is empty".to_string()))?;
 
-        let is_valid = self.consensus.validate(&latest_block)
-            .map_err(|e| IcnError::Consensus(format!("Failed to validate block: {}", e)))?;
-
-        info!("Latest block validation result: {}", is_valid);
-        Ok(is_valid)
+        self.consensus.validate(latest_block)
     }
 
     /// Retrieves the current state of the node.
@@ -191,5 +205,82 @@ impl ModuleCoordinator {
         let networking = self.networking.lock()
             .map_err(|_| IcnError::Network("Failed to acquire networking lock".to_string()))?;
         networking.broadcast_message(message).await
+    }
+
+    /// Attempts to connect to a new peer.
+    ///
+    /// # Arguments
+    ///
+    /// * `address` - The address of the peer to connect to.
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<()>` - Returns `Ok(())` if the connection was successful, or an `IcnError` otherwise.
+    pub async fn connect_to_peer(&self, address: &str) -> IcnResult<()> {
+        let networking = self.networking.lock()
+            .map_err(|_| IcnError::Network("Failed to acquire networking lock".to_string()))?;
+        networking.connect_to_peer(address).await
+    }
+
+    /// Updates the node's configuration.
+    ///
+    /// # Arguments
+    ///
+    /// * `new_config` - The new configuration to apply.
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<()>` - Returns `Ok(())` if the configuration was successfully updated, or an `IcnError` otherwise.
+    pub async fn update_config(&self, new_config: &Config) -> IcnResult<()> {
+        info!("Updating node configuration");
+        
+        // Stop the current networking service
+        self.stop().await?;
+
+        // Start the networking service with the new configuration
+        self.start(new_config).await?;
+
+        info!("Node configuration updated successfully");
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::config_loader::{ServerConfig, DatabaseConfig};
+
+    #[tokio::test]
+    async fn test_module_coordinator_lifecycle() {
+        let consensus = Arc::new(ProofOfCooperation::new());
+        let coordinator = ModuleCoordinator::new(consensus);
+
+        // Create a mock configuration
+        let config = Config {
+            server: ServerConfig {
+                host: "127.0.0.1".to_string(),
+                port: 8080,
+                debug: true,
+                cert_file_path: "/path/to/cert.pem".to_string(),
+                key_file_path: "/path/to/key.pem".to_string(),
+                cert_password: "".to_string(),
+            },
+            database: DatabaseConfig {
+                urls: vec!["postgresql://user:pass@localhost/db1".to_string()],
+            },
+        };
+
+        // Test starting the node
+        assert!(coordinator.start(&config).await.is_ok());
+
+        // Test adding a block
+        let transactions = vec!["tx1".to_string(), "tx2".to_string()];
+        assert!(coordinator.add_block(transactions).is_ok());
+
+        // Test getting the blockchain length
+        assert_eq!(coordinator.get_blockchain_length().unwrap(), 1);
+
+        // Test stopping the node
+        assert!(coordinator.stop().await.is_ok());
     }
 }

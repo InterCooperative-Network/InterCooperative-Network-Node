@@ -1,10 +1,19 @@
+# Server configuration
 [server]
+# The host address where the server will run
 host = "127.0.0.1"
+# The port on which the server will listen
 port = 8080
+# Enable debug mode for verbose output
 debug = true
+# Path to the TLS certificate file
 cert_file_path = "/opt/InterCooperative-Network-Node/cert.pem"
+# Path to the TLS private key file
 key_file_path = "/opt/InterCooperative-Network-Node/key.pem"
-cert_password = ""  # Leave empty if there is no password
+# Password for the TLS private key (leave empty if not password-protected)
+cert_password = ""
 
+# Database configuration
 [database]
+# List of database connection URLs
 urls = ["postgresql://user:password@localhost/db1", "postgresql://user:password@localhost/db2"]

@@ -8,23 +8,45 @@ use icn_shared::{IcnError, IcnResult};
 /// components of the application. It is deserialized from a TOML file.
 #[derive(Debug, Deserialize, Clone)]
 pub struct Config {
-    /// Configuration for the server, such as host, port, and debug mode.
+    /// Configuration for the server, such as host, port, and TLS settings.
     pub server: ServerConfig,
     /// Configuration for the database, including connection URLs.
     pub database: DatabaseConfig,
 }
 
-/// Configuration for the server, including network settings.
+/// Configuration for the server, including network and TLS settings.
 ///
-/// This struct is used to configure the server's network-related parameters.
+/// This struct is used to configure the server's network-related parameters
+/// and TLS (Transport Layer Security) settings for secure communication.
 #[derive(Debug, Deserialize, Clone)]
 pub struct ServerConfig {
     /// The host address where the server will run.
+    ///
+    /// This can be an IP address or a domain name. Use "0.0.0.0" to bind to all available interfaces.
     pub host: String,
-    /// The port on which the server will listen.
+
+    /// The port on which the server will listen for incoming connections.
     pub port: u16,
+
     /// Debug mode flag for enabling or disabling verbose output.
+    ///
+    /// When set to true, additional debug information will be logged.
     pub debug: bool,
+
+    /// The file path to the TLS certificate.
+    ///
+    /// This should be the full path to the PEM-encoded certificate file.
+    pub cert_file_path: String,
+
+    /// The file path to the TLS private key.
+    ///
+    /// This should be the full path to the PEM-encoded private key file.
+    pub key_file_path: String,
+
+    /// The password for the TLS private key, if it is password-protected.
+    ///
+    /// Leave this empty if the private key is not password-protected.
+    pub cert_password: String,
 }
 
 /// Configuration for the database, including connection URLs.
@@ -104,6 +126,9 @@ mod tests {
             host = "localhost"
             port = 8080
             debug = true
+            cert_file_path = "/path/to/cert.pem"
+            key_file_path = "/path/to/key.pem"
+            cert_password = ""
 
             [database]
             urls = ["postgresql://user:pass@localhost/db1", "postgresql://user:pass@localhost/db2"]
@@ -122,6 +147,9 @@ mod tests {
         assert_eq!(config.server.host, "localhost");
         assert_eq!(config.server.port, 8080);
         assert!(config.server.debug);
+        assert_eq!(config.server.cert_file_path, "/path/to/cert.pem");
+        assert_eq!(config.server.key_file_path, "/path/to/key.pem");
+        assert_eq!(config.server.cert_password, "");
         assert_eq!(
             config.database.urls,
             vec![
