@@ -1,26 +1,15 @@
-// icn_consensus/src/proof_of_cooperation.rs
-
 use std::collections::{HashMap, HashSet};
-use icn_shared::{IcnError, IcnResult, Block};
+use icn_blockchain::block::Block;
+use icn_shared::{IcnError, IcnResult};
 use rand::Rng;
 use std::time::{SystemTime, UNIX_EPOCH};
+use log::info;
 
 /// The `ProofOfCooperation` struct implements the Proof of Cooperation consensus mechanism.
 pub struct ProofOfCooperation {
     known_peers: HashSet<String>,
     cooperation_scores: HashMap<String, f64>,
     last_block_time: u64,
-}
-
-// Manually implement the Clone trait for ProofOfCooperation
-impl Clone for ProofOfCooperation {
-    fn clone(&self) -> Self {
-        ProofOfCooperation {
-            known_peers: self.known_peers.clone(),
-            cooperation_scores: self.cooperation_scores.clone(),
-            last_block_time: self.last_block_time,
-        }
-    }
 }
 
 impl ProofOfCooperation {
@@ -41,6 +30,7 @@ impl ProofOfCooperation {
     pub fn register_peer(&mut self, peer_id: &str) {
         self.known_peers.insert(peer_id.to_string());
         self.cooperation_scores.insert(peer_id.to_string(), 1.0);
+        info!("Registered peer: {}", peer_id);
     }
 
     /// Checks if a peer is registered in the consensus mechanism.
@@ -156,10 +146,10 @@ mod tests {
         let mut poc = ProofOfCooperation::new();
         poc.register_peer("peer1");
         
-        let block = Block::new(0, 0, vec![], "peer1".to_string(), "hash".to_string(), "peer1".to_string());
+        let block = Block::new(0, vec![], "previous_hash".to_string(), "peer1".to_string());
         assert!(poc.validate(&block).is_ok());
 
-        let invalid_block = Block::new(0, 0, vec![], "unknown_peer".to_string(), "hash".to_string(), "unknown_peer".to_string());
+        let invalid_block = Block::new(0, vec![], "previous_hash".to_string(), "unknown_peer".to_string());
         assert!(poc.validate(&invalid_block).is_err());
     }
 

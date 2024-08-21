@@ -1469,29 +1469,18 @@ impl Consensus for ProofOfCooperation {
 
 
 === ./icn_consensus/src/proof_of_cooperation.rs ===
-// icn_consensus/src/proof_of_cooperation.rs
-
 use std::collections::{HashMap, HashSet};
-use icn_shared::{IcnError, IcnResult, Block};
+use icn_blockchain::block::Block;
+use icn_shared::{IcnError, IcnResult};
 use rand::Rng;
 use std::time::{SystemTime, UNIX_EPOCH};
+use log::info;
 
 /// The `ProofOfCooperation` struct implements the Proof of Cooperation consensus mechanism.
 pub struct ProofOfCooperation {
     known_peers: HashSet<String>,
     cooperation_scores: HashMap<String, f64>,
     last_block_time: u64,
-}
-
-// Manually implement the Clone trait for ProofOfCooperation
-impl Clone for ProofOfCooperation {
-    fn clone(&self) -> Self {
-        ProofOfCooperation {
-            known_peers: self.known_peers.clone(),
-            cooperation_scores: self.cooperation_scores.clone(),
-            last_block_time: self.last_block_time,
-        }
-    }
 }
 
 impl ProofOfCooperation {
@@ -1512,6 +1501,7 @@ impl ProofOfCooperation {
     pub fn register_peer(&mut self, peer_id: &str) {
         self.known_peers.insert(peer_id.to_string());
         self.cooperation_scores.insert(peer_id.to_string(), 1.0);
+        info!("Registered peer: {}", peer_id);
     }
 
     /// Checks if a peer is registered in the consensus mechanism.
@@ -1627,10 +1617,10 @@ mod tests {
         let mut poc = ProofOfCooperation::new();
         poc.register_peer("peer1");
         
-        let block = Block::new(0, 0, vec![], "peer1".to_string(), "hash".to_string(), "peer1".to_string());
+        let block = Block::new(0, vec![], "previous_hash".to_string(), "peer1".to_string());
         assert!(poc.validate(&block).is_ok());
 
-        let invalid_block = Block::new(0, 0, vec![], "unknown_peer".to_string(), "hash".to_string(), "unknown_peer".to_string());
+        let invalid_block = Block::new(0, vec![], "previous_hash".to_string(), "unknown_peer".to_string());
         assert!(poc.validate(&invalid_block).is_err());
     }
 
@@ -1656,6 +1646,7 @@ mod tests {
         assert!(poc.cooperation_scores["peer1"] < 1.0);
     }
 }
+
 
 
 === ./icn_governance/Cargo.toml ===
@@ -3338,76 +3329,78 @@ use icn_core::config::ConfigLoader;
 use icn_core::coordinator::ModuleCoordinator;
 use icn_consensus::ProofOfCooperation;
 use std::env;
-use log::error;
+use log::{error, info};
+use icn_shared::IcnError;
 
 /// The main entry point for the ICN Core module.
 ///
 /// This function initializes the node by performing the following steps:
-/// 1. Loads the configuration file.
-/// 2. Initializes the `ModuleCoordinator`, which manages the various components of the node.
-/// 3. Starts the coordinator, which is responsible for the node's lifecycle management.
+/// 1. Sets up logging.
+/// 2. Loads the configuration file.
+/// 3. Initializes the consensus mechanism (Proof of Cooperation).
+/// 4. Initializes the `ModuleCoordinator`, which manages the various components of the node.
+/// 5. Starts the coordinator, which is responsible for the node's lifecycle management.
 ///
 /// # Command-Line Arguments
 ///
 /// The program accepts an optional command-line argument:
 /// - `config_path` (optional): The path to the configuration file. If not provided, the default
-/// configuration file `config.toml` will be used.
-///
-/// # Example
-///
-/// ```bash
-/// # Run the program with the default configuration file
-/// cargo run
-///
-/// # Run the program with a custom configuration file
-/// cargo run -- config/custom_config.toml
-/// ```
+///   configuration file `config.toml` will be used.
 ///
 /// # Error Handling
 ///
-/// If the configuration file cannot be loaded or if the coordinator fails to start, an error
-/// will be logged and the program will exit gracefully.
-///
-/// # Dependencies
-///
-/// This function relies on several core components:
-/// - `ConfigLoader`: Loads and parses the configuration file.
-/// - `ModuleCoordinator`: Initializes and manages the coordination between different modules.
-/// - `ProofOfCooperation`: The consensus mechanism used by the network.
+/// If any step fails, an error will be logged, and the program will exit gracefully.
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), IcnError> {
+    // Initialize logging
+    env_logger::init();
+
+    // Log the start of the application
+    info!("Starting ICN Core...");
+
     // Default configuration file name
     let default_config_file = "config.toml";
 
     // Obtain the config_path from command-line arguments or use the default
-    let args: Vec<String> = env::args().collect();
-    let config_path = if args.len() > 1 {
-        &args[1]
-    } else {
-        default_config_file
-    };
+    let config_path = env::args().nth(1).unwrap_or_else(|| default_config_file.to_string());
 
     // Initialize the ConfigLoader with the specified or default configuration file
-    let config_loader = match ConfigLoader::new(config_path) {
-        Ok(loader) => loader,
-        Err(e) => {
-            error!("Failed to load configuration: {}", e);
-            return; // Exit the program if configuration loading fails
-        }
-    };
+    let config_loader = ConfigLoader::new(&config_path).map_err(|e| {
+        error!("Failed to load configuration: {}", e);
+        IcnError::Config(format!("Failed to load configuration: {}", e))
+    })?;
+
+    // Log successful configuration loading
+    info!("Configuration loaded successfully from: {}", config_path);
 
     // Create the consensus mechanism
     let consensus = ProofOfCooperation::new();
 
     // Initialize the ModuleCoordinator, responsible for managing interactions between modules
-    let mut coordinator = ModuleCoordinator::new(consensus.clone());
+    let mut coordinator = ModuleCoordinator::new(consensus);
 
     // Start the coordinator and handle any errors that occur during startup
-    if let Err(e) = coordinator.start(config_loader.get_config()).await {
+    coordinator.start(config_loader.get_config()).await.map_err(|e| {
         error!("Coordinator failed to start: {}", e);
-    }
-}
+        IcnError::Other(format!("Coordinator failed to start: {}", e))
+    })?;
 
+    // Log successful startup
+    info!("ICN Core started successfully");
+
+    // Keep the main thread alive
+    tokio::signal::ctrl_c().await.map_err(|e| {
+        error!("Failed to listen for shutdown signal: {}", e);
+        IcnError::Other(format!("Failed to listen for shutdown signal: {}", e))
+    })?;
+
+    // Log shutdown
+    info!("Shutting down ICN Core...");
+
+    // Perform any necessary cleanup here
+
+    Ok(())
+}
 
 
 === ./icn_core/src/node/mod.rs ===
