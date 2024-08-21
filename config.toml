@@ -1,0 +1,30 @@
+# config.toml
+
+[server]
+# The host address where the server will run.
+host = "127.0.0.1"
+
+# The port on which the server will listen.
+port = 8080
+
+# Debug mode flag for enabling or disabling verbose output.
+debug = true
+
+[database]
+# A list of database connection URLs.
+urls = [
+    "postgresql://user:password@localhost/db1",
+    "postgresql://user:password@localhost/db2"
+]
+
+# Optional: Additional configuration for TLS (Transport Layer Security)
+[tls]
+# Path to the TLS certificate file.
+cert_file_path = "path/to/cert.pem"
+
+# Path to the TLS key file.
+key_file_path = "private.key"
+
+# Password for the TLS certificate file (if required).
+cert_password = "your_cert_password"
+

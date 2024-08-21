@@ -1,4 +1,6 @@
-use icn_blockchain::block::Block;  // Correctly reference icn_blockchain
+// file: icn_storage/src/block_storage.rs
+
+use icn_shared::Block;  // Correctly reference Block from icn_shared
 use std::collections::HashMap;
 
 /// The `BlockStorage` struct is responsible for storing and retrieving blocks.
