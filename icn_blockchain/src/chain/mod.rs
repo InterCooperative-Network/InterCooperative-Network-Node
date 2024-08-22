@@ -1,5 +1,3 @@
-// file: icn_blockchain/src/chain/mod.rs
-
 use icn_shared::{Block, IcnError, IcnResult};
 use icn_consensus::Consensus;
 use std::sync::Arc;
