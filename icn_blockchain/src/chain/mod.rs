@@ -1,6 +1,6 @@
 // file: icn_blockchain/src/chain/mod.rs
 
-use icn_shared::{Block, IcnError};
+use icn_shared::{Block, IcnError, IcnResult};
 use icn_consensus::Consensus;
 use std::sync::Arc;
 
@@ -40,13 +40,12 @@ impl<C: Consensus> Chain<C> {
     ///
     /// * `Result<(), IcnError>` - Returns `Ok(())` if the block is successfully added, 
     ///   or an `IcnError` if validation fails.
-    pub fn add_block(&mut self, transactions: Vec<String>, previous_hash: String, proposer_id: String) -> Result<(), IcnError> {
+    pub fn add_block(&mut self, transactions: Vec<String>, previous_hash: String, proposer_id: String) -> IcnResult<()> {
         let index = self.blocks.len() as u64;
 
         let new_block = Block::new(index, transactions, previous_hash, proposer_id);
 
-        // Propagate the custom error type directly, removing the need for String conversion
-        if self.consensus.validate(&new_block)? {
+        if self.validate_block(&new_block)? {
             self.blocks.push(new_block);
             Ok(())
         } else {
@@ -68,29 +67,42 @@ impl<C: Consensus> Chain<C> {
     ///
     /// This method ensures that the block meets the criteria set by the consensus mechanism, including
     /// cooperation scores, reputation scores, and other factors.
-    pub fn validate_block(&self, block: &Block) -> Result<(), IcnError> {
-        let validators = self.consensus.select_validators(block)?;
+    pub fn validate_block(&self, block: &Block) -> IcnResult<bool> {
+        let validators = self.select_validators(block)?;
         for validator in validators {
             let is_valid = validator.validate(block)?;
             if !is_valid {
                 return Err(IcnError::Consensus("Block validation failed.".to_string()));
             }
         }
-        Ok(())
+        Ok(true)
     }
 
     /// Selects validators for block validation based on the consensus mechanism.
     ///
     /// The selection process may involve factors such as stake, reputation, and recent activity.
-    fn select_validators(&self, block: &Block) -> Result<Vec<Validator>, IcnError> {
-        // Logic to select validators based on stake, reputation, and recent activity
-        Ok(vec![]) // Placeholder
+    fn select_validators(&self, block: &Block) -> IcnResult<Vec<Validator>> {
+        let mut validators = Vec::new();
+        let eligible_peers = self.consensus.get_eligible_peers();
+        let mut rng = rand::thread_rng();
+
+        for _ in 0..3 {
+            if let Some(peer_id) = eligible_peers.choose(&mut rng) {
+                validators.push(Validator::new(peer_id.to_string(), block.clone()));
+            }
+        }
+
+        if validators.is_empty() {
+            return Err(IcnError::Consensus("No eligible validators found.".to_string()));
+        }
+
+        Ok(validators)
     }
 
     /// Performs stake-weighted voting on a block.
     ///
     /// Voting influence is proportional to the validator's stake and reputation, ensuring a fair and balanced decision.
-    pub fn stake_weighted_vote(&self, block: &Block) -> Result<bool, IcnError> {
+    pub fn stake_weighted_vote(&self, block: &Block) -> IcnResult<bool> {
         let mut total_weight = 0.0;
         let mut weighted_votes = 0.0;
 

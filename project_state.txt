@@ -841,7 +841,7 @@ pub use transaction::Transaction;
 === ./icn_blockchain/src/chain/mod.rs ===
 // file: icn_blockchain/src/chain/mod.rs
 
-use icn_shared::{Block, IcnError};
+use icn_shared::{Block, IcnError, IcnResult};
 use icn_consensus::Consensus;
 use std::sync::Arc;
 
@@ -881,13 +881,12 @@ impl<C: Consensus> Chain<C> {
     ///
     /// * `Result<(), IcnError>` - Returns `Ok(())` if the block is successfully added, 
     ///   or an `IcnError` if validation fails.
-    pub fn add_block(&mut self, transactions: Vec<String>, previous_hash: String, proposer_id: String) -> Result<(), IcnError> {
+    pub fn add_block(&mut self, transactions: Vec<String>, previous_hash: String, proposer_id: String) -> IcnResult<()> {
         let index = self.blocks.len() as u64;
 
         let new_block = Block::new(index, transactions, previous_hash, proposer_id);
 
-        // Propagate the custom error type directly, removing the need for String conversion
-        if self.consensus.validate(&new_block)? {
+        if self.validate_block(&new_block)? {
             self.blocks.push(new_block);
             Ok(())
         } else {
@@ -909,29 +908,42 @@ impl<C: Consensus> Chain<C> {
     ///
     /// This method ensures that the block meets the criteria set by the consensus mechanism, including
     /// cooperation scores, reputation scores, and other factors.
-    pub fn validate_block(&self, block: &Block) -> Result<(), IcnError> {
-        let validators = self.consensus.select_validators(block)?;
+    pub fn validate_block(&self, block: &Block) -> IcnResult<bool> {
+        let validators = self.select_validators(block)?;
         for validator in validators {
             let is_valid = validator.validate(block)?;
             if !is_valid {
                 return Err(IcnError::Consensus("Block validation failed.".to_string()));
             }
         }
-        Ok(())
+        Ok(true)
     }
 
     /// Selects validators for block validation based on the consensus mechanism.
     ///
     /// The selection process may involve factors such as stake, reputation, and recent activity.
-    fn select_validators(&self, block: &Block) -> Result<Vec<Validator>, IcnError> {
-        // Logic to select validators based on stake, reputation, and recent activity
-        Ok(vec![]) // Placeholder
+    fn select_validators(&self, block: &Block) -> IcnResult<Vec<Validator>> {
+        let mut validators = Vec::new();
+        let eligible_peers = self.consensus.get_eligible_peers();
+        let mut rng = rand::thread_rng();
+
+        for _ in 0..3 {
+            if let Some(peer_id) = eligible_peers.choose(&mut rng) {
+                validators.push(Validator::new(peer_id.to_string(), block.clone()));
+            }
+        }
+
+        if validators.is_empty() {
+            return Err(IcnError::Consensus("No eligible validators found.".to_string()));
+        }
+
+        Ok(validators)
     }
 
     /// Performs stake-weighted voting on a block.
     ///
     /// Voting influence is proportional to the validator's stake and reputation, ensuring a fair and balanced decision.
-    pub fn stake_weighted_vote(&self, block: &Block) -> Result<bool, IcnError> {
+    pub fn stake_weighted_vote(&self, block: &Block) -> IcnResult<bool> {
         let mut total_weight = 0.0;
         let mut weighted_votes = 0.0;
 
@@ -1382,7 +1394,6 @@ impl Consensus for ProofOfCooperation {
 
 use std::collections::{HashMap, HashSet};
 use std::time::{SystemTime, UNIX_EPOCH};
-use std::sync::{Arc, RwLock};
 use icn_shared::{Block, IcnError, IcnResult};
 use rand::Rng;
 use log::info;
@@ -1394,7 +1405,8 @@ use log::info;
 pub struct ProofOfCooperation {
     known_peers: HashSet<String>,
     cooperation_scores: HashMap<String, f64>,
-    reputation_scores: HashMap<String, f64>,  // New field for reputation scores
+    reputation_scores: HashMap<String, f64>,
+    contribution_history: HashMap<String, Vec<(u64, f64)>>,  // History of contributions over time
     last_block_time: u64,
 }
 
@@ -1405,6 +1417,7 @@ impl ProofOfCooperation {
             known_peers: HashSet::new(),
             cooperation_scores: HashMap::new(),
             reputation_scores: HashMap::new(),
+            contribution_history: HashMap::new(),
             last_block_time: 0,
         }
     }
@@ -1413,7 +1426,8 @@ impl ProofOfCooperation {
     pub fn register_peer(&mut self, peer_id: &str) {
         self.known_peers.insert(peer_id.to_string());
         self.cooperation_scores.insert(peer_id.to_string(), 1.0);
-        self.reputation_scores.insert(peer_id.to_string(), 1.0);  // Initialize reputation score
+        self.reputation_scores.insert(peer_id.to_string(), 1.0);  
+        self.contribution_history.insert(peer_id.to_string(), Vec::new());
         info!("Registered peer: {}", peer_id);
     }
 
@@ -1442,8 +1456,7 @@ impl ProofOfCooperation {
 
         self.last_block_time = current_time;
 
-        // Example of additional validation logic (e.g., checking signatures, ensuring cooperation)
-        // Here, we could also validate the quality of transactions, adherence to protocol rules, etc.
+        // Additional validation logic can be added here.
 
         Ok(true)
     }
@@ -1482,12 +1495,43 @@ impl ProofOfCooperation {
             .get_mut(peer_id)
             .ok_or_else(|| IcnError::Consensus(format!("Unknown peer: {}", peer_id)))?;
         
-        *score = (*score * performance).max(0.1).min(2.0);  // Adjust score with a min and max range
-        self.update_reputation(peer_id)?;  // Update reputation based on new cooperation score
+        *score = (*score * performance).max(0.1).min(2.0);  
+        self.update_reputation(peer_id)?;  
+        self.record_contribution(peer_id, *score)?;
         Ok(())
     }
 
-    /// Updates the reputation score based on historical cooperation scores.
+    /// Records a peer's contribution to the network, tracking consistency and quality over time.
+    fn record_contribution(&mut self, peer_id: &str, score: f64) -> IcnResult<()> {
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|e| IcnError::Other(format!("System time error: {}", e)))?
+            .as_secs();
+        let history = self.contribution_history
+            .get_mut(peer_id)
+            .ok_or_else(|| IcnError::Consensus(format!("Unknown peer: {}", peer_id)))?;
+        history.push((timestamp, score));
+        Ok(())
+    }
+
+    /// Calculates the consistency of a peer's contributions over time.
+    fn calculate_consistency(&self, peer_id: &str) -> IcnResult<f64> {
+        let history = self.contribution_history
+            .get(peer_id)
+            .ok_or_else(|| IcnError::Consensus(format!("Unknown peer: {}", peer_id)))?;
+        
+        if history.is_empty() {
+            return Ok(1.0);  
+        }
+
+        let mean: f64 = history.iter().map(|&(_, score)| score).sum::<f64>() / history.len() as f64;
+        let variance: f64 = history.iter().map(|&(_, score)| (score - mean).powi(2)).sum::<f64>() / history.len() as f64;
+        let std_deviation = variance.sqrt();
+
+        Ok(1.0 / (1.0 + std_deviation))  
+    }
+
+    /// Updates the reputation score based on historical cooperation scores and consistency.
     ///
     /// Reputation is a critical factor in the network, and this function calculates it by averaging the current
     /// reputation score with the updated cooperation score. This method could be replaced with more complex
@@ -1497,12 +1541,13 @@ impl ProofOfCooperation {
             .get(peer_id)
             .ok_or_else(|| IcnError::Consensus(format!("Unknown peer: {}", peer_id)))?;
         
+        let consistency = self.calculate_consistency(peer_id)?;
+
         let rep_score = self.reputation_scores
             .entry(peer_id.to_string())
             .or_insert(1.0);
 
-        // For simplicity, we're averaging the reputation, but this could be replaced with a more complex formula
-        *rep_score = (*rep_score + coop_score) / 2.0;
+        *rep_score = (*rep_score + coop_score * consistency) / 2.0;
 
         Ok(())
     }
@@ -1511,7 +1556,6 @@ impl ProofOfCooperation {
     ///
     /// This decision can be influenced by the quality of the blocks in each chain, such as cooperation and reputation scores.
     pub fn handle_fork<'a>(&self, chain_a: &'a [Block], chain_b: &'a [Block]) -> &'a [Block] {
-        // Basic chain selection logic: select the longer chain
         if chain_a.len() >= chain_b.len() {
             chain_a
         } else {
@@ -3687,72 +3731,91 @@ icn_shared = { path = "../icn_shared" }
 === ./icn_storage/src/block_storage.rs ===
 // file: icn_storage/src/block_storage.rs
 
-use icn_shared::Block;  // Correctly reference Block from icn_shared
 use std::collections::HashMap;
+use icn_shared::{Block, IcnResult, IcnError};
 
-/// The `BlockStorage` struct is responsible for storing and retrieving blocks.
-/// It uses an in-memory `HashMap` to store blocks by their hash.
+/// The `BlockStorage` struct is responsible for managing the storage of blocks in the blockchain.
+/// It ensures data integrity and availability across the network.
 pub struct BlockStorage {
     storage: HashMap<String, Block>,
+    integrity_checks: HashMap<String, String>,  // Store checksums or other integrity verification data
 }
 
 impl BlockStorage {
     /// Creates a new `BlockStorage` instance.
-    ///
-    /// # Returns
-    ///
-    /// * `BlockStorage` - A new instance of `BlockStorage`.
     pub fn new() -> Self {
         BlockStorage {
             storage: HashMap::new(),
+            integrity_checks: HashMap::new(),
         }
     }
 
-    /// Adds a new block to the storage.
+    /// Stores a block in the storage.
     ///
     /// # Arguments
     ///
-    /// * `block` - The `Block` to be added to the storage.
+    /// * `block` - The block to store.
     ///
     /// # Returns
     ///
-    /// * `Result<(), String>` - Returns `Ok(())` if the block is successfully added,
-    ///   or an error message if a block with the same hash already exists.
-    ///
-    /// # Errors
-    ///
-    /// * Returns an error if a block with the same hash already exists in the storage.
-    pub fn add_block(&mut self, block: Block) -> Result<(), String> {
-        let hash = block.hash.clone();
-        if self.storage.contains_key(&hash) {
-            return Err("Block with this hash already exists.".to_string());
-        }
-        self.storage.insert(hash, block);
+    /// * `Result<(), IcnError>` - Returns `Ok(())` if the block is successfully stored.
+    pub fn store_block(&mut self, block: Block) -> IcnResult<()> {
+        let block_hash = block.hash.clone();
+        let checksum = self.calculate_checksum(&block)?;
+
+        self.storage.insert(block_hash.clone(), block);
+        self.integrity_checks.insert(block_hash, checksum);
+
         Ok(())
     }
 
-    /// Retrieves a block by its hash.
+    /// Retrieves a block from storage by its hash.
     ///
     /// # Arguments
     ///
-    /// * `hash` - A string representing the hash of the block to be retrieved.
+    /// * `hash` - The hash of the block to retrieve.
     ///
     /// # Returns
     ///
-    /// * `Option<Block>` - Returns `Some(Block)` if a block with the given hash is found,
-    ///   or `None` if no such block exists.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// let storage = BlockStorage::new();
-    /// let block = Block::new(...);
-    /// storage.add_block(block.clone()).unwrap();
-    /// let retrieved_block = storage.get_block(&block.hash);
-    /// assert_eq!(retrieved_block, Some(block));
-    /// ```
-    pub fn get_block(&self, hash: &str) -> Option<Block> {
+    /// * `Option<Block>` - Returns an `Option` containing the block, or `None` if not found.
+    pub fn retrieve_block(&self, hash: &str) -> Option<Block> {
         self.storage.get(hash).cloned()
+    }
+
+    /// Verifies the integrity of a block using stored checksums.
+    ///
+    /// # Arguments
+    ///
+    /// * `hash` - The hash of the block to verify.
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<bool>` - Returns `Ok(true)` if the block's integrity is intact, `Ok(false)` otherwise.
+    pub fn verify_integrity(&self, hash: &str) -> IcnResult<bool> {
+        let block = self.retrieve_block(hash)
+            .ok_or_else(|| IcnError::Storage("Block not found".to_string()))?;
+        
+        let stored_checksum = self.integrity_checks.get(hash)
+            .ok_or_else(|| IcnError::Storage("Checksum not found".to_string()))?;
+        
+        let current_checksum = self.calculate_checksum(&block)?;
+
+        Ok(stored_checksum == &current_checksum)
+    }
+
+    /// Calculates a checksum for a block to verify data integrity.
+    ///
+    /// # Arguments
+    ///
+    /// * `block` - The block for which to calculate the checksum.
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<String>` - Returns the calculated checksum as a string.
+    fn calculate_checksum(&self, block: &Block) -> IcnResult<String> {
+        // Simple example: creating a checksum based on block contents (can be replaced with a more complex algorithm)
+        let checksum = format!("{:x}", md5::compute(block.hash.clone() + &block.previous_hash));
+        Ok(checksum)
     }
 }
 

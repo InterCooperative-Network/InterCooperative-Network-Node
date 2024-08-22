@@ -2,7 +2,6 @@
 
 use std::collections::{HashMap, HashSet};
 use std::time::{SystemTime, UNIX_EPOCH};
-use std::sync::{Arc, RwLock};
 use icn_shared::{Block, IcnError, IcnResult};
 use rand::Rng;
 use log::info;
@@ -14,7 +13,8 @@ use log::info;
 pub struct ProofOfCooperation {
     known_peers: HashSet<String>,
     cooperation_scores: HashMap<String, f64>,
-    reputation_scores: HashMap<String, f64>,  // New field for reputation scores
+    reputation_scores: HashMap<String, f64>,
+    contribution_history: HashMap<String, Vec<(u64, f64)>>,  // History of contributions over time
     last_block_time: u64,
 }
 
@@ -25,6 +25,7 @@ impl ProofOfCooperation {
             known_peers: HashSet::new(),
             cooperation_scores: HashMap::new(),
             reputation_scores: HashMap::new(),
+            contribution_history: HashMap::new(),
             last_block_time: 0,
         }
     }
@@ -33,7 +34,8 @@ impl ProofOfCooperation {
     pub fn register_peer(&mut self, peer_id: &str) {
         self.known_peers.insert(peer_id.to_string());
         self.cooperation_scores.insert(peer_id.to_string(), 1.0);
-        self.reputation_scores.insert(peer_id.to_string(), 1.0);  // Initialize reputation score
+        self.reputation_scores.insert(peer_id.to_string(), 1.0);  
+        self.contribution_history.insert(peer_id.to_string(), Vec::new());
         info!("Registered peer: {}", peer_id);
     }
 
@@ -62,8 +64,7 @@ impl ProofOfCooperation {
 
         self.last_block_time = current_time;
 
-        // Example of additional validation logic (e.g., checking signatures, ensuring cooperation)
-        // Here, we could also validate the quality of transactions, adherence to protocol rules, etc.
+        // Additional validation logic can be added here.
 
         Ok(true)
     }
@@ -102,12 +103,43 @@ impl ProofOfCooperation {
             .get_mut(peer_id)
             .ok_or_else(|| IcnError::Consensus(format!("Unknown peer: {}", peer_id)))?;
         
-        *score = (*score * performance).max(0.1).min(2.0);  // Adjust score with a min and max range
-        self.update_reputation(peer_id)?;  // Update reputation based on new cooperation score
+        *score = (*score * performance).max(0.1).min(2.0);  
+        self.update_reputation(peer_id)?;  
+        self.record_contribution(peer_id, *score)?;
         Ok(())
     }
 
-    /// Updates the reputation score based on historical cooperation scores.
+    /// Records a peer's contribution to the network, tracking consistency and quality over time.
+    fn record_contribution(&mut self, peer_id: &str, score: f64) -> IcnResult<()> {
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|e| IcnError::Other(format!("System time error: {}", e)))?
+            .as_secs();
+        let history = self.contribution_history
+            .get_mut(peer_id)
+            .ok_or_else(|| IcnError::Consensus(format!("Unknown peer: {}", peer_id)))?;
+        history.push((timestamp, score));
+        Ok(())
+    }
+
+    /// Calculates the consistency of a peer's contributions over time.
+    fn calculate_consistency(&self, peer_id: &str) -> IcnResult<f64> {
+        let history = self.contribution_history
+            .get(peer_id)
+            .ok_or_else(|| IcnError::Consensus(format!("Unknown peer: {}", peer_id)))?;
+        
+        if history.is_empty() {
+            return Ok(1.0);  
+        }
+
+        let mean: f64 = history.iter().map(|&(_, score)| score).sum::<f64>() / history.len() as f64;
+        let variance: f64 = history.iter().map(|&(_, score)| (score - mean).powi(2)).sum::<f64>() / history.len() as f64;
+        let std_deviation = variance.sqrt();
+
+        Ok(1.0 / (1.0 + std_deviation))  
+    }
+
+    /// Updates the reputation score based on historical cooperation scores and consistency.
     ///
     /// Reputation is a critical factor in the network, and this function calculates it by averaging the current
     /// reputation score with the updated cooperation score. This method could be replaced with more complex
@@ -117,12 +149,13 @@ impl ProofOfCooperation {
             .get(peer_id)
             .ok_or_else(|| IcnError::Consensus(format!("Unknown peer: {}", peer_id)))?;
         
+        let consistency = self.calculate_consistency(peer_id)?;
+
         let rep_score = self.reputation_scores
             .entry(peer_id.to_string())
             .or_insert(1.0);
 
-        // For simplicity, we're averaging the reputation, but this could be replaced with a more complex formula
-        *rep_score = (*rep_score + coop_score) / 2.0;
+        *rep_score = (*rep_score + coop_score * consistency) / 2.0;
 
         Ok(())
     }
@@ -131,7 +164,6 @@ impl ProofOfCooperation {
     ///
     /// This decision can be influenced by the quality of the blocks in each chain, such as cooperation and reputation scores.
     pub fn handle_fork<'a>(&self, chain_a: &'a [Block], chain_b: &'a [Block]) -> &'a [Block] {
-        // Basic chain selection logic: select the longer chain
         if chain_a.len() >= chain_b.len() {
             chain_a
         } else {
