@@ -7,3 +7,4 @@ edition = "2021"
 icn_shared = { path = "../icn_shared" }
 log = "0.4"
 rand = "0.8"
+
