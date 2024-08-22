@@ -1,7 +1,4 @@
-//! This module provides the implementation of the blockchain structure and
-//! consensus mechanism for the InterCooperative Network. The main components
-//! include the `Chain` struct, which manages blocks, and the integration
-//! with various consensus algorithms.
+// icn_blockchain/src/lib.rs
 
 pub mod chain;
 
@@ -12,14 +9,14 @@ use icn_consensus::Consensus; // Import Consensus trait from icn_consensus crate
 use std::sync::Arc;
 
 /// Represents the blockchain and its operations.
-pub struct Blockchain {
+pub struct Blockchain<C: Consensus> {
     pub chain: Vec<Block>,
-    pub consensus: Arc<dyn Consensus>,
+    pub consensus: Arc<C>,
 }
 
-impl Blockchain {
+impl<C: Consensus> Blockchain<C> {
     /// Creates a new blockchain with the given consensus algorithm.
-    pub fn new(consensus: Arc<dyn Consensus>) -> Self {
+    pub fn new(consensus: Arc<C>) -> Self {
         Blockchain {
             chain: vec![Block::new(0, vec![], "genesis".to_string(), "genesis".to_string())],
             consensus,

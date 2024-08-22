@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::time::{SystemTime, UNIX_EPOCH};
 use icn_shared::{Block, IcnError, IcnResult};
 use rand::{Rng, thread_rng};
-use log::{info};
+use log::info; // Removed unnecessary braces
 
 // Constants for reputation calculation
 const REPUTATION_DECAY_FACTOR: f64 = 0.95;
