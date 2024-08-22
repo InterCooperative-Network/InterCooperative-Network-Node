@@ -4432,14 +4432,17 @@ icn_shared = { path = "../icn_shared" }
 
 
 === ./icn_storage/src/block_storage.rs ===
+// file: icn_storage/src/block_storage.rs
+
 use std::collections::HashMap;
 use icn_shared::{Block, IcnResult, IcnError};
+use sha2::{Sha256, Digest};
 
 /// The `BlockStorage` struct is responsible for managing the storage of blocks in the blockchain.
 /// It ensures data integrity and availability across the network.
 pub struct BlockStorage {
     storage: HashMap<String, Block>,
-    integrity_checks: HashMap<String, String>,  // Store checksums or other integrity verification data
+    integrity_checks: HashMap<String, String>, // Store checksums for integrity verification
 }
 
 impl BlockStorage {
@@ -4462,11 +4465,13 @@ impl BlockStorage {
     /// * `IcnResult<()>` - Returns `Ok(())` if the block is successfully stored.
     pub fn store_block(&mut self, block: Block) -> IcnResult<()> {
         let block_hash = block.hash.clone();
-        let checksum = self.calculate_checksum(&block)?;
+        if self.storage.contains_key(&block_hash) {
+            return Err(IcnError::Storage("Block with this hash already exists".to_string()));
+        }
 
+        let checksum = self.calculate_checksum(&block)?;
         self.storage.insert(block_hash.clone(), block);
         self.integrity_checks.insert(block_hash, checksum);
-
         Ok(())
     }
 
@@ -4514,18 +4519,83 @@ impl BlockStorage {
     ///
     /// * `IcnResult<String>` - Returns the calculated checksum as a string.
     fn calculate_checksum(&self, block: &Block) -> IcnResult<String> {
-        // Simple example: creating a checksum based on block contents (can be replaced with a more complex algorithm)
-        let checksum = format!("{:x}", md5::compute(block.hash.clone() + &block.previous_hash));
-        Ok(checksum)
+        let mut hasher = Sha256::new();
+        hasher.update(&block.hash);
+        hasher.update(&block.previous_hash);
+        // Add more fields as necessary to ensure comprehensive integrity checking
+        Ok(format!("{:x}", hasher.finalize()))
+    }
+
+    /// Returns the total number of blocks in storage.
+    ///
+    /// # Returns
+    ///
+    /// * `usize` - The number of blocks in storage.
+    pub fn block_count(&self) -> usize {
+        self.storage.len()
+    }
+
+    /// Checks if a block with the given hash exists in storage.
+    ///
+    /// # Arguments
+    ///
+    /// * `hash` - The hash of the block to check.
+    ///
+    /// # Returns
+    ///
+    /// * `bool` - Returns `true` if the block exists, `false` otherwise.
+    pub fn block_exists(&self, hash: &str) -> bool {
+        self.storage.contains_key(hash)
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_store_and_retrieve_block() {
+        let mut storage = BlockStorage::new();
+        let block = Block::new(0, vec![], "genesis".to_string(), "proposer".to_string());
+        let block_hash = block.hash.clone();
+
+        assert!(storage.store_block(block.clone()).is_ok());
+        let retrieved_block = storage.retrieve_block(&block_hash);
+        assert_eq!(retrieved_block, Some(block));
+    }
+
+    #[test]
+    fn test_block_integrity() {
+        let mut storage = BlockStorage::new();
+        let block = Block::new(0, vec![], "genesis".to_string(), "proposer".to_string());
+        let block_hash = block.hash.clone();
+
+        assert!(storage.store_block(block).is_ok());
+        assert!(storage.verify_integrity(&block_hash).unwrap());
+    }
+
+    #[test]
+    fn test_block_count_and_exists() {
+        let mut storage = BlockStorage::new();
+        let block1 = Block::new(0, vec![], "genesis".to_string(), "proposer".to_string());
+        let block2 = Block::new(1, vec![], block1.hash.clone(), "proposer".to_string());
+
+        assert!(storage.store_block(block1.clone()).is_ok());
+        assert!(storage.store_block(block2.clone()).is_ok());
+
+        assert_eq!(storage.block_count(), 2);
+        assert!(storage.block_exists(&block1.hash));
+        assert!(storage.block_exists(&block2.hash));
+        assert!(!storage.block_exists("nonexistent_hash"));
+    }
+}
 
 
 === ./icn_storage/src/state_storage.rs ===
 // file: icn_storage/src/state_storage.rs
 
 use std::collections::HashMap;
+use icn_shared::IcnResult;
 
 /// The `StateStorage` struct is responsible for managing the state of the blockchain.
 /// It uses an in-memory `HashMap` to store key-value pairs representing the state.
@@ -4550,8 +4620,8 @@ impl StateStorage {
     ///
     /// # Returns
     ///
-    /// * `Result<(), String>` - Returns `Ok(())` if the state is successfully updated.
-    pub fn update_state(&mut self, key: &str, value: &str) -> Result<(), String> {
+    /// * `IcnResult<()>` - Returns `Ok(())` if the state is successfully updated.
+    pub fn update_state(&mut self, key: &str, value: &str) -> IcnResult<()> {
         self.storage.insert(key.to_string(), value.to_string());
         Ok(())
     }
@@ -4569,20 +4639,105 @@ impl StateStorage {
     pub fn get_state(&self, key: &str) -> Option<String> {
         self.storage.get(key).cloned()
     }
+
+    /// Removes a key-value pair from the state storage.
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - A string slice that holds the key to be removed.
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<()>` - Returns `Ok(())` if the key-value pair is successfully removed or didn't exist.
+    pub fn remove_state(&mut self, key: &str) -> IcnResult<()> {
+        self.storage.remove(key);
+        Ok(())
+    }
+
+    /// Checks if a key exists in the state storage.
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - A string slice that holds the key to check.
+    ///
+    /// # Returns
+    ///
+    /// * `bool` - Returns `true` if the key exists, `false` otherwise.
+    pub fn has_state(&self, key: &str) -> bool {
+        self.storage.contains_key(key)
+    }
+
+    /// Returns the number of key-value pairs in the state storage.
+    ///
+    /// # Returns
+    ///
+    /// * `usize` - The number of key-value pairs in the storage.
+    pub fn state_count(&self) -> usize {
+        self.storage.len()
+    }
+
+    /// Clears all key-value pairs from the state storage.
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<()>` - Returns `Ok(())` if the storage is successfully cleared.
+    pub fn clear_state(&mut self) -> IcnResult<()> {
+        self.storage.clear();
+        Ok(())
+    }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_update_and_get_state() {
+        let mut storage = StateStorage::new();
+        assert!(storage.update_state("key1", "value1").is_ok());
+        assert_eq!(storage.get_state("key1"), Some("value1".to_string()));
+    }
+
+    #[test]
+    fn test_remove_state() {
+        let mut storage = StateStorage::new();
+        storage.update_state("key1", "value1").unwrap();
+        assert!(storage.remove_state("key1").is_ok());
+        assert_eq!(storage.get_state("key1"), None);
+    }
+
+    #[test]
+    fn test_has_state_and_state_count() {
+        let mut storage = StateStorage::new();
+        storage.update_state("key1", "value1").unwrap();
+        storage.update_state("key2", "value2").unwrap();
+        assert!(storage.has_state("key1"));
+        assert!(!storage.has_state("key3"));
+        assert_eq!(storage.state_count(), 2);
+    }
+
+    #[test]
+    fn test_clear_state() {
+        let mut storage = StateStorage::new();
+        storage.update_state("key1", "value1").unwrap();
+        storage.update_state("key2", "value2").unwrap();
+        assert!(storage.clear_state().is_ok());
+        assert_eq!(storage.state_count(), 0);
+    }
+}
 
 
 === ./icn_storage/src/lib.rs ===
 // file: icn_storage/src/lib.rs
 
+use std::sync::{Arc, RwLock};
+use icn_shared::{Block, IcnResult, IcnError};
+
 pub mod block_storage;
 pub mod state_storage;
 
-use icn_shared::Block;  // Correctly reference Block from icn_shared
 use block_storage::BlockStorage;
 use state_storage::StateStorage;
-use std::sync::{Arc, RwLock};
 
 /// The `Storage` struct provides an interface to the underlying storage systems
 /// for blocks and state. It ensures thread-safe access and modification.
@@ -4613,11 +4768,12 @@ impl Storage {
     ///
     /// # Returns
     ///
-    /// * `Result<(), String>` - Returns `Ok(())` if the block is successfully added,
-    ///   or an error message if a block with the same hash already exists.
-    pub fn add_block(&self, block: Block) -> Result<(), String> {
-        let mut storage = self.block_storage.write().unwrap();
-        storage.add_block(block)
+    /// * `IcnResult<()>` - Returns `Ok(())` if the block is successfully added,
+    ///   or an `IcnError` if a block with the same hash already exists.
+    pub fn add_block(&self, block: Block) -> IcnResult<()> {
+        let mut storage = self.block_storage.write()
+            .map_err(|_| IcnError::Storage("Failed to acquire write lock for block storage".to_string()))?;
+        storage.store_block(block)
     }
 
     /// Retrieves a block by its hash.
@@ -4628,11 +4784,12 @@ impl Storage {
     ///
     /// # Returns
     ///
-    /// * `Option<Block>` - Returns `Some(Block)` if a block with the given hash is found,
-    ///   or `None` if no such block exists.
-    pub fn get_block(&self, hash: &str) -> Option<Block> {
-        let storage = self.block_storage.read().unwrap();
-        storage.get_block(hash)
+    /// * `IcnResult<Option<Block>>` - Returns `Ok(Some(Block))` if a block with the given hash is found,
+    ///   or `Ok(None)` if no such block exists.
+    pub fn get_block(&self, hash: &str) -> IcnResult<Option<Block>> {
+        let storage = self.block_storage.read()
+            .map_err(|_| IcnError::Storage("Failed to acquire read lock for block storage".to_string()))?;
+        Ok(storage.retrieve_block(hash))
     }
 
     /// Updates the state storage with the latest state.
@@ -4644,11 +4801,13 @@ impl Storage {
     ///
     /// # Returns
     ///
-    /// * `Result<(), String>` - Returns `Ok(())` if the state is successfully updated,
-    ///   or an error message if the update fails.
-    pub fn update_state(&self, key: &str, value: &str) -> Result<(), String> {
-        let mut storage = self.state_storage.write().unwrap();
+    /// * `IcnResult<()>` - Returns `Ok(())` if the state is successfully updated,
+    ///   or an `IcnError` if the update fails.
+    pub fn update_state(&self, key: &str, value: &str) -> IcnResult<()> {
+        let mut storage = self.state_storage.write()
+            .map_err(|_| IcnError::Storage("Failed to acquire write lock for state storage".to_string()))?;
         storage.update_state(key, value)
+            .map_err(|e| IcnError::Storage(e))
     }
 
     /// Retrieves a value from the state storage by its key.
@@ -4659,14 +4818,63 @@ impl Storage {
     ///
     /// # Returns
     ///
-    /// * `Option<String>` - Returns `Some(String)` if the value is found,
-    ///   or `None` if no value is found for the given key.
-    pub fn get_state(&self, key: &str) -> Option<String> {
-        let storage = self.state_storage.read().unwrap();
-        storage.get_state(key)
+    /// * `IcnResult<Option<String>>` - Returns `Ok(Some(String))` if the value is found,
+    ///   or `Ok(None)` if no value is found for the given key.
+    pub fn get_state(&self, key: &str) -> IcnResult<Option<String>> {
+        let storage = self.state_storage.read()
+            .map_err(|_| IcnError::Storage("Failed to acquire read lock for state storage".to_string()))?;
+        Ok(storage.get_state(key))
+    }
+
+    /// Verifies the integrity of a block in storage.
+    ///
+    /// # Arguments
+    ///
+    /// * `hash` - The hash of the block to verify.
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<bool>` - Returns `Ok(true)` if the block's integrity is intact, `Ok(false)` otherwise.
+    pub fn verify_block_integrity(&self, hash: &str) -> IcnResult<bool> {
+        let storage = self.block_storage.read()
+            .map_err(|_| IcnError::Storage("Failed to acquire read lock for block storage".to_string()))?;
+        storage.verify_integrity(hash)
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_add_and_retrieve_block() {
+        let storage = Storage::new();
+        let block = Block::new(0, vec![], "genesis".to_string(), "proposer".to_string());
+        let block_hash = block.hash.clone();
+
+        assert!(storage.add_block(block.clone()).is_ok());
+        let retrieved_block = storage.get_block(&block_hash).unwrap();
+        assert_eq!(retrieved_block, Some(block));
+    }
+
+    #[test]
+    fn test_update_and_retrieve_state() {
+        let storage = Storage::new();
+        assert!(storage.update_state("key1", "value1").is_ok());
+        let retrieved_value = storage.get_state("key1").unwrap();
+        assert_eq!(retrieved_value, Some("value1".to_string()));
+    }
+
+    #[test]
+    fn test_verify_block_integrity() {
+        let storage = Storage::new();
+        let block = Block::new(0, vec![], "genesis".to_string(), "proposer".to_string());
+        let block_hash = block.hash.clone();
+
+        assert!(storage.add_block(block).is_ok());
+        assert!(storage.verify_block_integrity(&block_hash).unwrap());
+    }
+}
 
 
 === ./config.toml ===
