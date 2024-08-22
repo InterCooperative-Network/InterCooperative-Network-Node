@@ -1,5 +1,3 @@
-// file: icn_storage/src/block_storage.rs
-
 use std::collections::HashMap;
 use icn_shared::{Block, IcnResult, IcnError};
 
@@ -27,7 +25,7 @@ impl BlockStorage {
     ///
     /// # Returns
     ///
-    /// * `Result<(), IcnError>` - Returns `Ok(())` if the block is successfully stored.
+    /// * `IcnResult<()>` - Returns `Ok(())` if the block is successfully stored.
     pub fn store_block(&mut self, block: Block) -> IcnResult<()> {
         let block_hash = block.hash.clone();
         let checksum = self.calculate_checksum(&block)?;
