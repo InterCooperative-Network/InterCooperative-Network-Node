@@ -1,13 +1,10 @@
 use std::error::Error;
 use std::fmt;
-use std::time::{SystemTime, UNIX_EPOCH}; // Import the missing time components
 use serde::{Serialize, Deserialize};
-use sha2::{Sha256, Digest}; // Import the missing sha2 crate
+use sha2::{Sha256, Digest}; 
+use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Custom error type for the ICN project.
-///
-/// This enum represents various error cases that can occur within the InterCooperative Network system.
-/// It is used across different crates to provide a consistent error handling mechanism.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum IcnError {
     Config(String),
@@ -37,30 +34,14 @@ impl fmt::Display for IcnError {
 
 impl Error for IcnError {}
 
-/// Converts a standard I/O error into an `IcnError`.
 impl From<std::io::Error> for IcnError {
     fn from(err: std::io::Error) -> Self {
         IcnError::Io(err.to_string())
     }
 }
 
-/// A type alias for `Result` with `IcnError` as the error type.
-///
-/// This alias is used throughout the project to provide a consistent result type
-/// that uses our custom `IcnError`.
 pub type IcnResult<T> = Result<T, IcnError>;
 
-/// Represents the current state of a node in the network.
-///
-/// This enum is used to track the lifecycle of nodes within the network.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum NodeState {
-    Initializing,
-    Operational,
-    ShuttingDown,
-}
-
-/// Common block structure that can be used across crates
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Block {
     pub index: u64,
@@ -72,14 +53,12 @@ pub struct Block {
 }
 
 impl Block {
-    /// Creates a new block
     pub fn new(index: u64, transactions: Vec<String>, previous_hash: String, proposer_id: String) -> Self {
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("Time went backwards")
             .as_secs();
 
-        // Simulating hash calculation
         let hash = format!("{:x}", Sha256::digest(format!("{:?}", index).as_bytes()));
 
         Block {
@@ -91,28 +70,44 @@ impl Block {
             proposer_id,
         }
     }
+
+    pub fn calculate_hash(&self) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(self.index.to_be_bytes());
+        hasher.update(self.timestamp.to_be_bytes());
+        hasher.update(serde_json::to_string(&self.transactions).unwrap());
+        hasher.update(&self.previous_hash);
+        hasher.update(&self.proposer_id);
+        hasher.update(self.hash.as_bytes());
+        format!("{:x}", hasher.finalize())
+    }
+
+    pub fn is_valid(&self) -> bool {
+        self.hash == self.calculate_hash()
+    }
 }
 
-/// This module contains utility functions used across the project.
 pub mod utils {
-    /// Validates if a given string is a valid hexadecimal representation.
     pub fn is_valid_hex(hex_string: &str) -> bool {
         hex_string.chars().all(|c| c.is_digit(16))
     }
-
-    // Additional utility functions can be added here as needed
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// Tests for the `is_valid_hex` utility function.
     #[test]
     fn test_is_valid_hex() {
         assert!(utils::is_valid_hex("1a2b3c"));
         assert!(utils::is_valid_hex("ABCDEF"));
         assert!(!utils::is_valid_hex("1a2g3c"));
         assert!(!utils::is_valid_hex("xyz"));
+    }
+
+    #[test]
+    fn test_block_creation() {
+        let block = Block::new(0, vec!["tx1".into()], "prev_hash".into(), "proposer1".into());
+        assert!(block.is_valid());
     }
 }

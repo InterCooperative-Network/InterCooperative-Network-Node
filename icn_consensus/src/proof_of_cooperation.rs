@@ -1,5 +1,3 @@
-// Filename: icn_consensus/src/proof_of_cooperation.rs
-
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::time::{SystemTime, UNIX_EPOCH};
 use icn_shared::{Block, IcnError, IcnResult};
@@ -31,7 +29,7 @@ pub struct ProofOfCooperation {
     last_block_time: u64,
 }
 
-/// Represents staking information for a peer
+/// Represents staking information for a peer.
 #[derive(Clone, Debug)]
 struct StakeInfo {
     amount: u64,
@@ -39,7 +37,7 @@ struct StakeInfo {
     duration: u64,
 }
 
-/// Represents computational power metrics for a peer
+/// Represents computational power metrics for a peer.
 #[derive(Clone, Debug)]
 struct ComputationalPower {
     cpu_power: u64,
@@ -47,14 +45,14 @@ struct ComputationalPower {
     specialized_hardware: Vec<String>,
 }
 
-/// Represents storage provision data for a peer
+/// Represents storage provision data for a peer.
 #[derive(Clone, Debug)]
 struct StorageProvision {
     capacity: u64,
     reliability: f64,
 }
 
-/// Represents governance participation records for a peer
+/// Represents governance participation records for a peer.
 #[derive(Clone, Debug)]
 struct GovernanceParticipation {
     proposals_submitted: u64,
@@ -76,6 +74,7 @@ impl ProofOfCooperation {
             last_block_time: 0,
         }
     }
+
 
     pub fn register_peer(&mut self, peer_id: &str) {
         self.known_peers.insert(peer_id.to_string());

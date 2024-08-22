@@ -5,7 +5,6 @@ edition = "2021"
 
 [dependencies]
 icn_shared = { path = "../icn_shared" }
-icn_consensus = { path = "../icn_consensus" }
 log = "0.4"
 rand = "0.8"
 serde = { version = "1.0", features = ["derive"] }

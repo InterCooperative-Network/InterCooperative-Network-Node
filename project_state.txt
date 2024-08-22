@@ -450,6 +450,8 @@ native-tls = "0.2"  # Add this line
 
 
 === ./icn_shared/src/block.rs ===
+//icn_shared/src/block.rs
+
 use serde::{Serialize, Deserialize};
 use sha2::{Sha256, Digest};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -547,14 +549,11 @@ impl Block {
 === ./icn_shared/src/lib.rs ===
 use std::error::Error;
 use std::fmt;
-use std::time::{SystemTime, UNIX_EPOCH}; // Import the missing time components
 use serde::{Serialize, Deserialize};
-use sha2::{Sha256, Digest}; // Import the missing sha2 crate
+use sha2::{Sha256, Digest}; 
+use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Custom error type for the ICN project.
-///
-/// This enum represents various error cases that can occur within the InterCooperative Network system.
-/// It is used across different crates to provide a consistent error handling mechanism.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum IcnError {
     Config(String),
@@ -584,30 +583,14 @@ impl fmt::Display for IcnError {
 
 impl Error for IcnError {}
 
-/// Converts a standard I/O error into an `IcnError`.
 impl From<std::io::Error> for IcnError {
     fn from(err: std::io::Error) -> Self {
         IcnError::Io(err.to_string())
     }
 }
 
-/// A type alias for `Result` with `IcnError` as the error type.
-///
-/// This alias is used throughout the project to provide a consistent result type
-/// that uses our custom `IcnError`.
 pub type IcnResult<T> = Result<T, IcnError>;
 
-/// Represents the current state of a node in the network.
-///
-/// This enum is used to track the lifecycle of nodes within the network.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum NodeState {
-    Initializing,
-    Operational,
-    ShuttingDown,
-}
-
-/// Common block structure that can be used across crates
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Block {
     pub index: u64,
@@ -619,14 +602,12 @@ pub struct Block {
 }
 
 impl Block {
-    /// Creates a new block
     pub fn new(index: u64, transactions: Vec<String>, previous_hash: String, proposer_id: String) -> Self {
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("Time went backwards")
             .as_secs();
 
-        // Simulating hash calculation
         let hash = format!("{:x}", Sha256::digest(format!("{:?}", index).as_bytes()));
 
         Block {
@@ -638,29 +619,45 @@ impl Block {
             proposer_id,
         }
     }
+
+    pub fn calculate_hash(&self) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(self.index.to_be_bytes());
+        hasher.update(self.timestamp.to_be_bytes());
+        hasher.update(serde_json::to_string(&self.transactions).unwrap());
+        hasher.update(&self.previous_hash);
+        hasher.update(&self.proposer_id);
+        hasher.update(self.hash.as_bytes());
+        format!("{:x}", hasher.finalize())
+    }
+
+    pub fn is_valid(&self) -> bool {
+        self.hash == self.calculate_hash()
+    }
 }
 
-/// This module contains utility functions used across the project.
 pub mod utils {
-    /// Validates if a given string is a valid hexadecimal representation.
     pub fn is_valid_hex(hex_string: &str) -> bool {
         hex_string.chars().all(|c| c.is_digit(16))
     }
-
-    // Additional utility functions can be added here as needed
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// Tests for the `is_valid_hex` utility function.
     #[test]
     fn test_is_valid_hex() {
         assert!(utils::is_valid_hex("1a2b3c"));
         assert!(utils::is_valid_hex("ABCDEF"));
         assert!(!utils::is_valid_hex("1a2g3c"));
         assert!(!utils::is_valid_hex("xyz"));
+    }
+
+    #[test]
+    fn test_block_creation() {
+        let block = Block::new(0, vec!["tx1".into()], "prev_hash".into(), "proposer1".into());
+        assert!(block.is_valid());
     }
 }
 
@@ -734,7 +731,6 @@ edition = "2021"
 
 [dependencies]
 icn_shared = { path = "../icn_shared" }
-icn_consensus = { path = "../icn_consensus" }
 log = "0.4"
 rand = "0.8"
 serde = { version = "1.0", features = ["derive"] }
@@ -828,8 +824,6 @@ pub enum TransactionType {
 
 
 === ./icn_blockchain/src/lib.rs ===
-// file: icn_blockchain/src/lib.rs
-
 //! This module provides the implementation of the blockchain structure and
 //! consensus mechanism for the InterCooperative Network. The main components
 //! include the `Chain` struct, which manages blocks, and the integration
@@ -840,10 +834,60 @@ pub mod chain;
 pub use crate::chain::Chain;
 
 use icn_shared::{Block, IcnError, IcnResult};
-use icn_consensus::Consensus;
+use icn_consensus::Consensus; // Import Consensus trait from icn_consensus crate
 use std::sync::Arc;
 
-// Additional code related to blockchain initialization, consensus integration, etc.
+/// Represents the blockchain and its operations.
+pub struct Blockchain {
+    pub chain: Vec<Block>,
+    pub consensus: Arc<dyn Consensus>,
+}
+
+impl Blockchain {
+    /// Creates a new blockchain with the given consensus algorithm.
+    pub fn new(consensus: Arc<dyn Consensus>) -> Self {
+        Blockchain {
+            chain: vec![Block::new(0, vec![], "genesis".to_string(), "genesis".to_string())],
+            consensus,
+        }
+    }
+
+    /// Adds a new block to the blockchain after validating it.
+    pub fn add_block(&mut self, transactions: Vec<String>, proposer_id: String) -> IcnResult<()> {
+        let previous_block = self.chain.last().expect("Blockchain is empty");
+        let new_block = Block::new(
+            self.chain.len() as u64,
+            transactions,
+            previous_block.hash.clone(),
+            proposer_id,
+        );
+
+        // Validate the block using the consensus mechanism
+        if self.consensus.validate(&new_block)? {
+            self.chain.push(new_block);
+            Ok(())
+        } else {
+            Err(IcnError::Blockchain("Invalid block".to_string()))
+        }
+    }
+
+    /// Validates the integrity of the blockchain.
+    pub fn is_valid_chain(&self) -> bool {
+        for i in 1..self.chain.len() {
+            let current_block = &self.chain[i];
+            let previous_block = &self.chain[i - 1];
+
+            if current_block.previous_hash != previous_block.hash {
+                return false;
+            }
+
+            if !current_block.is_valid() {
+                return false;
+            }
+        }
+        true
+    }
+}
 
 
 
@@ -1346,11 +1390,10 @@ rand = "0.8"
 
 
 
-
 === ./icn_consensus/src/consensus.rs ===
-// File: icn_consensus/src/consensus.rs
+// Filename: icn_consensus/src/consensus.rs
 
-use icn_blockchain::block::Block;
+use icn_shared::Block;
 
 /// The `Consensus` trait defines the interface for consensus mechanisms
 /// within the InterCooperative Network blockchain system.
@@ -1404,8 +1447,6 @@ pub use crate::proof_of_cooperation::ProofOfCooperation;
 
 
 === ./icn_consensus/src/proof_of_cooperation.rs ===
-// Filename: icn_consensus/src/proof_of_cooperation.rs
-
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::time::{SystemTime, UNIX_EPOCH};
 use icn_shared::{Block, IcnError, IcnResult};
@@ -1437,7 +1478,7 @@ pub struct ProofOfCooperation {
     last_block_time: u64,
 }
 
-/// Represents staking information for a peer
+/// Represents staking information for a peer.
 #[derive(Clone, Debug)]
 struct StakeInfo {
     amount: u64,
@@ -1445,7 +1486,7 @@ struct StakeInfo {
     duration: u64,
 }
 
-/// Represents computational power metrics for a peer
+/// Represents computational power metrics for a peer.
 #[derive(Clone, Debug)]
 struct ComputationalPower {
     cpu_power: u64,
@@ -1453,14 +1494,14 @@ struct ComputationalPower {
     specialized_hardware: Vec<String>,
 }
 
-/// Represents storage provision data for a peer
+/// Represents storage provision data for a peer.
 #[derive(Clone, Debug)]
 struct StorageProvision {
     capacity: u64,
     reliability: f64,
 }
 
-/// Represents governance participation records for a peer
+/// Represents governance participation records for a peer.
 #[derive(Clone, Debug)]
 struct GovernanceParticipation {
     proposals_submitted: u64,
@@ -1482,6 +1523,7 @@ impl ProofOfCooperation {
             last_block_time: 0,
         }
     }
+
 
     pub fn register_peer(&mut self, peer_id: &str) {
         self.known_peers.insert(peer_id.to_string());
@@ -2472,7 +2514,6 @@ name = "icn_blockchain"
 version = "0.1.0"
 dependencies = [
  "chrono",
- "icn_consensus",
  "icn_shared",
  "log",
  "rand",

@@ -1,3 +1,5 @@
+//icn_shared/src/block.rs
+
 use serde::{Serialize, Deserialize};
 use sha2::{Sha256, Digest};
 use std::time::{SystemTime, UNIX_EPOCH};

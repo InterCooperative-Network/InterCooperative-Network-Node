@@ -1,6 +1,6 @@
-// File: icn_consensus/src/consensus.rs
+// Filename: icn_consensus/src/consensus.rs
 
-use icn_blockchain::block::Block;
+use icn_shared::Block;
 
 /// The `Consensus` trait defines the interface for consensus mechanisms
 /// within the InterCooperative Network blockchain system.
