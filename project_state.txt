@@ -841,10 +841,10 @@ pub use transaction::Transaction;
 === ./icn_blockchain/src/chain/mod.rs ===
 // file: icn_blockchain/src/chain/mod.rs
 
-use icn_shared::{Block, IcnError, IcnResult};
+use icn_shared::{Block, IcnError};
 use icn_consensus::Consensus;
-use rand::Rng;  // Import the rand crate to handle random number generation
 use std::sync::Arc;
+use rand::Rng;
 
 /// The `Validator` struct represents a validator in the blockchain consensus process.
 /// It includes the peer ID, stake, reputation, and methods for validation and voting.
@@ -860,46 +860,44 @@ impl Validator {
     ///
     /// # Arguments
     ///
-    /// * `peer_id` - The ID of the peer acting as a validator.
-    /// * `stake` - The stake held by the validator.
+    /// * `peer_id` - A string representing the ID of the peer.
+    /// * `stake` - The amount of stake the validator has.
     /// * `reputation` - The reputation score of the validator.
     ///
     /// # Returns
     ///
-    /// * `Validator` - A new instance of `Validator`.
+    /// * `Validator` - A new `Validator` instance.
     fn new(peer_id: String, stake: f64, reputation: f64) -> Self {
-        Validator {
-            peer_id,
-            stake,
-            reputation,
-        }
+        Validator { peer_id, stake, reputation }
     }
 
-    /// Validates a block.
+    /// Validates a block according to the validator's criteria.
     ///
     /// # Arguments
     ///
-    /// * `_block` - The block to validate. (Prefixed with underscore to indicate it's intentionally unused.)
+    /// * `block` - A reference to the block to validate.
     ///
     /// # Returns
     ///
-    /// * `IcnResult<bool>` - Returns `Ok(true)` if the block is valid, `Ok(false)` otherwise.
+    /// * `IcnResult<bool>` - Returns `Ok(true)` if the block is valid,
+    ///   or an error message if validation fails.
     fn validate(&self, _block: &Block) -> IcnResult<bool> {
-        // Placeholder logic for block validation
+        // Placeholder logic; implement actual validation logic here
         Ok(true)
     }
 
-    /// Casts a vote on the validity of a block.
+    /// Casts a vote on whether a block should be accepted.
     ///
     /// # Arguments
     ///
-    /// * `_block` - The block to vote on. (Prefixed with underscore to indicate it's intentionally unused.)
+    /// * `block` - A reference to the block being voted on.
     ///
     /// # Returns
     ///
-    /// * `IcnResult<bool>` - Returns `Ok(true)` for a positive vote, `Ok(false)` for a negative vote.
+    /// * `IcnResult<bool>` - Returns `Ok(true)` if the vote is in favor,
+    ///   or `Ok(false)` if the vote is against.
     fn vote(&self, _block: &Block) -> IcnResult<bool> {
-        // Placeholder logic for voting on block validity
+        // Placeholder logic; implement actual voting logic here
         Ok(true)
     }
 }
@@ -908,7 +906,7 @@ impl Validator {
 /// It manages the addition of new blocks, block validation, and access to the latest block.
 pub struct Chain<C: Consensus> {
     pub blocks: Vec<Block>,
-    pub consensus: Arc<C>,  // Use Arc<C> instead of C directly
+    pub consensus: Arc<C>,
 }
 
 impl<C: Consensus> Chain<C> {
@@ -924,7 +922,7 @@ impl<C: Consensus> Chain<C> {
     pub fn new(consensus: Arc<C>) -> Self {
         Chain {
             blocks: Vec::new(),
-            consensus,  // Now stores an Arc<C>
+            consensus,
         }
     }
 
@@ -938,14 +936,14 @@ impl<C: Consensus> Chain<C> {
     ///
     /// # Returns
     ///
-    /// * `IcnResult<()>` - Returns `Ok(())` if the block is successfully added, 
+    /// * `IcnResult<()>` - Returns `Ok(())` if the block is successfully added,
     ///   or an `IcnError` if validation fails.
     pub fn add_block(&mut self, transactions: Vec<String>, previous_hash: String, proposer_id: String) -> IcnResult<()> {
         let index = self.blocks.len() as u64;
 
         let new_block = Block::new(index, transactions, previous_hash, proposer_id);
 
-        if self.validate_block(&new_block)? {
+        if self.consensus.validate(&new_block)? {
             self.blocks.push(new_block);
             Ok(())
         } else {
@@ -963,11 +961,30 @@ impl<C: Consensus> Chain<C> {
         self.blocks.last()
     }
 
+    /// Selects validators for block validation based on the consensus mechanism.
+    ///
+    /// The selection process may involve factors such as stake, reputation, and recent activity.
+    fn select_validators(&self, _block: &Block) -> IcnResult<Vec<Validator>> {
+        let eligible_peers = self.consensus.get_eligible_peers();
+        let mut rng = rand::thread_rng();
+
+        let validators: Vec<Validator> = eligible_peers
+            .iter()
+            .map(|peer_id| {
+                let stake = rng.gen_range(0.5..1.5);
+                let reputation = rng.gen_range(0.5..1.5);
+                Validator::new(peer_id.clone(), stake, reputation)
+            })
+            .collect();
+
+        Ok(validators)
+    }
+
     /// Validates a block according to the consensus mechanism.
     ///
     /// This method ensures that the block meets the criteria set by the consensus mechanism, including
     /// cooperation scores, reputation scores, and other factors.
-    pub fn validate_block(&self, block: &Block) -> IcnResult<bool> {
+    pub fn validate_block(&self, block: &Block) -> IcnResult<()> {
         let validators = self.select_validators(block)?;
         for validator in validators {
             let is_valid = validator.validate(block)?;
@@ -975,30 +992,7 @@ impl<C: Consensus> Chain<C> {
                 return Err(IcnError::Consensus("Block validation failed.".to_string()));
             }
         }
-        Ok(true)
-    }
-
-    /// Selects validators for block validation based on the consensus mechanism.
-    ///
-    /// The selection process may involve factors such as stake, reputation, and recent activity.
-    fn select_validators(&self, block: &Block) -> IcnResult<Vec<Validator>> {
-        let mut validators = Vec::new();
-        let eligible_peers = self.consensus.get_eligible_peers();  // Assuming this method is defined in the Consensus trait
-        let mut rng = rand::thread_rng();
-
-        for _ in 0..3 {
-            if let Some(peer_id) = eligible_peers.choose(&mut rng) {
-                let stake = 1.0;  // Placeholder for actual stake calculation
-                let reputation = 1.0;  // Placeholder for actual reputation calculation
-                validators.push(Validator::new(peer_id.to_string(), stake, reputation));
-            }
-        }
-
-        if validators.is_empty() {
-            return Err(IcnError::Consensus("No eligible validators found.".to_string()));
-        }
-
-        Ok(validators)
+        Ok(())
     }
 
     /// Performs stake-weighted voting on a block.
@@ -1009,12 +1003,11 @@ impl<C: Consensus> Chain<C> {
         let mut weighted_votes = 0.0;
 
         let validators = self.select_validators(block)?;
-
         for validator in validators.iter() {
             let weight = validator.stake + validator.reputation;
-            let vote = validator.vote(block)? as i32;  // Cast bool to i32 first
+            let vote = validator.vote(block)?;
             total_weight += weight;
-            weighted_votes += vote as f64 * weight;
+            weighted_votes += (vote as u64) as f64 * weight;
         }
 
         Ok(weighted_votes / total_weight > 0.5)
@@ -1374,6 +1367,8 @@ pub trait Consensus {
 
 
 === ./icn_consensus/src/lib.rs ===
+// file: icn_consensus/src/lib.rs
+
 use icn_shared::{Block, IcnError, IcnResult};
 use rand::Rng;
 use std::collections::{HashMap, HashSet};
@@ -1383,35 +1378,121 @@ use log::info;
 /// The `Consensus` trait defines the interface for consensus mechanisms
 /// within the InterCooperative Network blockchain system.
 pub trait Consensus: Clone + Send + Sync {
+    /// Validates a block according to the consensus rules.
+    ///
+    /// # Arguments
+    ///
+    /// * `block` - A reference to the block that needs to be validated.
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<bool>` - Returns `Ok(true)` if the block is valid,
+    ///   or an error message if validation fails.
     fn validate(&self, block: &Block) -> IcnResult<bool>;
+
+    /// Selects a proposer for the next block based on the consensus mechanism's rules.
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<String>` - Returns the ID of the selected proposer,
+    ///   or an error message if selection fails.
     fn select_proposer(&self) -> IcnResult<String>;
+
+    /// Returns a list of eligible peers for block validation or other consensus tasks.
+    ///
+    /// # Returns
+    ///
+    /// * `Vec<String>` - A vector of peer IDs representing eligible peers.
+    fn get_eligible_peers(&self) -> Vec<String>;
 }
 
-/// The `ProofOfCooperation` struct implements the consensus mechanism for the ICN project.
-#[derive(Clone, Debug)]  // Adding Debug trait for better error handling and logging
+/// The `ProofOfCooperation` struct implements the Proof of Cooperation consensus mechanism.
+/// It manages the registration of peers, validation of blocks, selection of proposers,
+/// and updates of cooperation and reputation scores.
+#[derive(Clone, Debug)]
 pub struct ProofOfCooperation {
     known_peers: HashSet<String>,
-    cooperation_scores: HashMap<String, u64>,
+    cooperation_scores: HashMap<String, f64>,
+    reputation_scores: HashMap<String, f64>,
+    contribution_history: HashMap<String, Vec<(u64, f64)>>,  // History of contributions over time
     last_block_time: u64,
 }
 
 impl ProofOfCooperation {
+    /// Creates a new `ProofOfCooperation` instance.
     pub fn new() -> Self {
         ProofOfCooperation {
             known_peers: HashSet::new(),
             cooperation_scores: HashMap::new(),
+            reputation_scores: HashMap::new(),
+            contribution_history: HashMap::new(),
             last_block_time: 0,
         }
     }
 
+    /// Registers a peer in the consensus mechanism.
     pub fn register_peer(&mut self, peer_id: &str) {
         self.known_peers.insert(peer_id.to_string());
-        self.cooperation_scores.insert(peer_id.to_string(), 100);
+        self.cooperation_scores.insert(peer_id.to_string(), 1.0);
+        self.reputation_scores.insert(peer_id.to_string(), 1.0);  
+        self.contribution_history.insert(peer_id.to_string(), Vec::new());
         info!("Registered peer: {}", peer_id);
     }
 
+    /// Checks if a peer is registered in the consensus mechanism.
     pub fn is_registered(&self, peer_id: &str) -> bool {
         self.known_peers.contains(peer_id)
+    }
+
+    /// Records a peer's contribution to the network, tracking consistency and quality over time.
+    fn record_contribution(&mut self, peer_id: &str, score: f64) -> IcnResult<()> {
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|e| IcnError::Other(format!("System time error: {}", e)))?
+            .as_secs();
+        let history = self.contribution_history
+            .get_mut(peer_id)
+            .ok_or_else(|| IcnError::Consensus(format!("Unknown peer: {}", peer_id)))?;
+        history.push((timestamp, score));
+        Ok(())
+    }
+
+    /// Calculates the consistency of a peer's contributions over time.
+    fn calculate_consistency(&self, peer_id: &str) -> IcnResult<f64> {
+        let history = self.contribution_history
+            .get(peer_id)
+            .ok_or_else(|| IcnError::Consensus(format!("Unknown peer: {}", peer_id)))?;
+        
+        if history.is_empty() {
+            return Ok(1.0);  
+        }
+
+        let mean: f64 = history.iter().map(|&(_, score)| score).sum::<f64>() / history.len() as f64;
+        let variance: f64 = history.iter().map(|&(_, score)| (score - mean).powi(2)).sum::<f64>() / history.len() as f64;
+        let std_deviation = variance.sqrt();
+
+        Ok(1.0 / (1.0 + std_deviation))  
+    }
+
+    /// Updates the reputation score based on historical cooperation scores and consistency.
+    ///
+    /// Reputation is a critical factor in the network, and this function calculates it by averaging the current
+    /// reputation score with the updated cooperation score. This method could be replaced with more complex
+    /// reputation algorithms if needed.
+    pub fn update_reputation(&mut self, peer_id: &str) -> IcnResult<()> {
+        let coop_score = *self.cooperation_scores
+            .get(peer_id)
+            .ok_or_else(|| IcnError::Consensus(format!("Unknown peer: {}", peer_id)))?;
+        
+        let consistency = self.calculate_consistency(peer_id)?;
+
+        let rep_score = self.reputation_scores
+            .entry(peer_id.to_string())
+            .or_insert(1.0);
+
+        *rep_score = (*rep_score + coop_score * consistency) / 2.0;
+
+        Ok(())
     }
 }
 
@@ -1435,18 +1516,27 @@ impl Consensus for ProofOfCooperation {
 
     fn select_proposer(&self) -> IcnResult<String> {
         let mut rng = rand::thread_rng();
-        let total_score: u64 = self.cooperation_scores.values().sum();
-        let random_value: u64 = rng.gen_range(0..total_score);
+        let total_score: f64 = self.cooperation_scores
+            .iter()
+            .zip(self.reputation_scores.iter())
+            .map(|((_, coop_score), (_, rep_score))| coop_score + rep_score)
+            .sum();
+        let random_value: f64 = rng.gen::<f64>() * total_score;
 
-        let mut cumulative_score = 0;
-        for (peer_id, score) in &self.cooperation_scores {
-            cumulative_score += score;
+        let mut cumulative_score = 0.0;
+        for (peer_id, coop_score) in &self.cooperation_scores {
+            let rep_score = self.reputation_scores.get(peer_id).unwrap_or(&0.0);
+            cumulative_score += coop_score + rep_score;
             if cumulative_score >= random_value {
                 return Ok(peer_id.clone());
             }
         }
 
         Err(IcnError::Consensus("Failed to select a proposer".to_string()))
+    }
+
+    fn get_eligible_peers(&self) -> Vec<String> {
+        self.known_peers.iter().cloned().collect()
     }
 }
 
