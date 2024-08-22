@@ -8,32 +8,12 @@ use log::info;
 
 /// The `Consensus` trait defines the interface for consensus mechanisms
 /// within the InterCooperative Network blockchain system.
+///
+/// Implementing this trait allows different consensus algorithms to be
+/// used interchangeably within the blockchain.
 pub trait Consensus: Clone + Send + Sync {
-    /// Validates a block according to the consensus rules.
-    ///
-    /// # Arguments
-    ///
-    /// * `block` - A reference to the block that needs to be validated.
-    ///
-    /// # Returns
-    ///
-    /// * `IcnResult<bool>` - Returns `Ok(true)` if the block is valid,
-    ///   or an error message if validation fails.
     fn validate(&self, block: &Block) -> IcnResult<bool>;
-
-    /// Selects a proposer for the next block based on the consensus mechanism's rules.
-    ///
-    /// # Returns
-    ///
-    /// * `IcnResult<String>` - Returns the ID of the selected proposer,
-    ///   or an error message if selection fails.
     fn select_proposer(&self) -> IcnResult<String>;
-
-    /// Returns a list of eligible peers for block validation or other consensus tasks.
-    ///
-    /// # Returns
-    ///
-    /// * `Vec<String>` - A vector of peer IDs representing eligible peers.
     fn get_eligible_peers(&self) -> Vec<String>;
 }
 
@@ -75,6 +55,48 @@ impl ProofOfCooperation {
         self.known_peers.contains(peer_id)
     }
 
+    /// Validates a block according to the Proof of Cooperation consensus mechanism.
+    pub fn validate(&mut self, block: &Block) -> IcnResult<bool> {
+        if !self.is_registered(&block.proposer_id) {
+            return Err(IcnError::Consensus(format!("Unknown proposer: {}", block.proposer_id)));
+        }
+
+        let current_time = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|e| IcnError::Other(format!("System time error: {}", e)))?
+            .as_secs();
+
+        if current_time < self.last_block_time + 10 {
+            return Err(IcnError::Consensus("Block proposed too soon".to_string()));
+        }
+
+        self.last_block_time = current_time;
+
+        Ok(true)
+    }
+
+    /// Selects a proposer based on cooperation and reputation scores.
+    pub fn select_proposer(&self) -> IcnResult<String> {
+        let mut rng = rand::thread_rng();
+        let total_score: f64 = self.cooperation_scores
+            .iter()
+            .zip(self.reputation_scores.iter())
+            .map(|((_, coop_score), (_, rep_score))| coop_score + rep_score)
+            .sum();
+        let random_value: f64 = rng.gen::<f64>() * total_score;
+
+        let mut cumulative_score = 0.0;
+        for (peer_id, coop_score) in &self.cooperation_scores {
+            let rep_score = self.reputation_scores.get(peer_id).unwrap_or(&0.0);
+            cumulative_score += coop_score + rep_score;
+            if cumulative_score >= random_value {
+                return Ok(peer_id.clone());
+            }
+        }
+
+        Err(IcnError::Consensus("Failed to select a proposer".to_string()))
+    }
+
     /// Records a peer's contribution to the network, tracking consistency and quality over time.
     fn record_contribution(&mut self, peer_id: &str, score: f64) -> IcnResult<()> {
         let timestamp = SystemTime::now()
@@ -106,10 +128,6 @@ impl ProofOfCooperation {
     }
 
     /// Updates the reputation score based on historical cooperation scores and consistency.
-    ///
-    /// Reputation is a critical factor in the network, and this function calculates it by averaging the current
-    /// reputation score with the updated cooperation score. This method could be replaced with more complex
-    /// reputation algorithms if needed.
     pub fn update_reputation(&mut self, peer_id: &str) -> IcnResult<()> {
         let coop_score = *self.cooperation_scores
             .get(peer_id)
@@ -125,48 +143,9 @@ impl ProofOfCooperation {
 
         Ok(())
     }
-}
-
-impl Consensus for ProofOfCooperation {
-    fn validate(&self, block: &Block) -> IcnResult<bool> {
-        if !self.is_registered(&block.proposer_id) {
-            return Err(IcnError::Consensus(format!("Unknown proposer: {}", block.proposer_id)));
-        }
-
-        let current_time = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_err(|e| IcnError::Consensus(format!("System time error: {}", e)))?
-            .as_secs();
-
-        if current_time < self.last_block_time + 10 {
-            return Err(IcnError::Consensus("Block proposed too soon".to_string()));
-        }
-
-        Ok(true)
-    }
-
-    fn select_proposer(&self) -> IcnResult<String> {
-        let mut rng = rand::thread_rng();
-        let total_score: f64 = self.cooperation_scores
-            .iter()
-            .zip(self.reputation_scores.iter())
-            .map(|((_, coop_score), (_, rep_score))| coop_score + rep_score)
-            .sum();
-        let random_value: f64 = rng.gen::<f64>() * total_score;
-
-        let mut cumulative_score = 0.0;
-        for (peer_id, coop_score) in &self.cooperation_scores {
-            let rep_score = self.reputation_scores.get(peer_id).unwrap_or(&0.0);
-            cumulative_score += coop_score + rep_score;
-            if cumulative_score >= random_value {
-                return Ok(peer_id.clone());
-            }
-        }
-
-        Err(IcnError::Consensus("Failed to select a proposer".to_string()))
-    }
 
     fn get_eligible_peers(&self) -> Vec<String> {
         self.known_peers.iter().cloned().collect()
     }
 }
+
