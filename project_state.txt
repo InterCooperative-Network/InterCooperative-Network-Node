@@ -843,7 +843,66 @@ pub use transaction::Transaction;
 
 use icn_shared::{Block, IcnError, IcnResult};
 use icn_consensus::Consensus;
+use rand::Rng;  // Import the rand crate to handle random number generation
 use std::sync::Arc;
+
+/// The `Validator` struct represents a validator in the blockchain consensus process.
+/// It includes the peer ID, stake, reputation, and methods for validation and voting.
+#[derive(Debug)]
+struct Validator {
+    peer_id: String,
+    stake: f64,
+    reputation: f64,
+}
+
+impl Validator {
+    /// Creates a new `Validator` instance.
+    ///
+    /// # Arguments
+    ///
+    /// * `peer_id` - The ID of the peer acting as a validator.
+    /// * `stake` - The stake held by the validator.
+    /// * `reputation` - The reputation score of the validator.
+    ///
+    /// # Returns
+    ///
+    /// * `Validator` - A new instance of `Validator`.
+    fn new(peer_id: String, stake: f64, reputation: f64) -> Self {
+        Validator {
+            peer_id,
+            stake,
+            reputation,
+        }
+    }
+
+    /// Validates a block.
+    ///
+    /// # Arguments
+    ///
+    /// * `block` - The block to validate.
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<bool>` - Returns `Ok(true)` if the block is valid, `Ok(false)` otherwise.
+    fn validate(&self, block: &Block) -> IcnResult<bool> {
+        // Placeholder logic for block validation
+        Ok(true)
+    }
+
+    /// Casts a vote on the validity of a block.
+    ///
+    /// # Arguments
+    ///
+    /// * `block` - The block to vote on.
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<bool>` - Returns `Ok(true)` for a positive vote, `Ok(false)` for a negative vote.
+    fn vote(&self, block: &Block) -> IcnResult<bool> {
+        // Placeholder logic for voting on block validity
+        Ok(true)
+    }
+}
 
 /// The `Chain` struct represents the blockchain, which consists of a series of blocks.
 /// It manages the addition of new blocks, block validation, and access to the latest block.
@@ -879,7 +938,7 @@ impl<C: Consensus> Chain<C> {
     ///
     /// # Returns
     ///
-    /// * `Result<(), IcnError>` - Returns `Ok(())` if the block is successfully added, 
+    /// * `IcnResult<()>` - Returns `Ok(())` if the block is successfully added, 
     ///   or an `IcnError` if validation fails.
     pub fn add_block(&mut self, transactions: Vec<String>, previous_hash: String, proposer_id: String) -> IcnResult<()> {
         let index = self.blocks.len() as u64;
@@ -924,12 +983,14 @@ impl<C: Consensus> Chain<C> {
     /// The selection process may involve factors such as stake, reputation, and recent activity.
     fn select_validators(&self, block: &Block) -> IcnResult<Vec<Validator>> {
         let mut validators = Vec::new();
-        let eligible_peers = self.consensus.get_eligible_peers();
+        let eligible_peers = self.consensus.get_eligible_peers();  // Assuming this method is defined in the Consensus trait
         let mut rng = rand::thread_rng();
 
         for _ in 0..3 {
             if let Some(peer_id) = eligible_peers.choose(&mut rng) {
-                validators.push(Validator::new(peer_id.to_string(), block.clone()));
+                let stake = 1.0;  // Placeholder for actual stake calculation
+                let reputation = 1.0;  // Placeholder for actual reputation calculation
+                validators.push(Validator::new(peer_id.to_string(), stake, reputation));
             }
         }
 
@@ -947,7 +1008,10 @@ impl<C: Consensus> Chain<C> {
         let mut total_weight = 0.0;
         let mut weighted_votes = 0.0;
 
-        for validator in self.validators.iter() {
+        // Assuming `validators` is a Vec<Validator> returned by `select_validators`
+        let validators = self.select_validators(block)?;
+
+        for validator in validators.iter() {
             let weight = validator.stake + validator.reputation;
             let vote = validator.vote(block)?;
             total_weight += weight;
