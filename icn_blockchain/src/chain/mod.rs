@@ -38,12 +38,12 @@ impl Validator {
     ///
     /// # Arguments
     ///
-    /// * `block` - The block to validate.
+    /// * `_block` - The block to validate. (Prefixed with underscore to indicate it's intentionally unused.)
     ///
     /// # Returns
     ///
     /// * `IcnResult<bool>` - Returns `Ok(true)` if the block is valid, `Ok(false)` otherwise.
-    fn validate(&self, block: &Block) -> IcnResult<bool> {
+    fn validate(&self, _block: &Block) -> IcnResult<bool> {
         // Placeholder logic for block validation
         Ok(true)
     }
@@ -52,12 +52,12 @@ impl Validator {
     ///
     /// # Arguments
     ///
-    /// * `block` - The block to vote on.
+    /// * `_block` - The block to vote on. (Prefixed with underscore to indicate it's intentionally unused.)
     ///
     /// # Returns
     ///
     /// * `IcnResult<bool>` - Returns `Ok(true)` for a positive vote, `Ok(false)` for a negative vote.
-    fn vote(&self, block: &Block) -> IcnResult<bool> {
+    fn vote(&self, _block: &Block) -> IcnResult<bool> {
         // Placeholder logic for voting on block validity
         Ok(true)
     }
@@ -167,12 +167,11 @@ impl<C: Consensus> Chain<C> {
         let mut total_weight = 0.0;
         let mut weighted_votes = 0.0;
 
-        // Assuming `validators` is a Vec<Validator> returned by `select_validators`
         let validators = self.select_validators(block)?;
 
         for validator in validators.iter() {
             let weight = validator.stake + validator.reputation;
-            let vote = validator.vote(block)?;
+            let vote = validator.vote(block)? as i32;  // Cast bool to i32 first
             total_weight += weight;
             weighted_votes += vote as f64 * weight;
         }
