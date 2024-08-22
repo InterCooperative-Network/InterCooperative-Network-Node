@@ -5,6 +5,7 @@ use icn_consensus::Consensus;
 use std::sync::Arc;
 
 /// The `Chain` struct represents the blockchain, which consists of a series of blocks.
+/// It manages the addition of new blocks, block validation, and access to the latest block.
 pub struct Chain<C: Consensus> {
     pub blocks: Vec<Block>,
     pub consensus: Arc<C>,  // Use Arc<C> instead of C directly
@@ -61,5 +62,45 @@ impl<C: Consensus> Chain<C> {
     ///   or `None` if the blockchain is empty.
     pub fn latest_block(&self) -> Option<&Block> {
         self.blocks.last()
+    }
+
+    /// Validates a block according to the consensus mechanism.
+    ///
+    /// This method ensures that the block meets the criteria set by the consensus mechanism, including
+    /// cooperation scores, reputation scores, and other factors.
+    pub fn validate_block(&self, block: &Block) -> Result<(), IcnError> {
+        let validators = self.consensus.select_validators(block)?;
+        for validator in validators {
+            let is_valid = validator.validate(block)?;
+            if !is_valid {
+                return Err(IcnError::Consensus("Block validation failed.".to_string()));
+            }
+        }
+        Ok(())
+    }
+
+    /// Selects validators for block validation based on the consensus mechanism.
+    ///
+    /// The selection process may involve factors such as stake, reputation, and recent activity.
+    fn select_validators(&self, block: &Block) -> Result<Vec<Validator>, IcnError> {
+        // Logic to select validators based on stake, reputation, and recent activity
+        Ok(vec![]) // Placeholder
+    }
+
+    /// Performs stake-weighted voting on a block.
+    ///
+    /// Voting influence is proportional to the validator's stake and reputation, ensuring a fair and balanced decision.
+    pub fn stake_weighted_vote(&self, block: &Block) -> Result<bool, IcnError> {
+        let mut total_weight = 0.0;
+        let mut weighted_votes = 0.0;
+
+        for validator in self.validators.iter() {
+            let weight = validator.stake + validator.reputation;
+            let vote = validator.vote(block)?;
+            total_weight += weight;
+            weighted_votes += vote as f64 * weight;
+        }
+
+        Ok(weighted_votes / total_weight > 0.5)
     }
 }

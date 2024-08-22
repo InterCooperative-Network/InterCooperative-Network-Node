@@ -1,10 +1,15 @@
+// file: icn_consensus/src/proof_of_cooperation.rs
+
 use std::collections::{HashMap, HashSet};
+use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::{Arc, RwLock};
 use icn_shared::{Block, IcnError, IcnResult};
 use rand::Rng;
-use std::time::{SystemTime, UNIX_EPOCH};
 use log::info;
 
 /// The `ProofOfCooperation` struct implements the Proof of Cooperation consensus mechanism.
+/// It manages the registration of peers, validation of blocks, selection of proposers,
+/// and updates of cooperation and reputation scores.
 #[derive(Debug)]
 pub struct ProofOfCooperation {
     known_peers: HashSet<String>,
@@ -38,6 +43,9 @@ impl ProofOfCooperation {
     }
 
     /// Validates a block according to the Proof of Cooperation consensus mechanism.
+    ///
+    /// This function checks the proposer ID, ensures that the block is not proposed too soon after the previous block,
+    /// and may include additional validation logic such as checking signatures or cooperation.
     pub fn validate(&mut self, block: &Block) -> IcnResult<bool> {
         if !self.is_registered(&block.proposer_id) {
             return Err(IcnError::Consensus(format!("Unknown proposer: {}", block.proposer_id)));
@@ -61,6 +69,9 @@ impl ProofOfCooperation {
     }
 
     /// Selects a proposer based on cooperation and reputation scores.
+    ///
+    /// The selection process is weighted by both cooperation and reputation scores, ensuring that
+    /// nodes that contribute positively to the network have a higher chance of being selected as the proposer.
     pub fn select_proposer(&self) -> IcnResult<String> {
         let mut rng = rand::thread_rng();
         let total_score: f64 = self.cooperation_scores
@@ -84,7 +95,8 @@ impl ProofOfCooperation {
 
     /// Updates the cooperation score of a peer.
     ///
-    /// Performance is a multiplier that adjusts the cooperation score.
+    /// Performance is a multiplier that adjusts the cooperation score. The score is bounded by a minimum
+    /// and maximum value to ensure stability and prevent extreme changes.
     pub fn update_cooperation_score(&mut self, peer_id: &str, performance: f64) -> IcnResult<()> {
         let score = self.cooperation_scores
             .get_mut(peer_id)
@@ -96,6 +108,10 @@ impl ProofOfCooperation {
     }
 
     /// Updates the reputation score based on historical cooperation scores.
+    ///
+    /// Reputation is a critical factor in the network, and this function calculates it by averaging the current
+    /// reputation score with the updated cooperation score. This method could be replaced with more complex
+    /// reputation algorithms if needed.
     pub fn update_reputation(&mut self, peer_id: &str) -> IcnResult<()> {
         let coop_score = *self.cooperation_scores
             .get(peer_id)

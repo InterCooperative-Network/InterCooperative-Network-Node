@@ -846,6 +846,7 @@ use icn_consensus::Consensus;
 use std::sync::Arc;
 
 /// The `Chain` struct represents the blockchain, which consists of a series of blocks.
+/// It manages the addition of new blocks, block validation, and access to the latest block.
 pub struct Chain<C: Consensus> {
     pub blocks: Vec<Block>,
     pub consensus: Arc<C>,  // Use Arc<C> instead of C directly
@@ -902,6 +903,46 @@ impl<C: Consensus> Chain<C> {
     ///   or `None` if the blockchain is empty.
     pub fn latest_block(&self) -> Option<&Block> {
         self.blocks.last()
+    }
+
+    /// Validates a block according to the consensus mechanism.
+    ///
+    /// This method ensures that the block meets the criteria set by the consensus mechanism, including
+    /// cooperation scores, reputation scores, and other factors.
+    pub fn validate_block(&self, block: &Block) -> Result<(), IcnError> {
+        let validators = self.consensus.select_validators(block)?;
+        for validator in validators {
+            let is_valid = validator.validate(block)?;
+            if !is_valid {
+                return Err(IcnError::Consensus("Block validation failed.".to_string()));
+            }
+        }
+        Ok(())
+    }
+
+    /// Selects validators for block validation based on the consensus mechanism.
+    ///
+    /// The selection process may involve factors such as stake, reputation, and recent activity.
+    fn select_validators(&self, block: &Block) -> Result<Vec<Validator>, IcnError> {
+        // Logic to select validators based on stake, reputation, and recent activity
+        Ok(vec![]) // Placeholder
+    }
+
+    /// Performs stake-weighted voting on a block.
+    ///
+    /// Voting influence is proportional to the validator's stake and reputation, ensuring a fair and balanced decision.
+    pub fn stake_weighted_vote(&self, block: &Block) -> Result<bool, IcnError> {
+        let mut total_weight = 0.0;
+        let mut weighted_votes = 0.0;
+
+        for validator in self.validators.iter() {
+            let weight = validator.stake + validator.reputation;
+            let vote = validator.vote(block)?;
+            total_weight += weight;
+            weighted_votes += vote as f64 * weight;
+        }
+
+        Ok(weighted_votes / total_weight > 0.5)
     }
 }
 
@@ -1337,13 +1378,18 @@ impl Consensus for ProofOfCooperation {
 
 
 === ./icn_consensus/src/proof_of_cooperation.rs ===
+// file: icn_consensus/src/proof_of_cooperation.rs
+
 use std::collections::{HashMap, HashSet};
+use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::{Arc, RwLock};
 use icn_shared::{Block, IcnError, IcnResult};
 use rand::Rng;
-use std::time::{SystemTime, UNIX_EPOCH};
 use log::info;
 
 /// The `ProofOfCooperation` struct implements the Proof of Cooperation consensus mechanism.
+/// It manages the registration of peers, validation of blocks, selection of proposers,
+/// and updates of cooperation and reputation scores.
 #[derive(Debug)]
 pub struct ProofOfCooperation {
     known_peers: HashSet<String>,
@@ -1377,6 +1423,9 @@ impl ProofOfCooperation {
     }
 
     /// Validates a block according to the Proof of Cooperation consensus mechanism.
+    ///
+    /// This function checks the proposer ID, ensures that the block is not proposed too soon after the previous block,
+    /// and may include additional validation logic such as checking signatures or cooperation.
     pub fn validate(&mut self, block: &Block) -> IcnResult<bool> {
         if !self.is_registered(&block.proposer_id) {
             return Err(IcnError::Consensus(format!("Unknown proposer: {}", block.proposer_id)));
@@ -1400,6 +1449,9 @@ impl ProofOfCooperation {
     }
 
     /// Selects a proposer based on cooperation and reputation scores.
+    ///
+    /// The selection process is weighted by both cooperation and reputation scores, ensuring that
+    /// nodes that contribute positively to the network have a higher chance of being selected as the proposer.
     pub fn select_proposer(&self) -> IcnResult<String> {
         let mut rng = rand::thread_rng();
         let total_score: f64 = self.cooperation_scores
@@ -1423,7 +1475,8 @@ impl ProofOfCooperation {
 
     /// Updates the cooperation score of a peer.
     ///
-    /// Performance is a multiplier that adjusts the cooperation score.
+    /// Performance is a multiplier that adjusts the cooperation score. The score is bounded by a minimum
+    /// and maximum value to ensure stability and prevent extreme changes.
     pub fn update_cooperation_score(&mut self, peer_id: &str, performance: f64) -> IcnResult<()> {
         let score = self.cooperation_scores
             .get_mut(peer_id)
@@ -1435,6 +1488,10 @@ impl ProofOfCooperation {
     }
 
     /// Updates the reputation score based on historical cooperation scores.
+    ///
+    /// Reputation is a critical factor in the network, and this function calculates it by averaging the current
+    /// reputation score with the updated cooperation score. This method could be replaced with more complex
+    /// reputation algorithms if needed.
     pub fn update_reputation(&mut self, peer_id: &str) -> IcnResult<()> {
         let coop_score = *self.cooperation_scores
             .get(peer_id)
@@ -3702,7 +3759,7 @@ impl BlockStorage {
 
 
 === ./icn_storage/src/state_storage.rs ===
-// icn_storage/src/state_storage.rs
+// file: icn_storage/src/state_storage.rs
 
 use std::collections::HashMap;
 
@@ -3721,12 +3778,30 @@ impl StateStorage {
     }
 
     /// Updates the state storage with a new key-value pair.
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - A string slice that holds the key.
+    /// * `value` - A string slice that holds the value.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<(), String>` - Returns `Ok(())` if the state is successfully updated.
     pub fn update_state(&mut self, key: &str, value: &str) -> Result<(), String> {
         self.storage.insert(key.to_string(), value.to_string());
         Ok(())
     }
 
     /// Retrieves a value from the state storage by its key.
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - A string slice that holds the key.
+    ///
+    /// # Returns
+    ///
+    /// * `Option<String>` - Returns an `Option` containing the value associated with the key,
+    ///   or `None` if the key does not exist.
     pub fn get_state(&self, key: &str) -> Option<String> {
         self.storage.get(key).cloned()
     }
