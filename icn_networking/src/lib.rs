@@ -1,3 +1,5 @@
+// Filename: icn_networking/src/lib.rs
+
 use std::fs::File;
 use std::io::Read;
 use std::sync::{Arc, RwLock};
@@ -244,4 +246,3 @@ async fn handle_client(
     peers.retain(|p| !Arc::ptr_eq(p, &stream));
     Ok(())
 }
-
