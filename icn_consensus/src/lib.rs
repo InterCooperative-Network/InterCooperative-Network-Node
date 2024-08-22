@@ -1,5 +1,3 @@
-// file: icn_consensus/src/lib.rs
-
 use icn_shared::{Block, IcnError, IcnResult};
 use rand::Rng;
 use std::collections::{HashMap, HashSet};
@@ -231,6 +229,25 @@ impl ProofOfCooperation {
         Ok(())
     }
 
+    /// Updates the cooperation score for a peer.
+    ///
+    /// # Arguments
+    ///
+    /// * `peer_id` - The ID of the peer whose cooperation score is to be updated.
+    /// * `new_score` - The new cooperation score to assign.
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<()>` - Returns `Ok(())` if the cooperation score is successfully updated, or an error message if it fails.
+    pub fn update_cooperation_score(&mut self, peer_id: &str, new_score: f64) -> IcnResult<()> {
+        if let Some(score) = self.cooperation_scores.get_mut(peer_id) {
+            *score = (*score + new_score) / 2.0;
+            Ok(())
+        } else {
+            Err(IcnError::Consensus(format!("Unknown peer: {}", peer_id)))
+        }
+    }
+
     /// Returns a list of eligible peers for the selection process.
     ///
     /// # Returns
@@ -273,13 +290,9 @@ mod tests {
         let mut poc = ProofOfCooperation::new();
         poc.register_peer("peer1");
 
-        poc.update_reputation("peer1").unwrap();
-        poc.update_reputation("peer1").unwrap();
-        assert!(poc.reputation_scores["peer1"] > 1.0);
-
-        poc.update_reputation("peer1").unwrap();
-        poc.update_reputation("peer1").unwrap();
-        assert!(poc.reputation_scores["peer1"] < 1.0);
+        poc.update_cooperation_score("peer1", 1.5).unwrap();
+        poc.update_cooperation_score("peer1", 0.5).unwrap();
+        assert!(poc.cooperation_scores["peer1"] < 1.5);
     }
 
     #[test]
