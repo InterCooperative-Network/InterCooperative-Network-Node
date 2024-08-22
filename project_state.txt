@@ -3730,8 +3730,6 @@ pub use errors::IcnError;
 
 
 === ./icn_core/src/coordinator/module_coordinator.rs ===
-// File: icn_core/src/coordinator/module_coordinator.rs
-
 use std::sync::{Arc, Mutex};
 use icn_blockchain::Chain;
 use icn_consensus::{ProofOfCooperation, Consensus};
@@ -4016,6 +4014,7 @@ mod tests {
         assert!(coordinator.stop().await.is_ok());
     }
 }
+
 
 
 === ./icn_core/src/coordinator/mod.rs ===

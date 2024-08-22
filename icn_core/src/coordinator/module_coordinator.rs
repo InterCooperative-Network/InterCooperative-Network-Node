@@ -1,5 +1,3 @@
-// File: icn_core/src/coordinator/module_coordinator.rs
-
 use std::sync::{Arc, Mutex};
 use icn_blockchain::Chain;
 use icn_consensus::{ProofOfCooperation, Consensus};
