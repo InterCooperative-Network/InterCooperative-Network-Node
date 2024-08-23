@@ -18,14 +18,6 @@ pub struct ModuleCoordinator {
 
 impl ModuleCoordinator {
     /// Creates a new instance of `ModuleCoordinator`.
-    ///
-    /// # Arguments
-    ///
-    /// * `consensus` - The consensus mechanism to be used by the blockchain.
-    ///
-    /// # Returns
-    ///
-    /// * `ModuleCoordinator` - A new instance of `ModuleCoordinator`.
     pub fn new(consensus: Arc<ProofOfCooperation>) -> Self {
         info!("Initializing ModuleCoordinator");
         ModuleCoordinator {
@@ -37,14 +29,6 @@ impl ModuleCoordinator {
     }
 
     /// Starts the node by loading the TLS identity and starting the networking server.
-    ///
-    /// # Arguments
-    ///
-    /// * `config` - The configuration object containing network and TLS settings.
-    ///
-    /// # Returns
-    ///
-    /// * `IcnResult<()>` - Returns `Ok(())` if the node starts successfully, or an `IcnError` otherwise.
     pub async fn start(&self, config: &Config) -> IcnResult<()> {
         info!("Starting node");
 
@@ -90,10 +74,6 @@ impl ModuleCoordinator {
     }
 
     /// Stops the node by shutting down the networking server and updating the node state.
-    ///
-    /// # Returns
-    ///
-    /// * `IcnResult<()>` - Returns `Ok(())` if the node stops successfully, or an `IcnError` otherwise.
     pub async fn stop(&self) -> IcnResult<()> {
         info!("Stopping node");
 
@@ -113,14 +93,6 @@ impl ModuleCoordinator {
     }
 
     /// Adds a new block to the blockchain with the provided transactions.
-    ///
-    /// # Arguments
-    ///
-    /// * `transactions` - A vector of `String` objects representing the transactions to include in the new block.
-    ///
-    /// # Returns
-    ///
-    /// * `IcnResult<()>` - Returns `Ok(())` if the block is successfully added, or an `IcnError` otherwise.
     pub fn add_block(&self, transactions: Vec<String>) -> IcnResult<()> {
         info!("Adding new block to the blockchain");
 
@@ -141,10 +113,6 @@ impl ModuleCoordinator {
     }
 
     /// Validates the latest block in the blockchain.
-    ///
-    /// # Returns
-    ///
-    /// * `IcnResult<bool>` - Returns `Ok(true)` if the block is valid, or an `IcnError` if validation fails.
     pub fn validate_latest_block(&self) -> IcnResult<bool> {
         info!("Validating the latest block");
 
@@ -158,10 +126,6 @@ impl ModuleCoordinator {
     }
 
     /// Retrieves the current state of the node.
-    ///
-    /// # Returns
-    ///
-    /// * `IcnResult<NodeState>` - Returns the current `NodeState` if successful, or an `IcnError` otherwise.
     pub fn get_node_state(&self) -> IcnResult<NodeState> {
         let state = self.node_state.lock()
             .map_err(|_| IcnError::Other("Failed to acquire node state lock".to_string()))?;
@@ -169,10 +133,6 @@ impl ModuleCoordinator {
     }
 
     /// Retrieves the latest block from the blockchain.
-    ///
-    /// # Returns
-    ///
-    /// * `IcnResult<Option<Block>>` - Returns the latest `Block` if it exists, `None` if the blockchain is empty, or an `IcnError` otherwise.
     pub fn get_latest_block(&self) -> IcnResult<Option<Block>> {
         let blockchain = self.blockchain.lock()
             .map_err(|_| IcnError::Blockchain("Failed to acquire blockchain lock".to_string()))?;
@@ -180,10 +140,6 @@ impl ModuleCoordinator {
     }
 
     /// Retrieves the blockchain length.
-    ///
-    /// # Returns
-    ///
-    /// * `IcnResult<usize>` - Returns the current length of the blockchain, or an `IcnError` if the operation fails.
     pub fn get_blockchain_length(&self) -> IcnResult<usize> {
         let blockchain = self.blockchain.lock()
             .map_err(|_| IcnError::Blockchain("Failed to acquire blockchain lock".to_string()))?;
@@ -191,14 +147,6 @@ impl ModuleCoordinator {
     }
 
     /// Broadcasts a message to all connected peers.
-    ///
-    /// # Arguments
-    ///
-    /// * `message` - The message to broadcast.
-    ///
-    /// # Returns
-    ///
-    /// * `IcnResult<()>` - Returns `Ok(())` if the message was successfully broadcast, or an `IcnError` otherwise.
     pub async fn broadcast_message(&self, message: &str) -> IcnResult<()> {
         let networking = self.networking.lock()
             .map_err(|_| IcnError::Network("Failed to acquire networking lock".to_string()))?;
@@ -206,14 +154,6 @@ impl ModuleCoordinator {
     }
 
     /// Attempts to connect to a new peer.
-    ///
-    /// # Arguments
-    ///
-    /// * `address` - The address of the peer to connect to.
-    ///
-    /// # Returns
-    ///
-    /// * `IcnResult<()>` - Returns `Ok(())` if the connection was successful, or an `IcnError` otherwise.
     pub async fn connect_to_peer(&self, address: &str) -> IcnResult<()> {
         let networking = self.networking.lock()
             .map_err(|_| IcnError::Network("Failed to acquire networking lock".to_string()))?;
@@ -221,14 +161,6 @@ impl ModuleCoordinator {
     }
 
     /// Updates the node's configuration.
-    ///
-    /// # Arguments
-    ///
-    /// * `new_config` - The new configuration to apply.
-    ///
-    /// # Returns
-    ///
-    /// * `IcnResult<()>` - Returns `Ok(())` if the configuration was successfully updated, or an `IcnError` otherwise.
     pub async fn update_config(&self, new_config: &Config) -> IcnResult<()> {
         info!("Updating node configuration");
 
@@ -242,10 +174,32 @@ impl ModuleCoordinator {
 
             let mut networking = self.networking.lock()
                 .map_err(|_| IcnError::Network("Failed to acquire networking lock".to_string()))?;
+
             networking.update_tls_identity(identity).await?;
         }
 
-        info!("Configuration updated successfully");
+        // Update other configurations as needed
+        {
+            let mut state = self.node_state.lock()
+                .map_err(|_| IcnError::Other("Failed to acquire node state lock".to_string()))?;
+            *state = NodeState::Configuring;
+        }
+
+        // Apply new config...
+
+        {
+            let mut state = self.node_state.lock()
+                .map_err(|_| IcnError::Other("Failed to acquire node state lock".to_string()))?;
+            *state = NodeState::Operational;
+        }
+
+        info!("Node configuration updated successfully");
         Ok(())
+    }
+
+    /// Reboots the node by stopping and then restarting it.
+    pub async fn reboot_node(&self, config: &Config) -> IcnResult<()> {
+        self.stop().await?;
+        self.start(config).await
     }
 }
