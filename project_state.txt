@@ -2720,6 +2720,7 @@ dependencies = [
  "icn_shared",
  "log",
  "native-tls",
+ "rand",
  "serde",
  "serde_json",
  "tempfile",
@@ -3680,6 +3681,7 @@ icn_networking = { path = "../icn_networking" }
 icn_shared = { path = "../icn_shared" }
 toml = "0.5"
 thiserror = "1.0"
+rand = "0.8"
 
 
 
@@ -4788,8 +4790,13 @@ pub use errors::IcnError;
 
 
 === ./icn_core/src/coordinator/mod.rs ===
-mod module_coordinator;
-pub use module_coordinator::ModuleCoordinator;
+// Filename: icn_core/src/coordinator/mod.rs
+
+pub mod module_coordinator;
+
+use module_coordinator::ModuleCoordinator;
+
+
 
 
 
@@ -4904,9 +4911,11 @@ impl BlockStorage {
     /// * `IcnResult<String>` - Returns the checksum as a string, or an `IcnError` otherwise.
     fn calculate_checksum(&self, block: &Block) -> IcnResult<String> {
         let mut hasher = Sha256::new();
-        hasher.update(&block.hash);
+        hasher.update(&block.index.to_be_bytes());
+        hasher.update(&block.timestamp.to_be_bytes());
+        hasher.update(serde_json::to_string(&block.transactions).unwrap());
         hasher.update(&block.previous_hash);
-        // Add more fields as necessary to ensure comprehensive integrity checking
+        hasher.update(&block.proposer_id);
         Ok(format!("{:x}", hasher.finalize()))
     }
 

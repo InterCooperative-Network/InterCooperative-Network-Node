@@ -20,3 +20,4 @@ icn_networking = { path = "../icn_networking" }
 icn_shared = { path = "../icn_shared" }
 toml = "0.5"
 thiserror = "1.0"
+rand = "0.8"

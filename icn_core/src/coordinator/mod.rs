@@ -1,2 +1,7 @@
-mod module_coordinator;
-pub use module_coordinator::ModuleCoordinator;
+// Filename: icn_core/src/coordinator/mod.rs
+
+pub mod module_coordinator;
+
+use module_coordinator::ModuleCoordinator;
+
+

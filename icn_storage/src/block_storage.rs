@@ -92,9 +92,11 @@ impl BlockStorage {
     /// * `IcnResult<String>` - Returns the checksum as a string, or an `IcnError` otherwise.
     fn calculate_checksum(&self, block: &Block) -> IcnResult<String> {
         let mut hasher = Sha256::new();
-        hasher.update(&block.hash);
+        hasher.update(&block.index.to_be_bytes());
+        hasher.update(&block.timestamp.to_be_bytes());
+        hasher.update(serde_json::to_string(&block.transactions).unwrap());
         hasher.update(&block.previous_hash);
-        // Add more fields as necessary to ensure comprehensive integrity checking
+        hasher.update(&block.proposer_id);
         Ok(format!("{:x}", hasher.finalize()))
     }
 
