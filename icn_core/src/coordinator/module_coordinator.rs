@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 use icn_blockchain::Chain;
-use icn_consensus::{ProofOfCooperation, Consensus};
+use icn_consensus::ProofOfCooperation;
 use icn_networking::Networking;
 use icn_shared::{NodeState, IcnResult, IcnError, Block};
 use crate::config::Config;
@@ -35,7 +35,7 @@ impl ModuleCoordinator {
         let identity = Networking::load_tls_identity(
             &config.server.cert_file_path,
             &config.server.key_file_path,
-            &config.server.cert_password
+            &config.server.cert_password,
         ).map_err(|e| IcnError::Network(format!("Failed to load TLS identity: {}", e)))?;
 
         let mut networking = self.networking.lock()
@@ -122,7 +122,7 @@ impl ModuleCoordinator {
         let latest_block = blockchain.latest_block()
             .ok_or_else(|| IcnError::Blockchain("Blockchain is empty".to_string()))?;
 
-        self.consensus.validate(latest_block)
+        self.consensus.validate(&latest_block)
     }
 
     /// Retrieves the current state of the node.
@@ -169,7 +169,7 @@ impl ModuleCoordinator {
             let identity = Networking::load_tls_identity(
                 &new_config.server.cert_file_path,
                 &new_config.server.key_file_path,
-                &new_config.server.cert_password
+                &new_config.server.cert_password,
             ).map_err(|e| IcnError::Network(format!("Failed to load TLS identity: {}", e)))?;
 
             let mut networking = self.networking.lock()
@@ -182,7 +182,7 @@ impl ModuleCoordinator {
         {
             let mut state = self.node_state.lock()
                 .map_err(|_| IcnError::Other("Failed to acquire node state lock".to_string()))?;
-            *state = NodeState::Configuring;
+            *state = NodeState::Configuring; // Ensure the Configuring state exists in the NodeState enum
         }
 
         // Apply new config...
