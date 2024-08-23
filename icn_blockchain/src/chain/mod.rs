@@ -1,13 +1,14 @@
+// File: icn_blockchain/src/chain/mod.rs
+
 use icn_shared::{Block, IcnError, IcnResult};
 use icn_consensus::Consensus;
 use std::sync::Arc;
 use rand::Rng;
 
 /// The `Validator` struct represents a validator in the blockchain consensus process.
-/// It includes the peer ID, stake, reputation, and methods for validation and voting.
+/// It includes the stake, reputation, and methods for validation and voting.
 #[derive(Debug)]
 struct Validator {
-    peer_id: String,
     stake: f64,
     reputation: f64,
 }
@@ -17,11 +18,10 @@ impl Validator {
     ///
     /// # Arguments
     ///
-    /// * `peer_id` - The ID of the peer.
-    /// * `stake` - The stake of the peer.
-    /// * `reputation` - The reputation of the peer.
-    fn new(peer_id: String, stake: f64, reputation: f64) -> Self {
-        Validator { peer_id, stake, reputation }
+    /// * `stake` - The stake of the validator.
+    /// * `reputation` - The reputation of the validator.
+    fn new(stake: f64, reputation: f64) -> Self {
+        Validator { stake, reputation }
     }
 
     /// Validates a block based on the consensus rules.
@@ -123,10 +123,10 @@ impl<C: Consensus> Chain<C> {
 
         let validators: Vec<Validator> = eligible_peers
             .iter()
-            .map(|peer_id| {
+            .map(|_| {
                 let stake = rng.gen_range(0.5..1.5);
                 let reputation = rng.gen_range(0.5..1.5);
-                Validator::new(peer_id.clone(), stake, reputation)
+                Validator::new(stake, reputation)
             })
             .collect();
 

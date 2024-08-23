@@ -1,10 +1,9 @@
-//! block_storage.rs
-//! This file is responsible for managing the storage of blockchain blocks within the InterCooperative Network (ICN).
-//! It handles storing, retrieving, and verifying blocks, ensuring the integrity and availability of blockchain data.
+// File: icn_storage/src/block_storage.rs
 
 use std::collections::HashMap;
 use icn_shared::{Block, IcnResult, IcnError};
 use sha2::{Sha256, Digest};
+use serde_json;
 
 /// `BlockStorage` manages the storage of blockchain blocks. It provides methods for adding, retrieving,
 /// and verifying the integrity of blocks.
@@ -94,7 +93,7 @@ impl BlockStorage {
         let mut hasher = Sha256::new();
         hasher.update(&block.index.to_be_bytes());
         hasher.update(&block.timestamp.to_be_bytes());
-        hasher.update(serde_json::to_string(&block.transactions).unwrap());
+        hasher.update(serde_json::to_string(&block.transactions).map_err(|e| IcnError::Serialization(e.to_string()))?);
         hasher.update(&block.previous_hash);
         hasher.update(&block.proposer_id);
         Ok(format!("{:x}", hasher.finalize()))

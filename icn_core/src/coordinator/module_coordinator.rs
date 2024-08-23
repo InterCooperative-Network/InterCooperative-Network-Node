@@ -1,721 +1,117 @@
-/*!
- * Proof of Cooperation (PoC) Consensus Implementation
- * 
- * This file implements the Proof of Cooperation consensus mechanism for the InterCooperative Network (ICN).
- * It includes methods for validating blocks, selecting proposers, and managing peer participation in the network.
- * The system is designed to encourage cooperative behavior among peers by evaluating their contributions,
- * reputation, stake, computational power, storage provision, and governance participation.
- * 
- * This implementation ensures Sybil resistance through a combination of stake, reputation, and governance participation.
- * The system also provides mechanisms for rewarding and penalizing peers based on their contributions and behavior.
- * 
- * This file implements the `icn_consensus::Consensus` trait for `ProofOfCooperation`.
- */
+// File: icn_core/src/coordinator/module_coordinator.rs
 
- use std::collections::{HashMap, HashSet, VecDeque};
- use std::time::{SystemTime, UNIX_EPOCH};
- use icn_shared::{Block, IcnError, IcnResult};
- use rand::{Rng, thread_rng};
- use log::info;
- 
- /// The `Consensus` trait defines the basic requirements for any consensus mechanism.
- pub trait Consensus {
-     fn validate(&mut self, block: &Block) -> IcnResult<bool>;
-     fn select_proposer(&self) -> IcnResult<String>;
- }
- 
- /// Constants used in the Proof of Cooperation consensus mechanism
- const REPUTATION_DECAY_FACTOR: f64 = 0.95;
- const CONSISTENCY_WEIGHT: f64 = 0.3;
- const QUALITY_WEIGHT: f64 = 0.4;
- const NETWORK_IMPACT_WEIGHT: f64 = 0.3;
- const MAX_RECENT_CONTRIBUTIONS: usize = 100;
- const MIN_STAKE_FOR_SYBIL_RESISTANCE: u64 = 1000;
- const MIN_REPUTATION_FOR_SYBIL_RESISTANCE: f64 = 0.7;
- const MIN_GOVERNANCE_PARTICIPATION_FOR_SYBIL_RESISTANCE: u64 = 10;
- 
- /// The main struct implementing the Proof of Cooperation consensus mechanism
- #[derive(Clone, Debug)]
- pub struct ProofOfCooperation {
-     known_peers: HashSet<String>,
-     cooperation_scores: HashMap<String, f64>,
-     reputation_scores: HashMap<String, f64>,
-     contribution_history: HashMap<String, VecDeque<(u64, f64)>>,
-     stake_info: HashMap<String, StakeInfo>,
-     computational_power: HashMap<String, ComputationalPower>,
-     storage_provision: HashMap<String, StorageProvision>,
-     governance_participation: HashMap<String, GovernanceParticipation>,
-     last_block_time: u64,
- }
- 
- /// Struct representing a peer's stake information
- #[derive(Clone, Debug)]
- struct StakeInfo {
-     amount: u64,
-     asset_type: String,
-     duration: u64,
- }
- 
- /// Struct representing a peer's computational power contribution
- #[derive(Clone, Debug)]
- struct ComputationalPower {
-     cpu_power: u64,
-     gpu_power: u64,
-     specialized_hardware: Vec<String>,
- }
- 
- /// Struct representing a peer's storage provision
- #[derive(Clone, Debug)]
- struct StorageProvision {
-     capacity: u64,
-     reliability: f64,
- }
- 
- /// Struct representing a peer's participation in governance
- #[derive(Clone, Debug)]
- struct GovernanceParticipation {
-     proposals_submitted: u64,
-     votes_cast: u64,
-     discussions_participated: u64,
- }
- 
- impl ProofOfCooperation {
-     /// Creates a new instance of the ProofOfCooperation consensus mechanism
-     pub fn new() -> Self {
-         ProofOfCooperation {
-             known_peers: HashSet::new(),
-             cooperation_scores: HashMap::new(),
-             reputation_scores: HashMap::new(),
-             contribution_history: HashMap::new(),
-             stake_info: HashMap::new(),
-             computational_power: HashMap::new(),
-             storage_provision: HashMap::new(),
-             governance_participation: HashMap::new(),
-             last_block_time: 0,
-         }
-     }
- 
-     /// Registers a new peer in the network
-     pub fn register_peer(&mut self, peer_id: &str) {
-         self.known_peers.insert(peer_id.to_string());
-         self.cooperation_scores.insert(peer_id.to_string(), 1.0);
-         self.reputation_scores.insert(peer_id.to_string(), 1.0);
-         self.contribution_history.insert(peer_id.to_string(), VecDeque::new());
-         self.stake_info.insert(peer_id.to_string(), StakeInfo {
-             amount: 0,
-             asset_type: "ICN".to_string(),
-             duration: 0,
-         });
-         self.computational_power.insert(peer_id.to_string(), ComputationalPower {
-             cpu_power: 0,
-             gpu_power: 0,
-             specialized_hardware: Vec::new(),
-         });
-         self.storage_provision.insert(peer_id.to_string(), StorageProvision {
-             capacity: 0,
-             reliability: 1.0,
-         });
-         self.governance_participation.insert(peer_id.to_string(), GovernanceParticipation {
-             proposals_submitted: 0,
-             votes_cast: 0,
-             discussions_participated: 0,
-         });
-         info!("Registered peer: {}", peer_id);
-     }
- 
-     /// Selects validators for block validation
-     fn select_validators(&self) -> IcnResult<Vec<String>> {
-         let validators: Vec<String> = self.known_peers.iter()
-             .filter(|&peer_id| {
-                 let stake = self.stake_info.get(peer_id).map(|info| info.amount).unwrap_or(0);
-                 let reputation = self.reputation_scores.get(peer_id).cloned().unwrap_or(0.0);
-                 stake > 0 && reputation > 0.5
-             })
-             .cloned()
-             .collect();
- 
-         if validators.len() < 3 {
-             return Err(IcnError::Consensus("Not enough eligible validators".to_string()));
-         }
- 
-         let mut sorted_validators = validators;
-         sorted_validators.sort_by(|a, b| {
-             let a_score = self.calculate_validator_score(a);
-             let b_score = self.calculate_validator_score(b);
-             b_score.partial_cmp(&a_score).unwrap()
-         });
- 
-         Ok(sorted_validators.into_iter().take(10).collect())
-     }
- 
-     /// Calculates the score of a validator based on stake and reputation
-     fn calculate_validator_score(&self, peer_id: &str) -> f64 {
-         let stake = self.stake_info.get(peer_id).map(|info| info.amount).unwrap_or(0) as f64;
-         let reputation = self.reputation_scores.get(peer_id).cloned().unwrap_or(0.0);
-         stake * reputation
-     }
- 
-     /// Conducts a stake-weighted vote for block validation
-     fn stake_weighted_vote(&self, validator_id: &str, _block: &Block) -> IcnResult<bool> {
-         let stake = self.stake_info.get(validator_id)
-             .ok_or_else(|| IcnError::Consensus(format!("No stake info for validator: {}", validator_id)))?
-             .amount as f64;
-         let reputation = self.reputation_scores.get(validator_id)
-             .cloned()
-             .unwrap_or(0.0);
- 
-         let voting_power = (stake * reputation).sqrt();
-         let random_threshold = thread_rng().gen::<f64>();
- 
-         Ok(voting_power > random_threshold)
-     }
- 
-     /// Records a contribution made by a peer
-     fn record_contribution(&mut self, peer_id: &str, score: f64) -> IcnResult<()> {
-         let timestamp = SystemTime::now()
-             .duration_since(UNIX_EPOCH)
-             .map_err(|e| IcnError::Other(format!("System time error: {}", e)))?
-             .as_secs();
-         
-         let history = self.contribution_history
-             .entry(peer_id.to_string())
-             .or_insert_with(VecDeque::new);
-         
-         history.push_back((timestamp, score));
- 
-         while history.len() > MAX_RECENT_CONTRIBUTIONS {
-             history.pop_front();
-         }
- 
-         Ok(())
-     }
- 
-     /// Calculates the consistency of a peer's contributions
-     fn calculate_consistency(&self, peer_id: &str) -> IcnResult<f64> {
-         let history = self.contribution_history
-             .get(peer_id)
-             .ok_or_else(|| IcnError::Consensus(format!("Unknown peer: {}", peer_id)))?;
- 
-         if history.is_empty() {
-             return Ok(1.0);
-         }
- 
-         let recent_contributions: Vec<f64> = history.iter().map(|&(_, score)| score).collect();
-         let mean: f64 = recent_contributions.iter().sum::<f64>() / recent_contributions.len() as f64;
-         let variance: f64 = recent_contributions.iter().map(|&score| (score - mean).powi(2)).sum::<f64>() / recent_contributions.len() as f64;
-         let std_deviation = variance.sqrt();
- 
-         Ok(1.0 / (1.0 + std_deviation))
-     }
- 
-     /// Updates the reputation of a peer based on their actions
-     fn update_reputation(&mut self, peer_id: &str, positive_action: bool) -> IcnResult<()> {
-         let coop_score = *self.cooperation_scores
-             .get(peer_id)
-             .ok_or_else(|| IcnError::Consensus(format!("Unknown peer: {}", peer_id)))?;
- 
-         let consistency = self.calculate_consistency(peer_id)?;
-         let network_impact = self.calculate_network_impact(peer_id)?;
- 
-         let rep_score = self.reputation_scores
-             .entry(peer_id.to_string())
-             .or_insert(1.0);
- 
-         let quality_factor = if positive_action { 1.1 } else { 0.9 };
- 
-         let new_rep_score = (
-             CONSISTENCY_WEIGHT * consistency +
-             QUALITY_WEIGHT * coop_score * quality_factor +
-             NETWORK_IMPACT_WEIGHT * network_impact
-         ) * REPUTATION_DECAY_FACTOR + (1.0 - REPUTATION_DECAY_FACTOR) * *rep_score;
- 
-         *rep_score = new_rep_score.max(0.0).min(1.0);
- 
-         Ok(())
-     }
- 
-     /// Calculates the network impact of a peer
-     fn calculate_network_impact(&self, peer_id: &str) -> IcnResult<f64> {
-         let stake_info = self.stake_info.get(peer_id)
-             .ok_or_else(|| IcnError::Consensus(format!("No stake info for peer: {}", peer_id)))?;
-         
-         let comp_power = self.computational_power.get(peer_id)
-             .ok_or_else(|| IcnError::Consensus(format!("No computational power info for peer: {}", peer_id)))?;
-         
-         let storage = self.storage_provision.get(peer_id)
-             .ok_or_else(|| IcnError::Consensus(format!("No storage provision info for peer: {}", peer_id)))?;
-         
-         let governance = self.governance_participation.get(peer_id)
-             .ok_or_else(|| IcnError::Consensus(format!("No governance participation info for peer: {}", peer_id)))?;
- 
-         let stake_impact = (stake_info.amount as f64).log10() / 10.0;
-         let comp_impact = (comp_power.cpu_power as f64 + comp_power.gpu_power as f64).log10() / 10.0;
-         let storage_impact = (storage.capacity as f64).log10() / 20.0 * storage.reliability;
-         let governance_impact = (governance.proposals_submitted + governance.votes_cast) as f64 / 100.0;
- 
-         let total_impact = stake_impact + comp_impact + storage_impact + governance_impact;
-         Ok(total_impact.min(1.0))
-     }
- 
-     /// Updates the cooperation score of a peer
-     pub fn update_cooperation_score(&mut self, peer_id: &str, new_score: f64) -> IcnResult<()> {
-         let score = self.cooperation_scores
-             .entry(peer_id.to_string())
-             .or_insert(1.0);
-         
-         *score = (*score + new_score.max(0.0).min(1.0)) / 2.0;
-         self.record_contribution(peer_id, new_score)?;
-         
-         Ok(())
-     }
- 
-     /// Retrieves a list of eligible peers for validation
-     pub fn get_eligible_peers(&self) -> Vec<String> {
-         self.known_peers.iter()
-             .filter(|&peer_id| {
-                 let stake = self.stake_info.get(peer_id).map(|info| info.amount).unwrap_or(0);
-                 let reputation = self.reputation_scores.get(peer_id).cloned().unwrap_or(0.0);
-                 stake >= MIN_STAKE_FOR_SYBIL_RESISTANCE && reputation >= MIN_REPUTATION_FOR_SYBIL_RESISTANCE
-             })
-             .cloned()
-             .collect()
-     }
- 
-     /// Updates the stake information of a peer
-     pub fn update_stake(&mut self, peer_id: &str, amount: u64, asset_type: String, duration: u64) -> IcnResult<()> {
-         let stake_info = self.stake_info
-             .entry(peer_id.to_string())
-             .or_insert(StakeInfo {
-                 amount: 0,
-                 asset_type: asset_type.clone(),
-                 duration: 0,
-             });
- 
-         stake_info.amount = amount;
-         stake_info.asset_type = asset_type;
-         stake_info.duration = duration;
- 
-         info!("Updated stake for peer {}: amount={}, asset_type={}, duration={}", peer_id, amount, stake_info.asset_type, duration);
-         Ok(())
-     }
- 
-     /// Updates the computational power information of a peer
-     pub fn update_computational_power(&mut self, peer_id: &str, cpu_power: u64, gpu_power: u64, specialized_hardware: Vec<String>) -> IcnResult<()> {
-         let comp_power = self.computational_power
-             .entry(peer_id.to_string())
-             .or_insert(ComputationalPower {
-                 cpu_power: 0,
-                 gpu_power: 0,
-                 specialized_hardware: Vec::new(),
-             });
- 
-         comp_power.cpu_power = cpu_power;
-         comp_power.gpu_power = gpu_power;
-         comp_power.specialized_hardware = specialized_hardware.clone();
- 
-         info!("Updated computational power for peer {}: cpu_power={}, gpu_power={}, specialized_hardware={:?}", peer_id, cpu_power, gpu_power, specialized_hardware);
-         Ok(())
-     }
- 
-     /// Updates the storage provision information of a peer
-     pub fn update_storage_provision(&mut self, peer_id: &str, capacity: u64, reliability: f64) -> IcnResult<()> {
-         let storage_info = self.storage_provision
-             .entry(peer_id.to_string())
-             .or_insert(StorageProvision {
-                 capacity: 0,
-                 reliability: 1.0,
-             });
- 
-         storage_info.capacity = capacity;
-         storage_info.reliability = reliability.max(0.0).min(1.0);
- 
-         info!("Updated storage provision for peer {}: capacity={}, reliability={}", peer_id, capacity, reliability);
-         Ok(())
-     }
- 
-     /// Updates the governance participation information of a peer
-     pub fn update_governance_participation(&mut self, peer_id: &str, proposals_submitted: u64, votes_cast: u64, discussions_participated: u64) -> IcnResult<()> {
-         let governance_info = self.governance_participation
-             .entry(peer_id.to_string())
-             .or_insert(GovernanceParticipation {
-                 proposals_submitted: 0,
-                 votes_cast: 0,
-                 discussions_participated: 0,
-             });
- 
-         governance_info.proposals_submitted = proposals_submitted;
-         governance_info.votes_cast = votes_cast;
-         governance_info.discussions_participated = discussions_participated;
- 
-         info!("Updated governance participation for peer {}: proposals_submitted={}, votes_cast={}, discussions_participated={}", 
-               peer_id, proposals_submitted, votes_cast, discussions_participated);
-         Ok(())
-     }
- 
-     /// Checks if a peer passes the Sybil resistance criteria
-     pub fn sybil_resistant_check(&self, peer_id: &str) -> bool {
-         let stake = self.stake_info.get(peer_id).map(|info| info.amount).unwrap_or(0);
-         let reputation = self.reputation_scores.get(peer_id).cloned().unwrap_or(0.0);
-         let governance_participation = self.governance_participation.get(peer_id)
-             .map(|info| info.proposals_submitted + info.votes_cast)
-             .unwrap_or(0);
- 
-         stake >= MIN_STAKE_FOR_SYBIL_RESISTANCE &&
-         reputation >= MIN_REPUTATION_FOR_SYBIL_RESISTANCE &&
-         governance_participation >= MIN_GOVERNANCE_PARTICIPATION_FOR_SYBIL_RESISTANCE
-     }
- 
-     /// Calculates the reward for a peer based on their contributions and reputation
-     pub fn calculate_reward(&self, peer_id: &str) -> IcnResult<u64> {
-         let cooperation_score = self.cooperation_scores.get(peer_id)
-             .ok_or_else(|| IcnError::Consensus(format!("Unknown peer: {}", peer_id)))?;
-         
-         let reputation_score = self.reputation_scores.get(peer_id)
-             .ok_or_else(|| IcnError::Consensus(format!("Unknown peer: {}", peer_id)))?;
- 
-         let network_impact = self.calculate_network_impact(peer_id)?;
- 
-         let base_reward = 100;
- 
-         let adjusted_reward = (base_reward as f64 * cooperation_score * reputation_score * (1.0 + network_impact)).round() as u64;
- 
-         Ok(adjusted_reward)
-     }
- 
-     /// Distributes rewards to all eligible peers
-     pub fn distribute_rewards(&self) -> IcnResult<HashMap<String, u64>> {
-         let mut rewards = HashMap::new();
- 
-         for peer_id in self.get_eligible_peers() {
-             let reward = self.calculate_reward(&peer_id)?;
-             rewards.insert(peer_id, reward);
-         }
- 
-         Ok(rewards)
-     }
- 
-     /// Applies a penalty to a peer based on the severity of their misconduct
-     pub fn apply_penalty(&mut self, peer_id: &str, severity: f64) -> IcnResult<()> {
-         let severity = severity.max(0.0).min(1.0);
- 
-         if let Some(score) = self.cooperation_scores.get_mut(peer_id) {
-             *score *= 1.0 - severity;
-         }
- 
-         if let Some(score) = self.reputation_scores.get_mut(peer_id) {
-             *score *= 1.0 - severity;
-         }
- 
-         if severity > 0.5 {
-             if let Some(stake_info) = self.stake_info.get_mut(peer_id) {
-                 stake_info.amount = (stake_info.amount as f64 * (1.0 - severity * 0.5)) as u64;
-             }
-         }
- 
-         info!("Applied penalty to peer {} with severity {}", peer_id, severity);
-         Ok(())
-     }
- 
-     /// Evaluates the overall health of the network
-     pub fn evaluate_network_health(&self) -> IcnResult<f64> {
-         let avg_cooperation = self.cooperation_scores.values().sum::<f64>() / self.cooperation_scores.len() as f64;
-         let avg_reputation = self.reputation_scores.values().sum::<f64>() / self.reputation_scores.len() as f64;
-         
-         let total_stake: u64 = self.stake_info.values().map(|info| info.amount).sum();
-         let stake_distribution = 1.0 - (self.stake_info.values().map(|info| info.amount as f64 / total_stake as f64).map(|x| x * x).sum::<f64>().sqrt());
- 
-         let health_score = (avg_cooperation + avg_reputation + stake_distribution) / 3.0;
- 
-         Ok(health_score)
-     }
- }
- 
- /// Implement the `Consensus` trait for `ProofOfCooperation`
- impl Consensus for ProofOfCooperation {
-     fn validate(&mut self, block: &Block) -> IcnResult<bool> {
-         if !self.known_peers.contains(&block.proposer_id) {
-             return Err(IcnError::Consensus(format!("Unknown proposer: {}", block.proposer_id)));
-         }
- 
-         let current_time = SystemTime::now()
-             .duration_since(UNIX_EPOCH)
-             .map_err(|e| IcnError::Other(format!("System time error: {}", e)))?
-             .as_secs();
- 
-         if current_time < self.last_block_time + 10 {
-             return Err(IcnError::Consensus("Block proposed too soon".to_string()));
-         }
- 
-         self.last_block_time = current_time;
- 
-         let validators = self.select_validators()?;
-         let mut valid_votes = 0;
-         let total_votes = validators.len();
- 
-         for validator in validators {
-             let vote = self.stake_weighted_vote(&validator, block)?;
-             if vote {
-                 valid_votes += 1;
-             }
-         }
- 
-         let validation_threshold = (total_votes as f64 * 2.0 / 3.0).ceil() as usize;
-         let is_valid = valid_votes >= validation_threshold;
- 
-         self.update_reputation(&block.proposer_id, is_valid)?;
- 
-         Ok(is_valid)
-     }
- 
-     fn select_proposer(&self) -> IcnResult<String> {
-         let eligible_peers = self.get_eligible_peers();
-         if eligible_peers.is_empty() {
-             return Err(IcnError::Consensus("No eligible proposers available".to_string()));
-         }
- 
-         let total_score: f64 = eligible_peers.iter()
-             .map(|peer_id| self.calculate_validator_score(peer_id))
-             .sum();
- 
-         let mut rng = thread_rng();
-         let mut cumulative_weight = 0.0;
-         let random_value = rng.gen::<f64>() * total_score;
- 
-         for peer_id in &eligible_peers {
-             cumulative_weight += self.calculate_validator_score(peer_id);
-             if cumulative_weight >= random_value {
-                 return Ok(peer_id.clone());
-             }
-         }
- 
-         Err(IcnError::Consensus("Failed to select proposer".to_string()))
-     }
- }
- 
- #[cfg(test)]
- mod tests {
-     use super::*;
- 
-     fn setup_test_poc() -> ProofOfCooperation {
-         let mut poc = ProofOfCooperation::new();
-         poc.register_peer("peer1");
-         poc.register_peer("peer2");
-         poc.register_peer("peer3");
-         poc
-     }
- 
-     #[test]
-     fn test_register_and_validate_peer() {
-         let mut poc = ProofOfCooperation::new();
-         poc.register_peer("peer1");
- 
-         assert!(poc.known_peers.contains("peer1"));
-         assert!(!poc.known_peers.contains("unknown_peer"));
- 
-         let block = Block::new(0, vec![], "previous_hash".to_string(), "peer1".to_string());
-         assert!(poc.validate(&block).is_ok());
- 
-         let invalid_block = Block::new(0, vec![], "previous_hash".to_string(), "unknown_peer".to_string());
-         assert!(poc.validate(&invalid_block).is_err());
-     }
- 
-     #[test]
-     fn test_update_and_calculate_reputation() {
-         let mut poc = setup_test_poc();
- 
-         poc.update_cooperation_score("peer1", 0.8).unwrap();
-         poc.update_reputation("peer1", true).unwrap();
- 
-         let reputation = poc.reputation_scores.get("peer1").cloned().unwrap_or(0.0);
-         assert!(reputation > 0.5, "Reputation should increase after positive action");
- 
-         poc.update_cooperation_score("peer1", 0.2).unwrap();
-         poc.update_reputation("peer1", false).unwrap();
- 
-         let new_reputation = poc.reputation_scores.get("peer1").cloned().unwrap_or(0.0);
-         assert!(new_reputation < reputation, "Reputation should decrease after negative action");
-     }
- 
-     #[test]
-     fn test_sybil_resistant_check() {
-         let mut poc = setup_test_poc();
- 
-         poc.update_stake("peer1", 2000, "ICN".to_string(), 60).unwrap();
-         poc.update_reputation("peer1", true).unwrap();
-         poc.update_governance_participation("peer1", 5, 10, 3).unwrap();
- 
-         poc.update_stake("peer2", 500, "ICN".to_string(), 30).unwrap();
-         poc.update_reputation("peer2", false).unwrap();
-         poc.update_governance_participation("peer2", 1, 2, 1).unwrap();
- 
-         assert!(poc.sybil_resistant_check("peer1"), "Good peer should pass Sybil resistance check");
-         assert!(!poc.sybil_resistant_check("peer2"), "Bad peer should fail Sybil resistance check");
-     }
- 
-     #[test]
-     fn test_calculate_and_distribute_rewards() {
-         let mut poc = setup_test_poc();
- 
-         poc.update_stake("peer1", 1000, "ICN".to_string(), 30).unwrap();
-         poc.update_cooperation_score("peer1", 0.9).unwrap();
-         poc.update_reputation("peer1", true).unwrap();
- 
-         poc.update_stake("peer2", 500, "ICN".to_string(), 30).unwrap();
-         poc.update_cooperation_score("peer2", 0.5).unwrap();
-         poc.update_reputation("peer2", true).unwrap();
- 
-         poc.update_stake("peer3", 2000, "ICN".to_string(), 60).unwrap();
-         poc.update_cooperation_score("peer3", 0.7).unwrap();
-         poc.update_reputation("peer3", true).unwrap();
- 
-         let reward1 = poc.calculate_reward("peer1").unwrap();
-         let reward2 = poc.calculate_reward("peer2").unwrap();
-         let reward3 = poc.calculate_reward("peer3").unwrap();
- 
-         assert!(reward1 > reward2, "Peer1 should have higher reward than Peer2");
-         assert!(reward3 > reward1, "Peer3 should have higher reward than Peer1");
- 
-         let rewards = poc.distribute_rewards().unwrap();
-         assert_eq!(rewards.len(), 3, "All three peers should receive rewards");
-         assert_eq!(rewards.get("peer1"), Some(&reward1));
-         assert_eq!(rewards.get("peer2"), Some(&reward2));
-         assert_eq!(rewards.get("peer3"), Some(&reward3));
-     }
- 
-     #[test]
-     fn test_apply_penalty() {
-         let mut poc = setup_test_poc();
- 
-         poc.update_cooperation_score("peer1", 0.8).unwrap();
-         poc.update_reputation("peer1", true).unwrap();
-         poc.update_stake("peer1", 1000, "ICN".to_string(), 30).unwrap();
- 
-         let initial_cooperation = poc.cooperation_scores.get("peer1").cloned().unwrap();
-         let initial_reputation = poc.reputation_scores.get("peer1").cloned().unwrap();
-         let initial_stake = poc.stake_info.get("peer1").unwrap().amount;
- 
-         poc.apply_penalty("peer1", 0.3).unwrap();
- 
-         let after_penalty_cooperation = poc.cooperation_scores.get("peer1").cloned().unwrap();
-         let after_penalty_reputation = poc.reputation_scores.get("peer1").cloned().unwrap();
-         let after_penalty_stake = poc.stake_info.get("peer1").unwrap().amount;
- 
-         assert!(after_penalty_cooperation < initial_cooperation, "Cooperation score should decrease after penalty");
-         assert!(after_penalty_reputation < initial_reputation, "Reputation score should decrease after penalty");
-         assert_eq!(after_penalty_stake, initial_stake, "Stake should not change for moderate penalty");
- 
-         poc.apply_penalty("peer1", 0.8).unwrap();
- 
-         let final_cooperation = poc.cooperation_scores.get("peer1").cloned().unwrap();
-         let final_reputation = poc.reputation_scores.get("peer1").cloned().unwrap();
-         let final_stake = poc.stake_info.get("peer1").unwrap().amount;
- 
-         assert!(final_cooperation < after_penalty_cooperation, "Cooperation score should decrease further after severe penalty");
-         assert!(final_reputation < after_penalty_reputation, "Reputation score should decrease further after severe penalty");
-         assert!(final_stake < after_penalty_stake, "Stake should decrease for severe penalty");
-     }
- 
-     #[test]
-     fn test_network_health_evaluation() {
-         let mut poc = setup_test_poc();
- 
-         for (i, peer) in ["peer1", "peer2", "peer3"].iter().enumerate() {
-             poc.update_cooperation_score(peer, 0.8 + i as f64 * 0.1).unwrap();
-             poc.update_reputation(peer, true).unwrap();
-             poc.update_stake(peer, 1000 + i as u64 * 500, "ICN".to_string(), 30).unwrap();
-         }
- 
-         let health_score = poc.evaluate_network_health().unwrap();
-         assert!(health_score > 0.8, "Network health should be high for a well-balanced network");
- 
-         poc.update_cooperation_score("peer1", 0.3).unwrap();
-         poc.update_reputation("peer1", false).unwrap();
-         poc.update_stake("peer2", 10000, "ICN".to_string(), 30).unwrap();
- 
-         let new_health_score = poc.evaluate_network_health().unwrap();
-         assert!(new_health_score < health_score, "Network health should decrease for an imbalanced network");
-     }
- 
-     #[test]
-     fn test_select_proposer() {
-         let mut poc = setup_test_poc();
- 
-         // Set up peers with different stakes and reputations
-         poc.update_stake("peer1", 2000, "ICN".to_string(), 60).unwrap();
-         poc.update_reputation("peer1", true).unwrap();
-         poc.update_cooperation_score("peer1", 0.9).unwrap();
- 
-         poc.update_stake("peer2", 1000, "ICN".to_string(), 30).unwrap();
-         poc.update_reputation("peer2", true).unwrap();
-         poc.update_cooperation_score("peer2", 0.7).unwrap();
- 
-         poc.update_stake("peer3", 3000, "ICN".to_string(), 90).unwrap();
-         poc.update_reputation("peer3", true).unwrap();
-         poc.update_cooperation_score("peer3", 0.8).unwrap();
- 
-         // Run multiple selections to check for randomness and weighted probability
-         let mut selections = HashMap::new();
-         for _ in 0..1000 {
-             let proposer = poc.select_proposer().unwrap();
-             *selections.entry(proposer).or_insert(0) += 1;
-         }
- 
-         // Check that all peers were selected at least once
-         assert!(selections.contains_key("peer1"));
-         assert!(selections.contains_key("peer2"));
-         assert!(selections.contains_key("peer3"));
- 
-         // Check that the peer with the highest stake and reputation (peer3) was selected most often
-         assert!(selections.get("peer3").unwrap() > selections.get("peer1").unwrap());
-         assert!(selections.get("peer3").unwrap() > selections.get("peer2").unwrap());
-     }
- 
-     #[test]
-     fn test_update_computational_power() {
-         let mut poc = setup_test_poc();
- 
-         poc.update_computational_power("peer1", 100, 200, vec!["ASIC".to_string()]).unwrap();
-         
-         let comp_power = poc.computational_power.get("peer1").unwrap();
-         assert_eq!(comp_power.cpu_power, 100);
-         assert_eq!(comp_power.gpu_power, 200);
-         assert_eq!(comp_power.specialized_hardware, vec!["ASIC".to_string()]);
-     }
- 
-     #[test]
-     fn test_update_storage_provision() {
-         let mut poc = setup_test_poc();
- 
-         poc.update_storage_provision("peer1", 1000, 0.95).unwrap();
-         
-         let storage = poc.storage_provision.get("peer1").unwrap();
-         assert_eq!(storage.capacity, 1000);
-         assert_eq!(storage.reliability, 0.95);
-     }
- 
-     #[test]
-     fn test_update_governance_participation() {
-         let mut poc = setup_test_poc();
- 
-         poc.update_governance_participation("peer1", 5, 10, 3).unwrap();
-         
-         let governance = poc.governance_participation.get("peer1").unwrap();
-         assert_eq!(governance.proposals_submitted, 5);
-         assert_eq!(governance.votes_cast, 10);
-         assert_eq!(governance.discussions_participated, 3);
-     }
- 
-     #[test]
-     fn test_calculate_network_impact() {
-         let mut poc = setup_test_poc();
- 
-         poc.update_stake("peer1", 2000, "ICN".to_string(), 60).unwrap();
-         poc.update_computational_power("peer1", 100, 200, vec!["ASIC".to_string()]).unwrap();
-         poc.update_storage_provision("peer1", 1000, 0.95).unwrap();
-         poc.update_governance_participation("peer1", 5, 10, 3).unwrap();
- 
-         let impact = poc.calculate_network_impact("peer1").unwrap();
-         assert!(impact > 0.0 && impact <= 1.0, "Network impact should be between 0 and 1");
-     }
- }
- 
+//! This module defines the `ModuleCoordinator` responsible for managing
+//! and coordinating the different modules of the InterCooperative Network (ICN).
+//! The coordinator handles initialization, starting, and stopping of all modules.
+
+use crate::coordinator::CoordinatorError;
+use crate::coordinator::CoordinatorResult;
+
+/// Defines errors that can occur within the module coordination process.
+#[derive(Debug, thiserror::Error)]
+pub enum CoordinatorError {
+    /// An error that occurs during the initialization of a module.
+    #[error("Initialization error: {0}")]
+    InitializationError(String),
+    /// An error that occurs during the operation of a module.
+    #[error("Module operation error: {0}")]
+    OperationError(String),
+}
+
+/// A specialized Result type for the Coordinator module.
+pub type CoordinatorResult<T> = Result<T, CoordinatorError>;
+
+/// The `ModuleCoordinator` struct is responsible for managing and coordinating
+/// the various modules that make up the ICN node. It ensures that all modules
+/// are initialized, started, and stopped in the correct order.
+pub struct ModuleCoordinator {
+    modules: Vec<Box<dyn Module>>,
+}
+
+impl ModuleCoordinator {
+    /// Creates a new instance of `ModuleCoordinator`.
+    pub fn new() -> Self {
+        ModuleCoordinator {
+            modules: Vec::new(),
+        }
+    }
+
+    /// Registers a new module with the coordinator.
+    pub fn register_module(&mut self, module: Box<dyn Module>) -> CoordinatorResult<()> {
+        self.modules.push(module);
+        Ok(())
+    }
+
+    /// Initializes all registered modules.
+    pub fn initialize(&mut self) -> CoordinatorResult<()> {
+        for module in &mut self.modules {
+            module.initialize()?;
+        }
+        Ok(())
+    }
+
+    /// Starts all registered modules.
+    pub fn start(&mut self) -> CoordinatorResult<()> {
+        for module in &mut self.modules {
+            module.start()?;
+        }
+        Ok(())
+    }
+
+    /// Stops all registered modules.
+    pub fn stop(&mut self) -> CoordinatorResult<()> {
+        for module in &mut self.modules {
+            module.stop()?;
+        }
+        Ok(())
+    }
+}
+
+/// The `Module` trait defines the interface for modules that can be managed by the `ModuleCoordinator`.
+/// Each module must implement methods for initialization, starting, and stopping.
+pub trait Module {
+    fn initialize(&mut self) -> CoordinatorResult<()>;
+    fn start(&mut self) -> CoordinatorResult<()>;
+    fn stop(&mut self) -> CoordinatorResult<()>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct TestModule {
+        initialized: bool,
+        started: bool,
+    }
+
+    impl Module for TestModule {
+        fn initialize(&mut self) -> CoordinatorResult<()> {
+            self.initialized = true;
+            Ok(())
+        }
+
+        fn start(&mut self) -> CoordinatorResult<()> {
+            if !self.initialized {
+                return Err(CoordinatorError::InitializationError("Module not initialized".to_string()));
+            }
+            self.started = true;
+            Ok(())
+        }
+
+        fn stop(&mut self) -> CoordinatorResult<()> {
+            self.started = false;
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn test_module_coordinator() {
+        let mut coordinator = ModuleCoordinator::new();
+        let module = Box::new(TestModule { initialized: false, started: false });
+
+        assert!(coordinator.register_module(module).is_ok());
+        assert!(coordinator.initialize().is_ok());
+        assert!(coordinator.start().is_ok());
+        assert!(coordinator.stop().is_ok());
+    }
+}
