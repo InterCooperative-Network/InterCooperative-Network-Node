@@ -159,6 +159,8 @@ pub enum NodeState {
     Operational,
     /// The node is in the process of shutting down.
     ShuttingDown,
+    /// The node is congiguring.
+    Configuring, 
 }
 
 /// Utility functions for the ICN project.
