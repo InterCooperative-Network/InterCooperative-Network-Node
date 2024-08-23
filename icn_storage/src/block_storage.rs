@@ -1,18 +1,24 @@
-// file: icn_storage/src/block_storage.rs
+//! block_storage.rs
+//! This file is responsible for managing the storage of blockchain blocks within the InterCooperative Network (ICN).
+//! It handles storing, retrieving, and verifying blocks, ensuring the integrity and availability of blockchain data.
 
 use std::collections::HashMap;
 use icn_shared::{Block, IcnResult, IcnError};
 use sha2::{Sha256, Digest};
 
-/// The `BlockStorage` struct is responsible for managing the storage of blocks in the blockchain.
-/// It ensures data integrity and availability across the network.
+/// `BlockStorage` manages the storage of blockchain blocks. It provides methods for adding, retrieving,
+/// and verifying the integrity of blocks.
 pub struct BlockStorage {
     storage: HashMap<String, Block>,
     integrity_checks: HashMap<String, String>, // Store checksums for integrity verification
 }
 
 impl BlockStorage {
-    /// Creates a new `BlockStorage` instance.
+    /// Creates a new instance of `BlockStorage`.
+    ///
+    /// # Returns
+    ///
+    /// * `BlockStorage` - A new instance of `BlockStorage`.
     pub fn new() -> Self {
         BlockStorage {
             storage: HashMap::new(),
@@ -28,7 +34,7 @@ impl BlockStorage {
     ///
     /// # Returns
     ///
-    /// * `IcnResult<()>` - Returns `Ok(())` if the block is successfully stored.
+    /// * `IcnResult<()>` - Returns `Ok(())` if the block is successfully stored, or an `IcnError` otherwise.
     pub fn store_block(&mut self, block: Block) -> IcnResult<()> {
         let block_hash = block.hash.clone();
         if self.storage.contains_key(&block_hash) {
@@ -41,7 +47,7 @@ impl BlockStorage {
         Ok(())
     }
 
-    /// Retrieves a block from storage by its hash.
+    /// Retrieves a block from the storage.
     ///
     /// # Arguments
     ///
@@ -49,12 +55,12 @@ impl BlockStorage {
     ///
     /// # Returns
     ///
-    /// * `Option<Block>` - Returns an `Option` containing the block, or `None` if not found.
+    /// * `Option<Block>` - The block if found, or `None` if not.
     pub fn retrieve_block(&self, hash: &str) -> Option<Block> {
         self.storage.get(hash).cloned()
     }
 
-    /// Verifies the integrity of a block using stored checksums.
+    /// Verifies the integrity of a block in the storage.
     ///
     /// # Arguments
     ///
@@ -62,7 +68,7 @@ impl BlockStorage {
     ///
     /// # Returns
     ///
-    /// * `IcnResult<bool>` - Returns `Ok(true)` if the block's integrity is intact, `Ok(false)` otherwise.
+    /// * `IcnResult<bool>` - Returns `Ok(true)` if the block's integrity is verified, or an `IcnError` otherwise.
     pub fn verify_integrity(&self, hash: &str) -> IcnResult<bool> {
         let block = self.retrieve_block(hash)
             .ok_or_else(|| IcnError::Storage("Block not found".to_string()))?;
@@ -75,7 +81,7 @@ impl BlockStorage {
         Ok(stored_checksum == &current_checksum)
     }
 
-    /// Calculates a checksum for a block to verify data integrity.
+    /// Calculates the checksum for a block.
     ///
     /// # Arguments
     ///
@@ -83,7 +89,7 @@ impl BlockStorage {
     ///
     /// # Returns
     ///
-    /// * `IcnResult<String>` - Returns the calculated checksum as a string.
+    /// * `IcnResult<String>` - Returns the checksum as a string, or an `IcnError` otherwise.
     fn calculate_checksum(&self, block: &Block) -> IcnResult<String> {
         let mut hasher = Sha256::new();
         hasher.update(&block.hash);
@@ -92,16 +98,16 @@ impl BlockStorage {
         Ok(format!("{:x}", hasher.finalize()))
     }
 
-    /// Returns the total number of blocks in storage.
+    /// Returns the number of blocks stored.
     ///
     /// # Returns
     ///
-    /// * `usize` - The number of blocks in storage.
+    /// * `usize` - The number of blocks stored.
     pub fn block_count(&self) -> usize {
         self.storage.len()
     }
 
-    /// Checks if a block with the given hash exists in storage.
+    /// Checks if a block exists in the storage.
     ///
     /// # Arguments
     ///

@@ -1,5 +1,3 @@
-// File: icn_shared/src/lib.rs
-
 //! This module defines the core structures and error handling for the InterCooperative Network (ICN) project.
 //! It includes custom error types, the `Block` struct representing a blockchain block, and utility functions.
 
@@ -147,6 +145,20 @@ impl Block {
     pub fn is_valid(&self) -> bool {
         self.hash == self.calculate_hash()
     }
+}
+
+/// Defines the possible states of a node in the ICN network.
+///
+/// The `NodeState` enum represents different operational states of a node in the network, such as initialization,
+/// normal operation, or shutdown. These states help in managing the lifecycle and operational flow of a node.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NodeState {
+    /// The node is in the initialization phase.
+    Initializing,
+    /// The node is fully operational.
+    Operational,
+    /// The node is in the process of shutting down.
+    ShuttingDown,
 }
 
 /// Utility functions for the ICN project.

@@ -1,10 +1,25 @@
+// File: icn_consensus/src/proof_of_cooperation.rs
+
+//! This module implements the Proof of Cooperation (PoC) consensus mechanism for the InterCooperative Network (ICN).
+//! 
+//! The PoC consensus mechanism is designed to incentivize cooperation and positive contributions to the network.
+//! It uses a combination of factors including stake, reputation, and various forms of network participation to
+//! determine a node's influence and rewards within the network.
+//!
+//! Key components of this module include:
+//! - Peer registration and management
+//! - Calculation and updating of cooperation and reputation scores
+//! - Block validation using a stake-weighted voting system
+//! - Proposer selection based on reputation and stake
+//! - Management of various forms of network contribution (computational power, storage, governance participation)
+
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::time::{SystemTime, UNIX_EPOCH};
 use icn_shared::{Block, IcnError, IcnResult};
 use rand::{Rng, thread_rng};
-use log::info; // Removed unnecessary braces
+use log::{info, error};
 
-// Constants for reputation calculation
+/// Constants used in the Proof of Cooperation consensus mechanism
 const REPUTATION_DECAY_FACTOR: f64 = 0.95;
 const CONSISTENCY_WEIGHT: f64 = 0.3;
 const QUALITY_WEIGHT: f64 = 0.4;
@@ -14,53 +29,73 @@ const MIN_STAKE_FOR_SYBIL_RESISTANCE: u64 = 1000;
 const MIN_REPUTATION_FOR_SYBIL_RESISTANCE: f64 = 0.7;
 const MIN_GOVERNANCE_PARTICIPATION_FOR_SYBIL_RESISTANCE: u64 = 10;
 
-/// The `ProofOfCooperation` struct implements the Proof of Cooperation consensus mechanism.
-/// It manages peer registration, block validation, proposer selection, and reputation management.
+/// The main struct implementing the Proof of Cooperation consensus mechanism
 #[derive(Clone, Debug)]
 pub struct ProofOfCooperation {
+    /// Set of known peer IDs in the network
     known_peers: HashSet<String>,
+    /// Mapping of peer IDs to their current cooperation scores
     cooperation_scores: HashMap<String, f64>,
+    /// Mapping of peer IDs to their current reputation scores
     reputation_scores: HashMap<String, f64>,
+    /// History of recent contributions for each peer
     contribution_history: HashMap<String, VecDeque<(u64, f64)>>,
+    /// Information about each peer's stake in the network
     stake_info: HashMap<String, StakeInfo>,
+    /// Information about each peer's computational power contribution
     computational_power: HashMap<String, ComputationalPower>,
+    /// Information about each peer's storage provision
     storage_provision: HashMap<String, StorageProvision>,
+    /// Information about each peer's participation in governance
     governance_participation: HashMap<String, GovernanceParticipation>,
+    /// Timestamp of the last block added to the chain
     last_block_time: u64,
 }
 
-/// Represents staking information for a peer.
+/// Struct representing a peer's stake information
 #[derive(Clone, Debug)]
 struct StakeInfo {
+    /// Amount of stake
     amount: u64,
+    /// Type of asset staked
     asset_type: String,
+    /// Duration of the stake
     duration: u64,
 }
 
-/// Represents computational power metrics for a peer.
+/// Struct representing a peer's computational power contribution
 #[derive(Clone, Debug)]
 struct ComputationalPower {
+    /// Measure of CPU power contributed
     cpu_power: u64,
+    /// Measure of GPU power contributed
     gpu_power: u64,
+    /// List of specialized hardware contributed
     specialized_hardware: Vec<String>,
 }
 
-/// Represents storage provision data for a peer.
+/// Struct representing a peer's storage provision
 #[derive(Clone, Debug)]
 struct StorageProvision {
+    /// Amount of storage capacity provided
     capacity: u64,
+    /// Measure of the storage reliability
     reliability: f64,
 }
 
-/// Represents governance participation records for a peer.
+/// Struct representing a peer's participation in governance
 #[derive(Clone, Debug)]
 struct GovernanceParticipation {
+    /// Number of proposals submitted by the peer
     proposals_submitted: u64,
+    /// Number of votes cast by the peer
     votes_cast: u64,
+    /// Number of discussions the peer has participated in
     discussions_participated: u64,
 }
 
 impl ProofOfCooperation {
+    /// Creates a new instance of the ProofOfCooperation consensus mechanism
     pub fn new() -> Self {
         ProofOfCooperation {
             known_peers: HashSet::new(),
@@ -75,7 +110,11 @@ impl ProofOfCooperation {
         }
     }
 
-
+    /// Registers a new peer in the network
+    ///
+    /// # Arguments
+    ///
+    /// * `peer_id` - The ID of the peer to register
     pub fn register_peer(&mut self, peer_id: &str) {
         self.known_peers.insert(peer_id.to_string());
         self.cooperation_scores.insert(peer_id.to_string(), 1.0);
@@ -103,12 +142,17 @@ impl ProofOfCooperation {
         info!("Registered peer: {}", peer_id);
     }
 
-    pub fn is_registered(&self, peer_id: &str) -> bool {
-        self.known_peers.contains(peer_id)
-    }
-
+    /// Validates a block according to the Proof of Cooperation consensus rules
+    ///
+    /// # Arguments
+    ///
+    /// * `block` - The block to validate
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<bool>` - Ok(true) if the block is valid, Ok(false) if invalid, or an IcnError if there was a problem during validation
     pub fn validate(&mut self, block: &Block) -> IcnResult<bool> {
-        if !self.is_registered(&block.proposer_id) {
+        if !self.known_peers.contains(&block.proposer_id) {
             return Err(IcnError::Consensus(format!("Unknown proposer: {}", block.proposer_id)));
         }
 
@@ -146,6 +190,11 @@ impl ProofOfCooperation {
         Ok(is_valid)
     }
 
+    /// Selects validators for block validation
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<Vec<String>>` - A vector of peer IDs selected as validators, or an IcnError if there was a problem
     fn select_validators(&self) -> IcnResult<Vec<String>> {
         let mut validators: Vec<String> = self.known_peers.iter()
             .filter(|&peer_id| {
@@ -169,12 +218,31 @@ impl ProofOfCooperation {
         Ok(validators.into_iter().take(10).collect())
     }
 
+    /// Calculates the score of a validator based on stake and reputation
+    ///
+    /// # Arguments
+    ///
+    /// * `peer_id` - The ID of the peer whose score is to be calculated
+    ///
+    /// # Returns
+    ///
+    /// * `f64` - The calculated score
     fn calculate_validator_score(&self, peer_id: &str) -> f64 {
         let stake = self.stake_info.get(peer_id).map(|info| info.amount).unwrap_or(0) as f64;
         let reputation = self.reputation_scores.get(peer_id).cloned().unwrap_or(0.0);
         stake * reputation
     }
 
+    /// Conducts a stake-weighted vote for block validation
+    ///
+    /// # Arguments
+    ///
+    /// * `validator_id` - The ID of the validator
+    /// * `block` - The block being validated
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<bool>` - The result of the vote (true for valid, false for invalid), or an IcnError if there was a problem
     fn stake_weighted_vote(&self, validator_id: &str, _block: &Block) -> IcnResult<bool> {
         let stake = self.stake_info.get(validator_id)
             .ok_or_else(|| IcnError::Consensus(format!("No stake info for validator: {}", validator_id)))?
@@ -189,27 +257,45 @@ impl ProofOfCooperation {
         Ok(voting_power > random_threshold)
     }
 
+    /// Selects a proposer for the next block
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<String>` - The ID of the selected proposer, or an IcnError if there was a problem
     pub fn select_proposer(&self) -> IcnResult<String> {
-        let mut rng = thread_rng();
-        let total_score: f64 = self.cooperation_scores
-            .iter()
-            .zip(self.reputation_scores.iter())
-            .map(|((_, coop_score), (_, rep_score))| coop_score * rep_score)
-            .sum();
-        let random_value: f64 = rng.gen::<f64>() * total_score;
+        let eligible_peers = self.get_eligible_peers();
+        if eligible_peers.is_empty() {
+            return Err(IcnError::Consensus("No eligible proposers available".to_string()));
+        }
 
-        let mut cumulative_score = 0.0;
-        for (peer_id, coop_score) in &self.cooperation_scores {
-            let rep_score = self.reputation_scores.get(peer_id).unwrap_or(&0.0);
-            cumulative_score += coop_score * rep_score;
-            if cumulative_score >= random_value {
+        let total_score: f64 = eligible_peers.iter()
+            .map(|peer_id| self.calculate_validator_score(peer_id))
+            .sum();
+
+        let mut rng = thread_rng();
+        let mut cumulative_weight = 0.0;
+        let random_value = rng.gen::<f64>() * total_score;
+
+        for peer_id in &eligible_peers {
+            cumulative_weight += self.calculate_validator_score(peer_id);
+            if cumulative_weight >= random_value {
                 return Ok(peer_id.clone());
             }
         }
 
-        Err(IcnError::Consensus("Failed to select a proposer".to_string()))
+        Err(IcnError::Consensus("Failed to select proposer".to_string()))
     }
 
+    /// Records a contribution made by a peer
+    ///
+    /// # Arguments
+    ///
+    /// * `peer_id` - The ID of the peer
+    /// * `score` - The score of the contribution
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<()>` - Ok if successful, or an IcnError if there was a problem
     fn record_contribution(&mut self, peer_id: &str, score: f64) -> IcnResult<()> {
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -229,6 +315,15 @@ impl ProofOfCooperation {
         Ok(())
     }
 
+    /// Calculates the consistency of a peer's contributions
+    ///
+    /// # Arguments
+    ///
+    /// * `peer_id` - The ID of the peer
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<f64>` - The calculated consistency score, or an IcnError if there was a problem
     fn calculate_consistency(&self, peer_id: &str) -> IcnResult<f64> {
         let history = self.contribution_history
             .get(peer_id)
@@ -247,6 +342,16 @@ impl ProofOfCooperation {
         Ok(1.0 / (1.0 + std_deviation))
     }
 
+    /// Updates the reputation of a peer based on their actions
+    ///
+    /// # Arguments
+    ///
+    /// * `peer_id` - The ID of the peer
+    /// * `positive_action` - A boolean indicating whether the action was positive or negative
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<()>` - Ok if successful, or an IcnError if there was a problem
     pub fn update_reputation(&mut self, peer_id: &str, positive_action: bool) -> IcnResult<()> {
         let coop_score = *self.cooperation_scores
             .get(peer_id)
@@ -259,114 +364,192 @@ impl ProofOfCooperation {
             .entry(peer_id.to_string())
             .or_insert(1.0);
 
-        let quality_factor = if positive_action { 1.1 } else { 0.9 };
+            let quality_factor = if positive_action { 1.1 } else { 0.9 };
 
-        let new_rep_score = (
-            CONSISTENCY_WEIGHT * consistency +
-            QUALITY_WEIGHT * coop_score * quality_factor +
-            NETWORK_IMPACT_WEIGHT * network_impact
-        ) * REPUTATION_DECAY_FACTOR + (1.0 - REPUTATION_DECAY_FACTOR) * *rep_score;
-
-        *rep_score = new_rep_score.max(0.0).min(1.0);
-
-        Ok(())
-    }
-
-    fn calculate_network_impact(&self, peer_id: &str) -> IcnResult<f64> {
-        let stake_info = self.stake_info.get(peer_id)
-            .ok_or_else(|| IcnError::Consensus(format!("No stake info for peer: {}", peer_id)))?;
-        
-        let comp_power = self.computational_power.get(peer_id)
-            .ok_or_else(|| IcnError::Consensus(format!("No computational power info for peer: {}", peer_id)))?;
-        
-        let storage = self.storage_provision.get(peer_id)
-            .ok_or_else(|| IcnError::Consensus(format!("No storage provision info for peer: {}", peer_id)))?;
-        
-        let governance = self.governance_participation.get(peer_id)
-            .ok_or_else(|| IcnError::Consensus(format!("No governance participation info for peer: {}", peer_id)))?;
-
-        let stake_impact = (stake_info.amount as f64).log10() / 10.0;
-        let comp_impact = (comp_power.cpu_power as f64 + comp_power.gpu_power as f64).log10() / 10.0;
-        let storage_impact = (storage.capacity as f64).log10() / 20.0 * storage.reliability;
-        let governance_impact = (governance.proposals_submitted + governance.votes_cast) as f64 / 100.0;
-
-        let total_impact = stake_impact + comp_impact + storage_impact + governance_impact;
-        Ok(total_impact.min(1.0))
-    }
-
-    pub fn update_cooperation_score(&mut self, peer_id: &str, new_score: f64) -> IcnResult<()> {
-        let score = self.cooperation_scores
-            .entry(peer_id.to_string())
-            .or_insert(1.0);
-        
-        *score = (*score + new_score.max(0.0).min(1.0)) / 2.0;
-        self.record_contribution(peer_id, new_score)?;
-        
-        Ok(())
-    }
-
-    pub fn get_eligible_peers(&self) -> Vec<String> {
-        self.known_peers.iter()
-            .filter(|&peer_id| {
-                let stake = self.stake_info.get(peer_id).map(|info| info.amount).unwrap_or(0);
-                let reputation = self.reputation_scores.get(peer_id).cloned().unwrap_or(0.0);
-                stake > 0 && reputation > 0.5
-            })
-            .cloned()
-            .collect()
-    }
-
-    pub fn handle_fork<'a>(&self, chain_a: &'a [Block], chain_b: &'a [Block]) -> &'a [Block] {
-        let score_a = self.calculate_chain_score(chain_a);
-        let score_b = self.calculate_chain_score(chain_b);
-
-        if score_a >= score_b {
-            chain_a
-        } else {
-            chain_b
+            let new_rep_score = (
+                CONSISTENCY_WEIGHT * consistency +
+                QUALITY_WEIGHT * coop_score * quality_factor +
+                NETWORK_IMPACT_WEIGHT * network_impact
+            ) * REPUTATION_DECAY_FACTOR + (1.0 - REPUTATION_DECAY_FACTOR) * *rep_score;
+    
+            *rep_score = new_rep_score.max(0.0).min(1.0);
+    
+            Ok(())
         }
-    }
-
-    fn calculate_chain_score(&self, chain: &[Block]) -> f64 {
-        chain.iter()
-            .map(|block| self.reputation_scores.get(&block.proposer_id).cloned().unwrap_or(0.0))
-            .sum::<f64>() / chain.len() as f64
-    }
-
-    pub fn update_stake(&mut self, peer_id: &str, amount: u64, asset_type: String, duration: u64) -> IcnResult<()> {
-        let stake_info = self.stake_info
-            .entry(peer_id.to_string())
-            .or_insert(StakeInfo {
-                amount: 0,
-                asset_type: asset_type.clone(),  // Clone asset_type before moving
-                duration: 0,
-            });
-
-        stake_info.amount = amount;
-        stake_info.asset_type = asset_type;  // Move happens here
-        stake_info.duration = duration;
-
-        info!("Updated stake for peer {}: amount={}, asset_type={}, duration={}", peer_id, amount, stake_info.asset_type, duration);
-        Ok(())
-    }
-
-    pub fn update_computational_power(&mut self, peer_id: &str, cpu_power: u64, gpu_power: u64, specialized_hardware: Vec<String>) -> IcnResult<()> {
-        let comp_power = self.computational_power
-            .entry(peer_id.to_string())
-            .or_insert(ComputationalPower {
-                cpu_power: 0,
-                gpu_power: 0,
-                specialized_hardware: Vec::new(),
-            });
-
-        comp_power.cpu_power = cpu_power;
-        comp_power.gpu_power = gpu_power;
+    
+        /// Calculates the network impact of a peer
+        ///
+        /// # Arguments
+        ///
+        /// * `peer_id` - The ID of the peer
+        ///
+        /// # Returns
+        ///
+        /// * `IcnResult<f64>` - The calculated network impact score, or an IcnError if there was a problem
+        fn calculate_network_impact(&self, peer_id: &str) -> IcnResult<f64> {
+            let stake_info = self.stake_info.get(peer_id)
+                .ok_or_else(|| IcnError::Consensus(format!("No stake info for peer: {}", peer_id)))?;
+            
+            let comp_power = self.computational_power.get(peer_id)
+                .ok_or_else(|| IcnError::Consensus(format!("No computational power info for peer: {}", peer_id)))?;
+            
+            let storage = self.storage_provision.get(peer_id)
+                .ok_or_else(|| IcnError::Consensus(format!("No storage provision info for peer: {}", peer_id)))?;
+            
+            let governance = self.governance_participation.get(peer_id)
+                .ok_or_else(|| IcnError::Consensus(format!("No governance participation info for peer: {}", peer_id)))?;
+    
+            let stake_impact = (stake_info.amount as f64).log10() / 10.0;
+            let comp_impact = (comp_power.cpu_power as f64 + comp_power.gpu_power as f64).log10() / 10.0;
+            let storage_impact = (storage.capacity as f64).log10() / 20.0 * storage.reliability;
+            let governance_impact = (governance.proposals_submitted + governance.votes_cast) as f64 / 100.0;
+    
+            let total_impact = stake_impact + comp_impact + storage_impact + governance_impact;
+            Ok(total_impact.min(1.0))
+        }
+    
+        /// Updates the cooperation score of a peer
+        ///
+        /// # Arguments
+        ///
+        /// * `peer_id` - The ID of the peer
+        /// * `new_score` - The new cooperation score
+        ///
+        /// # Returns
+        ///
+        /// * `IcnResult<()>` - Ok if successful, or an IcnError if there was a problem
+        pub fn update_cooperation_score(&mut self, peer_id: &str, new_score: f64) -> IcnResult<()> {
+            let score = self.cooperation_scores
+                .entry(peer_id.to_string())
+                .or_insert(1.0);
+            
+            *score = (*score + new_score.max(0.0).min(1.0)) / 2.0;
+            self.record_contribution(peer_id, new_score)?;
+            
+            Ok(())
+        }
+    
+        /// Retrieves a list of eligible peers for validation
+        ///
+        /// # Returns
+        ///
+        /// * `Vec<String>` - A vector of peer IDs that are eligible for validation
+        pub fn get_eligible_peers(&self) -> Vec<String> {
+            self.known_peers.iter()
+                .filter(|&peer_id| {
+                    let stake = self.stake_info.get(peer_id).map(|info| info.amount).unwrap_or(0);
+                    let reputation = self.reputation_scores.get(peer_id).cloned().unwrap_or(0.0);
+                    stake >= MIN_STAKE_FOR_SYBIL_RESISTANCE && reputation >= MIN_REPUTATION_FOR_SYBIL_RESISTANCE
+                })
+                .cloned()
+                .collect()
+        }
+    
+        /// Handles a fork in the blockchain by selecting the chain with the higher reputation
+        ///
+        /// # Arguments
+        ///
+        /// * `chain_a` - The first chain to compare
+        /// * `chain_b` - The second chain to compare
+        ///
+        /// # Returns
+        ///
+        /// * `&[Block]` - A reference to the selected chain
+        pub fn handle_fork<'a>(&self, chain_a: &'a [Block], chain_b: &'a [Block]) -> &'a [Block] {
+            let score_a = self.calculate_chain_score(chain_a);
+            let score_b = self.calculate_chain_score(chain_b);
+    
+            if score_a >= score_b {
+                chain_a
+            } else {
+                chain_b
+            }
+        }
+    
+        /// Calculates the score of a chain based on the reputation of the proposers
+        ///
+        /// # Arguments
+        ///
+        /// * `chain` - The chain whose score is to be calculated
+        ///
+        /// # Returns
+        ///
+        /// * `f64` - The calculated score of the chain
+        fn calculate_chain_score(&self, chain: &[Block]) -> f64 {
+            chain.iter()
+                .map(|block| self.reputation_scores.get(&block.proposer_id).cloned().unwrap_or(0.0))
+                .sum::<f64>() / chain.len() as f64
+        }
+    
+        /// Updates the stake information of a peer
+        ///
+        /// # Arguments
+        ///
+        /// * `peer_id` - The ID of the peer
+        /// * `amount` - The new stake amount
+        /// * `asset_type` - The type of asset staked
+        /// * `duration` - The duration of the stake
+        ///
+        /// # Returns
+        ///
+        /// * `IcnResult<()>` - Ok if successful, or an IcnError if there was a problem
+        pub fn update_stake(&mut self, peer_id: &str, amount: u64, asset_type: String, duration: u64) -> IcnResult<()> {
+            let stake_info = self.stake_info
+                .entry(peer_id.to_string())
+                .or_insert(StakeInfo {
+                    amount: 0,
+                    asset_type: asset_type.clone(),
+                    duration: 0,
+                });
+    
+            stake_info.amount = amount;
+            stake_info.asset_type = asset_type;
+            stake_info.duration = duration;
+    
+            info!("Updated stake for peer {}: amount={}, asset_type={}, duration={}", peer_id, amount, stake_info.asset_type, duration);
+            Ok(())
+        }
+    
+        /// Updates the computational power information of a peer
+        ///
+        /// # Arguments
+        ///
+        /// * `peer_id` - The ID of the peer
+        /// * `cpu_power` - The CPU power of the peer
+        /// * `gpu_power` - The GPU power of the peer
+        /// * `specialized_hardware` - A vector of specialized hardware used by the peer
+        ///
+        /// # Returns
+        ///
+        /// * `IcnResult<()>` - Ok if successful, or an IcnError if there was a problem
+        pub fn update_computational_power(&mut self, peer_id: &str, cpu_power: u64, gpu_power: u64, specialized_hardware: Vec<String>) -> IcnResult<()> {
+            let comp_power = self.computational_power
+                .entry(peer_id.to_string())
+                .or_insert(ComputationalPower {
+                    cpu_power: 0,
+                    gpu_power: 0,
+                    specialized_hardware: Vec::new(),
+                });
+    
+            comp_power.cpu_power = cpu_power;
+            comp_power.gpu_power = gpu_power;
         comp_power.specialized_hardware = specialized_hardware.clone();
 
         info!("Updated computational power for peer {}: cpu_power={}, gpu_power={}, specialized_hardware={:?}", peer_id, cpu_power, gpu_power, specialized_hardware);
         Ok(())
     }
 
+    /// Updates the storage provision information of a peer
+    ///
+    /// # Arguments
+    ///
+    /// * `peer_id` - The ID of the peer
+    /// * `capacity` - The storage capacity provided by the peer
+    /// * `reliability` - The reliability of the storage
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<()>` - Ok if successful, or an IcnError if there was a problem
     pub fn update_storage_provision(&mut self, peer_id: &str, capacity: u64, reliability: f64) -> IcnResult<()> {
         let storage_info = self.storage_provision
             .entry(peer_id.to_string())
@@ -382,6 +565,18 @@ impl ProofOfCooperation {
         Ok(())
     }
 
+    /// Updates the governance participation information of a peer
+    ///
+    /// # Arguments
+    ///
+    /// * `peer_id` - The ID of the peer
+    /// * `proposals_submitted` - The number of proposals submitted by the peer
+    /// * `votes_cast` - The number of votes cast by the peer
+    /// * `discussions_participated` - The number of discussions participated in by the peer
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<()>` - Ok if successful, or an IcnError if there was a problem
     pub fn update_governance_participation(&mut self, peer_id: &str, proposals_submitted: u64, votes_cast: u64, discussions_participated: u64) -> IcnResult<()> {
         let governance_info = self.governance_participation
             .entry(peer_id.to_string())
@@ -400,6 +595,15 @@ impl ProofOfCooperation {
         Ok(())
     }
 
+    /// Checks if a peer passes the Sybil resistance criteria
+    ///
+    /// # Arguments
+    ///
+    /// * `peer_id` - The ID of the peer to check
+    ///
+    /// # Returns
+    ///
+    /// * `bool` - true if the peer passes the Sybil resistance criteria, false otherwise
     pub fn sybil_resistant_check(&self, peer_id: &str) -> bool {
         let stake = self.stake_info.get(peer_id).map(|info| info.amount).unwrap_or(0);
         let reputation = self.reputation_scores.get(peer_id).cloned().unwrap_or(0.0);
@@ -412,6 +616,15 @@ impl ProofOfCooperation {
         governance_participation >= MIN_GOVERNANCE_PARTICIPATION_FOR_SYBIL_RESISTANCE
     }
 
+    /// Calculates the reward for a peer based on their contributions and reputation
+    ///
+    /// # Arguments
+    ///
+    /// * `peer_id` - The ID of the peer whose reward is to be calculated
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<u64>` - The calculated reward amount, or an IcnError if there was a problem
     pub fn calculate_reward(&self, peer_id: &str) -> IcnResult<u64> {
         let cooperation_score = self.cooperation_scores.get(peer_id)
             .ok_or_else(|| IcnError::Consensus(format!("Unknown peer: {}", peer_id)))?;
@@ -428,6 +641,11 @@ impl ProofOfCooperation {
         Ok(adjusted_reward)
     }
 
+    /// Distributes rewards to all eligible peers
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<HashMap<String, u64>>` - A mapping of peer IDs to their rewards, or an IcnError if there was a problem
     pub fn distribute_rewards(&self) -> IcnResult<HashMap<String, u64>> {
         let mut rewards = HashMap::new();
 
@@ -439,6 +657,16 @@ impl ProofOfCooperation {
         Ok(rewards)
     }
 
+    /// Applies a penalty to a peer based on the severity of their misconduct
+    ///
+    /// # Arguments
+    ///
+    /// * `peer_id` - The ID of the peer to penalize
+    /// * `severity` - The severity of the penalty, ranging from 0.0 to 1.0
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<()>` - Ok if successful, or an IcnError if there was a problem
     pub fn apply_penalty(&mut self, peer_id: &str, severity: f64) -> IcnResult<()> {
         let severity = severity.max(0.0).min(1.0);
 
@@ -460,6 +688,11 @@ impl ProofOfCooperation {
         Ok(())
     }
 
+/// Evaluates the overall health of the network
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<f64>` - A score representing the health of the network, or an IcnError if there was a problem
     pub fn evaluate_network_health(&self) -> IcnResult<f64> {
         let avg_cooperation = self.cooperation_scores.values().sum::<f64>() / self.cooperation_scores.len() as f64;
         let avg_reputation = self.reputation_scores.values().sum::<f64>() / self.reputation_scores.len() as f64;
@@ -490,8 +723,8 @@ mod tests {
         let mut poc = ProofOfCooperation::new();
         poc.register_peer("peer1");
 
-        assert!(poc.is_registered("peer1"));
-        assert!(!poc.is_registered("unknown_peer"));
+        assert!(poc.known_peers.contains("peer1"));
+        assert!(!poc.known_peers.contains("unknown_peer"));
 
         let block = Block::new(0, vec![], "previous_hash".to_string(), "peer1".to_string());
         assert!(poc.validate(&block).is_ok());

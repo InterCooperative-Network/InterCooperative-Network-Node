@@ -1,8 +1,5 @@
-// icn_blockchain/src/chain/mod.rs
-
-// Move these `use` statements to the top of the file
 use icn_shared::{Block, IcnError, IcnResult};
-use icn_consensus::Consensus; // Ensure this import is correct
+use icn_consensus::Consensus;
 use std::sync::Arc;
 use rand::Rng;
 
@@ -97,7 +94,7 @@ impl<C: Consensus> Chain<C> {
 
         let new_block = Block::new(index, transactions, previous_hash, proposer_id);
 
-        // The following line now works since `Consensus` is correctly imported at the top level
+        // Validate the block using the consensus mechanism
         self.consensus.validate(&new_block)?;
         self.blocks.push(new_block);
         Ok(())

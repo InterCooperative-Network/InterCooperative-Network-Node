@@ -6,3 +6,4 @@ edition = "2018"
 [dependencies]
 icn_blockchain = { path = "../icn_blockchain" }
 icn_shared = { path = "../icn_shared" }
+sha2 = "0.10"

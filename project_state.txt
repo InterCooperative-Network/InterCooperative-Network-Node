@@ -547,8 +547,6 @@ impl Block {
 
 
 === ./icn_shared/src/lib.rs ===
-// File: icn_shared/src/lib.rs
-
 //! This module defines the core structures and error handling for the InterCooperative Network (ICN) project.
 //! It includes custom error types, the `Block` struct representing a blockchain block, and utility functions.
 
@@ -696,6 +694,20 @@ impl Block {
     pub fn is_valid(&self) -> bool {
         self.hash == self.calculate_hash()
     }
+}
+
+/// Defines the possible states of a node in the ICN network.
+///
+/// The `NodeState` enum represents different operational states of a node in the network, such as initialization,
+/// normal operation, or shutdown. These states help in managing the lifecycle and operational flow of a node.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NodeState {
+    /// The node is in the initialization phase.
+    Initializing,
+    /// The node is fully operational.
+    Operational,
+    /// The node is in the process of shutting down.
+    ShuttingDown,
 }
 
 /// Utility functions for the ICN project.
@@ -964,11 +976,8 @@ impl<C: Consensus> Blockchain<C> {
 
 
 === ./icn_blockchain/src/chain/mod.rs ===
-// icn_blockchain/src/chain/mod.rs
-
-// Move these `use` statements to the top of the file
 use icn_shared::{Block, IcnError, IcnResult};
-use icn_consensus::Consensus; // Ensure this import is correct
+use icn_consensus::Consensus;
 use std::sync::Arc;
 use rand::Rng;
 
@@ -1063,7 +1072,7 @@ impl<C: Consensus> Chain<C> {
 
         let new_block = Block::new(index, transactions, previous_hash, proposer_id);
 
-        // The following line now works since `Consensus` is correctly imported at the top level
+        // Validate the block using the consensus mechanism
         self.consensus.validate(&new_block)?;
         self.blocks.push(new_block);
         Ok(())
@@ -1531,13 +1540,28 @@ pub use crate::proof_of_cooperation::ProofOfCooperation;
 
 
 === ./icn_consensus/src/proof_of_cooperation.rs ===
+// File: icn_consensus/src/proof_of_cooperation.rs
+
+//! This module implements the Proof of Cooperation (PoC) consensus mechanism for the InterCooperative Network (ICN).
+//! 
+//! The PoC consensus mechanism is designed to incentivize cooperation and positive contributions to the network.
+//! It uses a combination of factors including stake, reputation, and various forms of network participation to
+//! determine a node's influence and rewards within the network.
+//!
+//! Key components of this module include:
+//! - Peer registration and management
+//! - Calculation and updating of cooperation and reputation scores
+//! - Block validation using a stake-weighted voting system
+//! - Proposer selection based on reputation and stake
+//! - Management of various forms of network contribution (computational power, storage, governance participation)
+
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::time::{SystemTime, UNIX_EPOCH};
 use icn_shared::{Block, IcnError, IcnResult};
 use rand::{Rng, thread_rng};
-use log::info; // Removed unnecessary braces
+use log::{info, error};
 
-// Constants for reputation calculation
+/// Constants used in the Proof of Cooperation consensus mechanism
 const REPUTATION_DECAY_FACTOR: f64 = 0.95;
 const CONSISTENCY_WEIGHT: f64 = 0.3;
 const QUALITY_WEIGHT: f64 = 0.4;
@@ -1547,53 +1571,73 @@ const MIN_STAKE_FOR_SYBIL_RESISTANCE: u64 = 1000;
 const MIN_REPUTATION_FOR_SYBIL_RESISTANCE: f64 = 0.7;
 const MIN_GOVERNANCE_PARTICIPATION_FOR_SYBIL_RESISTANCE: u64 = 10;
 
-/// The `ProofOfCooperation` struct implements the Proof of Cooperation consensus mechanism.
-/// It manages peer registration, block validation, proposer selection, and reputation management.
+/// The main struct implementing the Proof of Cooperation consensus mechanism
 #[derive(Clone, Debug)]
 pub struct ProofOfCooperation {
+    /// Set of known peer IDs in the network
     known_peers: HashSet<String>,
+    /// Mapping of peer IDs to their current cooperation scores
     cooperation_scores: HashMap<String, f64>,
+    /// Mapping of peer IDs to their current reputation scores
     reputation_scores: HashMap<String, f64>,
+    /// History of recent contributions for each peer
     contribution_history: HashMap<String, VecDeque<(u64, f64)>>,
+    /// Information about each peer's stake in the network
     stake_info: HashMap<String, StakeInfo>,
+    /// Information about each peer's computational power contribution
     computational_power: HashMap<String, ComputationalPower>,
+    /// Information about each peer's storage provision
     storage_provision: HashMap<String, StorageProvision>,
+    /// Information about each peer's participation in governance
     governance_participation: HashMap<String, GovernanceParticipation>,
+    /// Timestamp of the last block added to the chain
     last_block_time: u64,
 }
 
-/// Represents staking information for a peer.
+/// Struct representing a peer's stake information
 #[derive(Clone, Debug)]
 struct StakeInfo {
+    /// Amount of stake
     amount: u64,
+    /// Type of asset staked
     asset_type: String,
+    /// Duration of the stake
     duration: u64,
 }
 
-/// Represents computational power metrics for a peer.
+/// Struct representing a peer's computational power contribution
 #[derive(Clone, Debug)]
 struct ComputationalPower {
+    /// Measure of CPU power contributed
     cpu_power: u64,
+    /// Measure of GPU power contributed
     gpu_power: u64,
+    /// List of specialized hardware contributed
     specialized_hardware: Vec<String>,
 }
 
-/// Represents storage provision data for a peer.
+/// Struct representing a peer's storage provision
 #[derive(Clone, Debug)]
 struct StorageProvision {
+    /// Amount of storage capacity provided
     capacity: u64,
+    /// Measure of the storage reliability
     reliability: f64,
 }
 
-/// Represents governance participation records for a peer.
+/// Struct representing a peer's participation in governance
 #[derive(Clone, Debug)]
 struct GovernanceParticipation {
+    /// Number of proposals submitted by the peer
     proposals_submitted: u64,
+    /// Number of votes cast by the peer
     votes_cast: u64,
+    /// Number of discussions the peer has participated in
     discussions_participated: u64,
 }
 
 impl ProofOfCooperation {
+    /// Creates a new instance of the ProofOfCooperation consensus mechanism
     pub fn new() -> Self {
         ProofOfCooperation {
             known_peers: HashSet::new(),
@@ -1608,7 +1652,11 @@ impl ProofOfCooperation {
         }
     }
 
-
+    /// Registers a new peer in the network
+    ///
+    /// # Arguments
+    ///
+    /// * `peer_id` - The ID of the peer to register
     pub fn register_peer(&mut self, peer_id: &str) {
         self.known_peers.insert(peer_id.to_string());
         self.cooperation_scores.insert(peer_id.to_string(), 1.0);
@@ -1636,12 +1684,17 @@ impl ProofOfCooperation {
         info!("Registered peer: {}", peer_id);
     }
 
-    pub fn is_registered(&self, peer_id: &str) -> bool {
-        self.known_peers.contains(peer_id)
-    }
-
+    /// Validates a block according to the Proof of Cooperation consensus rules
+    ///
+    /// # Arguments
+    ///
+    /// * `block` - The block to validate
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<bool>` - Ok(true) if the block is valid, Ok(false) if invalid, or an IcnError if there was a problem during validation
     pub fn validate(&mut self, block: &Block) -> IcnResult<bool> {
-        if !self.is_registered(&block.proposer_id) {
+        if !self.known_peers.contains(&block.proposer_id) {
             return Err(IcnError::Consensus(format!("Unknown proposer: {}", block.proposer_id)));
         }
 
@@ -1679,6 +1732,11 @@ impl ProofOfCooperation {
         Ok(is_valid)
     }
 
+    /// Selects validators for block validation
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<Vec<String>>` - A vector of peer IDs selected as validators, or an IcnError if there was a problem
     fn select_validators(&self) -> IcnResult<Vec<String>> {
         let mut validators: Vec<String> = self.known_peers.iter()
             .filter(|&peer_id| {
@@ -1702,12 +1760,31 @@ impl ProofOfCooperation {
         Ok(validators.into_iter().take(10).collect())
     }
 
+    /// Calculates the score of a validator based on stake and reputation
+    ///
+    /// # Arguments
+    ///
+    /// * `peer_id` - The ID of the peer whose score is to be calculated
+    ///
+    /// # Returns
+    ///
+    /// * `f64` - The calculated score
     fn calculate_validator_score(&self, peer_id: &str) -> f64 {
         let stake = self.stake_info.get(peer_id).map(|info| info.amount).unwrap_or(0) as f64;
         let reputation = self.reputation_scores.get(peer_id).cloned().unwrap_or(0.0);
         stake * reputation
     }
 
+    /// Conducts a stake-weighted vote for block validation
+    ///
+    /// # Arguments
+    ///
+    /// * `validator_id` - The ID of the validator
+    /// * `block` - The block being validated
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<bool>` - The result of the vote (true for valid, false for invalid), or an IcnError if there was a problem
     fn stake_weighted_vote(&self, validator_id: &str, _block: &Block) -> IcnResult<bool> {
         let stake = self.stake_info.get(validator_id)
             .ok_or_else(|| IcnError::Consensus(format!("No stake info for validator: {}", validator_id)))?
@@ -1722,27 +1799,45 @@ impl ProofOfCooperation {
         Ok(voting_power > random_threshold)
     }
 
+    /// Selects a proposer for the next block
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<String>` - The ID of the selected proposer, or an IcnError if there was a problem
     pub fn select_proposer(&self) -> IcnResult<String> {
-        let mut rng = thread_rng();
-        let total_score: f64 = self.cooperation_scores
-            .iter()
-            .zip(self.reputation_scores.iter())
-            .map(|((_, coop_score), (_, rep_score))| coop_score * rep_score)
-            .sum();
-        let random_value: f64 = rng.gen::<f64>() * total_score;
+        let eligible_peers = self.get_eligible_peers();
+        if eligible_peers.is_empty() {
+            return Err(IcnError::Consensus("No eligible proposers available".to_string()));
+        }
 
-        let mut cumulative_score = 0.0;
-        for (peer_id, coop_score) in &self.cooperation_scores {
-            let rep_score = self.reputation_scores.get(peer_id).unwrap_or(&0.0);
-            cumulative_score += coop_score * rep_score;
-            if cumulative_score >= random_value {
+        let total_score: f64 = eligible_peers.iter()
+            .map(|peer_id| self.calculate_validator_score(peer_id))
+            .sum();
+
+        let mut rng = thread_rng();
+        let mut cumulative_weight = 0.0;
+        let random_value = rng.gen::<f64>() * total_score;
+
+        for peer_id in &eligible_peers {
+            cumulative_weight += self.calculate_validator_score(peer_id);
+            if cumulative_weight >= random_value {
                 return Ok(peer_id.clone());
             }
         }
 
-        Err(IcnError::Consensus("Failed to select a proposer".to_string()))
+        Err(IcnError::Consensus("Failed to select proposer".to_string()))
     }
 
+    /// Records a contribution made by a peer
+    ///
+    /// # Arguments
+    ///
+    /// * `peer_id` - The ID of the peer
+    /// * `score` - The score of the contribution
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<()>` - Ok if successful, or an IcnError if there was a problem
     fn record_contribution(&mut self, peer_id: &str, score: f64) -> IcnResult<()> {
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -1762,6 +1857,15 @@ impl ProofOfCooperation {
         Ok(())
     }
 
+    /// Calculates the consistency of a peer's contributions
+    ///
+    /// # Arguments
+    ///
+    /// * `peer_id` - The ID of the peer
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<f64>` - The calculated consistency score, or an IcnError if there was a problem
     fn calculate_consistency(&self, peer_id: &str) -> IcnResult<f64> {
         let history = self.contribution_history
             .get(peer_id)
@@ -1780,6 +1884,16 @@ impl ProofOfCooperation {
         Ok(1.0 / (1.0 + std_deviation))
     }
 
+    /// Updates the reputation of a peer based on their actions
+    ///
+    /// # Arguments
+    ///
+    /// * `peer_id` - The ID of the peer
+    /// * `positive_action` - A boolean indicating whether the action was positive or negative
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<()>` - Ok if successful, or an IcnError if there was a problem
     pub fn update_reputation(&mut self, peer_id: &str, positive_action: bool) -> IcnResult<()> {
         let coop_score = *self.cooperation_scores
             .get(peer_id)
@@ -1792,114 +1906,192 @@ impl ProofOfCooperation {
             .entry(peer_id.to_string())
             .or_insert(1.0);
 
-        let quality_factor = if positive_action { 1.1 } else { 0.9 };
+            let quality_factor = if positive_action { 1.1 } else { 0.9 };
 
-        let new_rep_score = (
-            CONSISTENCY_WEIGHT * consistency +
-            QUALITY_WEIGHT * coop_score * quality_factor +
-            NETWORK_IMPACT_WEIGHT * network_impact
-        ) * REPUTATION_DECAY_FACTOR + (1.0 - REPUTATION_DECAY_FACTOR) * *rep_score;
-
-        *rep_score = new_rep_score.max(0.0).min(1.0);
-
-        Ok(())
-    }
-
-    fn calculate_network_impact(&self, peer_id: &str) -> IcnResult<f64> {
-        let stake_info = self.stake_info.get(peer_id)
-            .ok_or_else(|| IcnError::Consensus(format!("No stake info for peer: {}", peer_id)))?;
-        
-        let comp_power = self.computational_power.get(peer_id)
-            .ok_or_else(|| IcnError::Consensus(format!("No computational power info for peer: {}", peer_id)))?;
-        
-        let storage = self.storage_provision.get(peer_id)
-            .ok_or_else(|| IcnError::Consensus(format!("No storage provision info for peer: {}", peer_id)))?;
-        
-        let governance = self.governance_participation.get(peer_id)
-            .ok_or_else(|| IcnError::Consensus(format!("No governance participation info for peer: {}", peer_id)))?;
-
-        let stake_impact = (stake_info.amount as f64).log10() / 10.0;
-        let comp_impact = (comp_power.cpu_power as f64 + comp_power.gpu_power as f64).log10() / 10.0;
-        let storage_impact = (storage.capacity as f64).log10() / 20.0 * storage.reliability;
-        let governance_impact = (governance.proposals_submitted + governance.votes_cast) as f64 / 100.0;
-
-        let total_impact = stake_impact + comp_impact + storage_impact + governance_impact;
-        Ok(total_impact.min(1.0))
-    }
-
-    pub fn update_cooperation_score(&mut self, peer_id: &str, new_score: f64) -> IcnResult<()> {
-        let score = self.cooperation_scores
-            .entry(peer_id.to_string())
-            .or_insert(1.0);
-        
-        *score = (*score + new_score.max(0.0).min(1.0)) / 2.0;
-        self.record_contribution(peer_id, new_score)?;
-        
-        Ok(())
-    }
-
-    pub fn get_eligible_peers(&self) -> Vec<String> {
-        self.known_peers.iter()
-            .filter(|&peer_id| {
-                let stake = self.stake_info.get(peer_id).map(|info| info.amount).unwrap_or(0);
-                let reputation = self.reputation_scores.get(peer_id).cloned().unwrap_or(0.0);
-                stake > 0 && reputation > 0.5
-            })
-            .cloned()
-            .collect()
-    }
-
-    pub fn handle_fork<'a>(&self, chain_a: &'a [Block], chain_b: &'a [Block]) -> &'a [Block] {
-        let score_a = self.calculate_chain_score(chain_a);
-        let score_b = self.calculate_chain_score(chain_b);
-
-        if score_a >= score_b {
-            chain_a
-        } else {
-            chain_b
+            let new_rep_score = (
+                CONSISTENCY_WEIGHT * consistency +
+                QUALITY_WEIGHT * coop_score * quality_factor +
+                NETWORK_IMPACT_WEIGHT * network_impact
+            ) * REPUTATION_DECAY_FACTOR + (1.0 - REPUTATION_DECAY_FACTOR) * *rep_score;
+    
+            *rep_score = new_rep_score.max(0.0).min(1.0);
+    
+            Ok(())
         }
-    }
-
-    fn calculate_chain_score(&self, chain: &[Block]) -> f64 {
-        chain.iter()
-            .map(|block| self.reputation_scores.get(&block.proposer_id).cloned().unwrap_or(0.0))
-            .sum::<f64>() / chain.len() as f64
-    }
-
-    pub fn update_stake(&mut self, peer_id: &str, amount: u64, asset_type: String, duration: u64) -> IcnResult<()> {
-        let stake_info = self.stake_info
-            .entry(peer_id.to_string())
-            .or_insert(StakeInfo {
-                amount: 0,
-                asset_type: asset_type.clone(),  // Clone asset_type before moving
-                duration: 0,
-            });
-
-        stake_info.amount = amount;
-        stake_info.asset_type = asset_type;  // Move happens here
-        stake_info.duration = duration;
-
-        info!("Updated stake for peer {}: amount={}, asset_type={}, duration={}", peer_id, amount, stake_info.asset_type, duration);
-        Ok(())
-    }
-
-    pub fn update_computational_power(&mut self, peer_id: &str, cpu_power: u64, gpu_power: u64, specialized_hardware: Vec<String>) -> IcnResult<()> {
-        let comp_power = self.computational_power
-            .entry(peer_id.to_string())
-            .or_insert(ComputationalPower {
-                cpu_power: 0,
-                gpu_power: 0,
-                specialized_hardware: Vec::new(),
-            });
-
-        comp_power.cpu_power = cpu_power;
-        comp_power.gpu_power = gpu_power;
+    
+        /// Calculates the network impact of a peer
+        ///
+        /// # Arguments
+        ///
+        /// * `peer_id` - The ID of the peer
+        ///
+        /// # Returns
+        ///
+        /// * `IcnResult<f64>` - The calculated network impact score, or an IcnError if there was a problem
+        fn calculate_network_impact(&self, peer_id: &str) -> IcnResult<f64> {
+            let stake_info = self.stake_info.get(peer_id)
+                .ok_or_else(|| IcnError::Consensus(format!("No stake info for peer: {}", peer_id)))?;
+            
+            let comp_power = self.computational_power.get(peer_id)
+                .ok_or_else(|| IcnError::Consensus(format!("No computational power info for peer: {}", peer_id)))?;
+            
+            let storage = self.storage_provision.get(peer_id)
+                .ok_or_else(|| IcnError::Consensus(format!("No storage provision info for peer: {}", peer_id)))?;
+            
+            let governance = self.governance_participation.get(peer_id)
+                .ok_or_else(|| IcnError::Consensus(format!("No governance participation info for peer: {}", peer_id)))?;
+    
+            let stake_impact = (stake_info.amount as f64).log10() / 10.0;
+            let comp_impact = (comp_power.cpu_power as f64 + comp_power.gpu_power as f64).log10() / 10.0;
+            let storage_impact = (storage.capacity as f64).log10() / 20.0 * storage.reliability;
+            let governance_impact = (governance.proposals_submitted + governance.votes_cast) as f64 / 100.0;
+    
+            let total_impact = stake_impact + comp_impact + storage_impact + governance_impact;
+            Ok(total_impact.min(1.0))
+        }
+    
+        /// Updates the cooperation score of a peer
+        ///
+        /// # Arguments
+        ///
+        /// * `peer_id` - The ID of the peer
+        /// * `new_score` - The new cooperation score
+        ///
+        /// # Returns
+        ///
+        /// * `IcnResult<()>` - Ok if successful, or an IcnError if there was a problem
+        pub fn update_cooperation_score(&mut self, peer_id: &str, new_score: f64) -> IcnResult<()> {
+            let score = self.cooperation_scores
+                .entry(peer_id.to_string())
+                .or_insert(1.0);
+            
+            *score = (*score + new_score.max(0.0).min(1.0)) / 2.0;
+            self.record_contribution(peer_id, new_score)?;
+            
+            Ok(())
+        }
+    
+        /// Retrieves a list of eligible peers for validation
+        ///
+        /// # Returns
+        ///
+        /// * `Vec<String>` - A vector of peer IDs that are eligible for validation
+        pub fn get_eligible_peers(&self) -> Vec<String> {
+            self.known_peers.iter()
+                .filter(|&peer_id| {
+                    let stake = self.stake_info.get(peer_id).map(|info| info.amount).unwrap_or(0);
+                    let reputation = self.reputation_scores.get(peer_id).cloned().unwrap_or(0.0);
+                    stake >= MIN_STAKE_FOR_SYBIL_RESISTANCE && reputation >= MIN_REPUTATION_FOR_SYBIL_RESISTANCE
+                })
+                .cloned()
+                .collect()
+        }
+    
+        /// Handles a fork in the blockchain by selecting the chain with the higher reputation
+        ///
+        /// # Arguments
+        ///
+        /// * `chain_a` - The first chain to compare
+        /// * `chain_b` - The second chain to compare
+        ///
+        /// # Returns
+        ///
+        /// * `&[Block]` - A reference to the selected chain
+        pub fn handle_fork<'a>(&self, chain_a: &'a [Block], chain_b: &'a [Block]) -> &'a [Block] {
+            let score_a = self.calculate_chain_score(chain_a);
+            let score_b = self.calculate_chain_score(chain_b);
+    
+            if score_a >= score_b {
+                chain_a
+            } else {
+                chain_b
+            }
+        }
+    
+        /// Calculates the score of a chain based on the reputation of the proposers
+        ///
+        /// # Arguments
+        ///
+        /// * `chain` - The chain whose score is to be calculated
+        ///
+        /// # Returns
+        ///
+        /// * `f64` - The calculated score of the chain
+        fn calculate_chain_score(&self, chain: &[Block]) -> f64 {
+            chain.iter()
+                .map(|block| self.reputation_scores.get(&block.proposer_id).cloned().unwrap_or(0.0))
+                .sum::<f64>() / chain.len() as f64
+        }
+    
+        /// Updates the stake information of a peer
+        ///
+        /// # Arguments
+        ///
+        /// * `peer_id` - The ID of the peer
+        /// * `amount` - The new stake amount
+        /// * `asset_type` - The type of asset staked
+        /// * `duration` - The duration of the stake
+        ///
+        /// # Returns
+        ///
+        /// * `IcnResult<()>` - Ok if successful, or an IcnError if there was a problem
+        pub fn update_stake(&mut self, peer_id: &str, amount: u64, asset_type: String, duration: u64) -> IcnResult<()> {
+            let stake_info = self.stake_info
+                .entry(peer_id.to_string())
+                .or_insert(StakeInfo {
+                    amount: 0,
+                    asset_type: asset_type.clone(),
+                    duration: 0,
+                });
+    
+            stake_info.amount = amount;
+            stake_info.asset_type = asset_type;
+            stake_info.duration = duration;
+    
+            info!("Updated stake for peer {}: amount={}, asset_type={}, duration={}", peer_id, amount, stake_info.asset_type, duration);
+            Ok(())
+        }
+    
+        /// Updates the computational power information of a peer
+        ///
+        /// # Arguments
+        ///
+        /// * `peer_id` - The ID of the peer
+        /// * `cpu_power` - The CPU power of the peer
+        /// * `gpu_power` - The GPU power of the peer
+        /// * `specialized_hardware` - A vector of specialized hardware used by the peer
+        ///
+        /// # Returns
+        ///
+        /// * `IcnResult<()>` - Ok if successful, or an IcnError if there was a problem
+        pub fn update_computational_power(&mut self, peer_id: &str, cpu_power: u64, gpu_power: u64, specialized_hardware: Vec<String>) -> IcnResult<()> {
+            let comp_power = self.computational_power
+                .entry(peer_id.to_string())
+                .or_insert(ComputationalPower {
+                    cpu_power: 0,
+                    gpu_power: 0,
+                    specialized_hardware: Vec::new(),
+                });
+    
+            comp_power.cpu_power = cpu_power;
+            comp_power.gpu_power = gpu_power;
         comp_power.specialized_hardware = specialized_hardware.clone();
 
         info!("Updated computational power for peer {}: cpu_power={}, gpu_power={}, specialized_hardware={:?}", peer_id, cpu_power, gpu_power, specialized_hardware);
         Ok(())
     }
 
+    /// Updates the storage provision information of a peer
+    ///
+    /// # Arguments
+    ///
+    /// * `peer_id` - The ID of the peer
+    /// * `capacity` - The storage capacity provided by the peer
+    /// * `reliability` - The reliability of the storage
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<()>` - Ok if successful, or an IcnError if there was a problem
     pub fn update_storage_provision(&mut self, peer_id: &str, capacity: u64, reliability: f64) -> IcnResult<()> {
         let storage_info = self.storage_provision
             .entry(peer_id.to_string())
@@ -1915,6 +2107,18 @@ impl ProofOfCooperation {
         Ok(())
     }
 
+    /// Updates the governance participation information of a peer
+    ///
+    /// # Arguments
+    ///
+    /// * `peer_id` - The ID of the peer
+    /// * `proposals_submitted` - The number of proposals submitted by the peer
+    /// * `votes_cast` - The number of votes cast by the peer
+    /// * `discussions_participated` - The number of discussions participated in by the peer
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<()>` - Ok if successful, or an IcnError if there was a problem
     pub fn update_governance_participation(&mut self, peer_id: &str, proposals_submitted: u64, votes_cast: u64, discussions_participated: u64) -> IcnResult<()> {
         let governance_info = self.governance_participation
             .entry(peer_id.to_string())
@@ -1933,6 +2137,15 @@ impl ProofOfCooperation {
         Ok(())
     }
 
+    /// Checks if a peer passes the Sybil resistance criteria
+    ///
+    /// # Arguments
+    ///
+    /// * `peer_id` - The ID of the peer to check
+    ///
+    /// # Returns
+    ///
+    /// * `bool` - true if the peer passes the Sybil resistance criteria, false otherwise
     pub fn sybil_resistant_check(&self, peer_id: &str) -> bool {
         let stake = self.stake_info.get(peer_id).map(|info| info.amount).unwrap_or(0);
         let reputation = self.reputation_scores.get(peer_id).cloned().unwrap_or(0.0);
@@ -1945,6 +2158,15 @@ impl ProofOfCooperation {
         governance_participation >= MIN_GOVERNANCE_PARTICIPATION_FOR_SYBIL_RESISTANCE
     }
 
+    /// Calculates the reward for a peer based on their contributions and reputation
+    ///
+    /// # Arguments
+    ///
+    /// * `peer_id` - The ID of the peer whose reward is to be calculated
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<u64>` - The calculated reward amount, or an IcnError if there was a problem
     pub fn calculate_reward(&self, peer_id: &str) -> IcnResult<u64> {
         let cooperation_score = self.cooperation_scores.get(peer_id)
             .ok_or_else(|| IcnError::Consensus(format!("Unknown peer: {}", peer_id)))?;
@@ -1961,6 +2183,11 @@ impl ProofOfCooperation {
         Ok(adjusted_reward)
     }
 
+    /// Distributes rewards to all eligible peers
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<HashMap<String, u64>>` - A mapping of peer IDs to their rewards, or an IcnError if there was a problem
     pub fn distribute_rewards(&self) -> IcnResult<HashMap<String, u64>> {
         let mut rewards = HashMap::new();
 
@@ -1972,6 +2199,16 @@ impl ProofOfCooperation {
         Ok(rewards)
     }
 
+    /// Applies a penalty to a peer based on the severity of their misconduct
+    ///
+    /// # Arguments
+    ///
+    /// * `peer_id` - The ID of the peer to penalize
+    /// * `severity` - The severity of the penalty, ranging from 0.0 to 1.0
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<()>` - Ok if successful, or an IcnError if there was a problem
     pub fn apply_penalty(&mut self, peer_id: &str, severity: f64) -> IcnResult<()> {
         let severity = severity.max(0.0).min(1.0);
 
@@ -1993,6 +2230,11 @@ impl ProofOfCooperation {
         Ok(())
     }
 
+/// Evaluates the overall health of the network
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<f64>` - A score representing the health of the network, or an IcnError if there was a problem
     pub fn evaluate_network_health(&self) -> IcnResult<f64> {
         let avg_cooperation = self.cooperation_scores.values().sum::<f64>() / self.cooperation_scores.len() as f64;
         let avg_reputation = self.reputation_scores.values().sum::<f64>() / self.reputation_scores.len() as f64;
@@ -2023,8 +2265,8 @@ mod tests {
         let mut poc = ProofOfCooperation::new();
         poc.register_peer("peer1");
 
-        assert!(poc.is_registered("peer1"));
-        assert!(!poc.is_registered("unknown_peer"));
+        assert!(poc.known_peers.contains("peer1"));
+        assert!(!poc.known_peers.contains("unknown_peer"));
 
         let block = Block::new(0, vec![], "previous_hash".to_string(), "peer1".to_string());
         assert!(poc.validate(&block).is_ok());
@@ -2171,7 +2413,6 @@ mod tests {
         assert_eq!(selected_chain[2].proposer_id, "peer1", "Chain proposed by peer1 should be selected due to higher reputation");
     }
 }
-
 
 
 === ./icn_governance/Cargo.toml ===
@@ -2684,6 +2925,7 @@ version = "0.1.0"
 dependencies = [
  "icn_blockchain",
  "icn_shared",
+ "sha2",
 ]
 
 [[package]]
@@ -4208,55 +4450,22 @@ impl ModuleCoordinator {
     /// * `IcnResult<()>` - Returns `Ok(())` if the configuration was successfully updated, or an `IcnError` otherwise.
     pub async fn update_config(&self, new_config: &Config) -> IcnResult<()> {
         info!("Updating node configuration");
-        
-        // Stop the current networking service
-        self.stop().await?;
 
-        // Start the networking service with the new configuration
-        self.start(new_config).await?;
+        // Reload the TLS identity if needed
+        if !new_config.server.cert_file_path.is_empty() && !new_config.server.key_file_path.is_empty() {
+            let identity = Networking::load_tls_identity(
+                &new_config.server.cert_file_path,
+                &new_config.server.key_file_path,
+                &new_config.server.cert_password
+            ).map_err(|e| IcnError::Network(format!("Failed to load TLS identity: {}", e)))?;
 
-        info!("Node configuration updated successfully");
+            let mut networking = self.networking.lock()
+                .map_err(|_| IcnError::Network("Failed to acquire networking lock".to_string()))?;
+            networking.update_tls_identity(identity).await?;
+        }
+
+        info!("Configuration updated successfully");
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::config::config_loader::{ServerConfig, DatabaseConfig};
-
-    #[tokio::test]
-    async fn test_module_coordinator_lifecycle() {
-        let consensus = Arc::new(ProofOfCooperation::new());
-        let coordinator = ModuleCoordinator::new(consensus);
-
-        // Create a mock configuration
-        let config = Config {
-            server: ServerConfig {
-                host: "127.0.0.1".to_string(),
-                port: 8080,
-                debug: true,
-                cert_file_path: "/path/to/cert.pem".to_string(),
-                key_file_path: "/path/to/key.pem".to_string(),
-                cert_password: "".to_string(),
-            },
-            database: DatabaseConfig {
-                urls: vec!["postgresql://user:pass@localhost/db1".to_string()],
-            },
-        };
-
-        // Test starting the node
-        assert!(coordinator.start(&config).await.is_ok());
-
-        // Test adding a block
-        let transactions = vec!["tx1".to_string(), "tx2".to_string()];
-        assert!(coordinator.add_block(transactions).is_ok());
-
-        // Test getting the blockchain length
-        assert_eq!(coordinator.get_blockchain_length().unwrap(), 1);
-
-        // Test stopping the node
-        assert!(coordinator.stop().await.is_ok());
     }
 }
 
@@ -4277,7 +4486,7 @@ edition = "2018"
 [dependencies]
 icn_blockchain = { path = "../icn_blockchain" }
 icn_shared = { path = "../icn_shared" }
-
+sha2 = "0.10"
 
 
 === ./icn_storage/src/lib/mod.rs ===
@@ -4285,21 +4494,27 @@ icn_shared = { path = "../icn_shared" }
 
 
 === ./icn_storage/src/block_storage.rs ===
-// file: icn_storage/src/block_storage.rs
+//! block_storage.rs
+//! This file is responsible for managing the storage of blockchain blocks within the InterCooperative Network (ICN).
+//! It handles storing, retrieving, and verifying blocks, ensuring the integrity and availability of blockchain data.
 
 use std::collections::HashMap;
 use icn_shared::{Block, IcnResult, IcnError};
 use sha2::{Sha256, Digest};
 
-/// The `BlockStorage` struct is responsible for managing the storage of blocks in the blockchain.
-/// It ensures data integrity and availability across the network.
+/// `BlockStorage` manages the storage of blockchain blocks. It provides methods for adding, retrieving,
+/// and verifying the integrity of blocks.
 pub struct BlockStorage {
     storage: HashMap<String, Block>,
     integrity_checks: HashMap<String, String>, // Store checksums for integrity verification
 }
 
 impl BlockStorage {
-    /// Creates a new `BlockStorage` instance.
+    /// Creates a new instance of `BlockStorage`.
+    ///
+    /// # Returns
+    ///
+    /// * `BlockStorage` - A new instance of `BlockStorage`.
     pub fn new() -> Self {
         BlockStorage {
             storage: HashMap::new(),
@@ -4315,7 +4530,7 @@ impl BlockStorage {
     ///
     /// # Returns
     ///
-    /// * `IcnResult<()>` - Returns `Ok(())` if the block is successfully stored.
+    /// * `IcnResult<()>` - Returns `Ok(())` if the block is successfully stored, or an `IcnError` otherwise.
     pub fn store_block(&mut self, block: Block) -> IcnResult<()> {
         let block_hash = block.hash.clone();
         if self.storage.contains_key(&block_hash) {
@@ -4328,7 +4543,7 @@ impl BlockStorage {
         Ok(())
     }
 
-    /// Retrieves a block from storage by its hash.
+    /// Retrieves a block from the storage.
     ///
     /// # Arguments
     ///
@@ -4336,12 +4551,12 @@ impl BlockStorage {
     ///
     /// # Returns
     ///
-    /// * `Option<Block>` - Returns an `Option` containing the block, or `None` if not found.
+    /// * `Option<Block>` - The block if found, or `None` if not.
     pub fn retrieve_block(&self, hash: &str) -> Option<Block> {
         self.storage.get(hash).cloned()
     }
 
-    /// Verifies the integrity of a block using stored checksums.
+    /// Verifies the integrity of a block in the storage.
     ///
     /// # Arguments
     ///
@@ -4349,7 +4564,7 @@ impl BlockStorage {
     ///
     /// # Returns
     ///
-    /// * `IcnResult<bool>` - Returns `Ok(true)` if the block's integrity is intact, `Ok(false)` otherwise.
+    /// * `IcnResult<bool>` - Returns `Ok(true)` if the block's integrity is verified, or an `IcnError` otherwise.
     pub fn verify_integrity(&self, hash: &str) -> IcnResult<bool> {
         let block = self.retrieve_block(hash)
             .ok_or_else(|| IcnError::Storage("Block not found".to_string()))?;
@@ -4362,7 +4577,7 @@ impl BlockStorage {
         Ok(stored_checksum == &current_checksum)
     }
 
-    /// Calculates a checksum for a block to verify data integrity.
+    /// Calculates the checksum for a block.
     ///
     /// # Arguments
     ///
@@ -4370,7 +4585,7 @@ impl BlockStorage {
     ///
     /// # Returns
     ///
-    /// * `IcnResult<String>` - Returns the calculated checksum as a string.
+    /// * `IcnResult<String>` - Returns the checksum as a string, or an `IcnError` otherwise.
     fn calculate_checksum(&self, block: &Block) -> IcnResult<String> {
         let mut hasher = Sha256::new();
         hasher.update(&block.hash);
@@ -4379,16 +4594,16 @@ impl BlockStorage {
         Ok(format!("{:x}", hasher.finalize()))
     }
 
-    /// Returns the total number of blocks in storage.
+    /// Returns the number of blocks stored.
     ///
     /// # Returns
     ///
-    /// * `usize` - The number of blocks in storage.
+    /// * `usize` - The number of blocks stored.
     pub fn block_count(&self) -> usize {
         self.storage.len()
     }
 
-    /// Checks if a block with the given hash exists in storage.
+    /// Checks if a block exists in the storage.
     ///
     /// # Arguments
     ///
@@ -4442,6 +4657,7 @@ mod tests {
         assert!(!storage.block_exists("nonexistent_hash"));
     }
 }
+
 
 
 === ./icn_storage/src/state_storage.rs ===
@@ -4581,7 +4797,9 @@ mod tests {
 
 
 === ./icn_storage/src/lib.rs ===
-// file: icn_storage/src/lib.rs
+//! lib.rs (in icn_storage)
+//! This file defines the entry point for the storage module within the InterCooperative Network (ICN).
+//! It manages both block and state storage, providing a centralized interface for storage operations.
 
 use std::sync::{Arc, RwLock};
 use icn_shared::{Block, IcnResult, IcnError};
@@ -4592,16 +4810,15 @@ pub mod state_storage;
 use block_storage::BlockStorage;
 use state_storage::StateStorage;
 
-/// The `Storage` struct provides an interface to the underlying storage systems
-/// for blocks and state. It ensures thread-safe access and modification.
+/// `Storage` is the central structure that manages block and state storage for the ICN node.
+/// It provides methods for adding blocks, retrieving states, and verifying data integrity.
 pub struct Storage {
     block_storage: Arc<RwLock<BlockStorage>>,
     state_storage: Arc<RwLock<StateStorage>>,
 }
 
 impl Storage {
-    /// Creates a new instance of the `Storage` struct with initialized
-    /// block and state storage systems.
+    /// Creates a new instance of `Storage`.
     ///
     /// # Returns
     ///
@@ -4613,57 +4830,54 @@ impl Storage {
         }
     }
 
-    /// Adds a new block to the block storage.
+    /// Adds a block to the block storage.
     ///
     /// # Arguments
     ///
-    /// * `block` - The `Block` to be added to the storage.
+    /// * `block` - The block to add.
     ///
     /// # Returns
     ///
-    /// * `IcnResult<()>` - Returns `Ok(())` if the block is successfully added,
-    ///   or an `IcnError` if a block with the same hash already exists.
+    /// * `IcnResult<()>` - Returns `Ok(())` if the block is successfully added, or an `IcnError` otherwise.
     pub fn add_block(&self, block: Block) -> IcnResult<()> {
         let mut storage = self.block_storage.write()
             .map_err(|_| IcnError::Storage("Failed to acquire write lock for block storage".to_string()))?;
         storage.store_block(block)
     }
 
-    /// Retrieves a block by its hash.
+    /// Retrieves a block from the block storage.
     ///
     /// # Arguments
     ///
-    /// * `hash` - A string representing the hash of the block to be retrieved.
+    /// * `hash` - The hash of the block to retrieve.
     ///
     /// # Returns
     ///
-    /// * `IcnResult<Option<Block>>` - Returns `Ok(Some(Block))` if a block with the given hash is found,
-    ///   or `Ok(None)` if no such block exists.
+    /// * `IcnResult<Option<Block>>` - Returns the block if found, or `None` if not found, or an `IcnError` otherwise.
     pub fn get_block(&self, hash: &str) -> IcnResult<Option<Block>> {
         let storage = self.block_storage.read()
             .map_err(|_| IcnError::Storage("Failed to acquire read lock for block storage".to_string()))?;
         Ok(storage.retrieve_block(hash))
     }
 
-    /// Updates the state storage with the latest state.
+    /// Updates a state in the state storage.
     ///
     /// # Arguments
     ///
-    /// * `key` - The key under which the state is stored.
-    /// * `value` - The value of the state to be stored.
+    /// * `key` - The key of the state to update.
+    /// * `value` - The value to set for the key.
     ///
     /// # Returns
     ///
-    /// * `IcnResult<()>` - Returns `Ok(())` if the state is successfully updated,
-    ///   or an `IcnError` if the update fails.
+    /// * `IcnResult<()>` - Returns `Ok(())` if the state is successfully updated, or an `IcnError` otherwise.
     pub fn update_state(&self, key: &str, value: &str) -> IcnResult<()> {
         let mut storage = self.state_storage.write()
             .map_err(|_| IcnError::Storage("Failed to acquire write lock for state storage".to_string()))?;
         storage.update_state(key, value)
-            .map_err(|e| IcnError::Storage(e))
+            .map_err(|e| IcnError::Storage(e.to_string()))
     }
 
-    /// Retrieves a value from the state storage by its key.
+    /// Retrieves a state from the state storage.
     ///
     /// # Arguments
     ///
@@ -4671,15 +4885,14 @@ impl Storage {
     ///
     /// # Returns
     ///
-    /// * `IcnResult<Option<String>>` - Returns `Ok(Some(String))` if the value is found,
-    ///   or `Ok(None)` if no value is found for the given key.
+    /// * `IcnResult<Option<String>>` - Returns the state value if found, or `None` if not found, or an `IcnError` otherwise.
     pub fn get_state(&self, key: &str) -> IcnResult<Option<String>> {
         let storage = self.state_storage.read()
             .map_err(|_| IcnError::Storage("Failed to acquire read lock for state storage".to_string()))?;
         Ok(storage.get_state(key))
     }
 
-    /// Verifies the integrity of a block in storage.
+    /// Verifies the integrity of a block in the block storage.
     ///
     /// # Arguments
     ///
@@ -4687,7 +4900,7 @@ impl Storage {
     ///
     /// # Returns
     ///
-    /// * `IcnResult<bool>` - Returns `Ok(true)` if the block's integrity is intact, `Ok(false)` otherwise.
+    /// * `IcnResult<bool>` - Returns `Ok(true)` if the block's integrity is verified, or an `IcnError` otherwise.
     pub fn verify_block_integrity(&self, hash: &str) -> IcnResult<bool> {
         let storage = self.block_storage.read()
             .map_err(|_| IcnError::Storage("Failed to acquire read lock for block storage".to_string()))?;
@@ -4724,10 +4937,11 @@ mod tests {
         let block = Block::new(0, vec![], "genesis".to_string(), "proposer".to_string());
         let block_hash = block.hash.clone();
 
-        assert!(storage.add_block(block).is_ok());
+        assert!(storage.add_block(block.clone()).is_ok());
         assert!(storage.verify_block_integrity(&block_hash).unwrap());
     }
 }
+
 
 
 === ./config.toml ===

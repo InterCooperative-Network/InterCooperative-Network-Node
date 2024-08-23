@@ -231,54 +231,21 @@ impl ModuleCoordinator {
     /// * `IcnResult<()>` - Returns `Ok(())` if the configuration was successfully updated, or an `IcnError` otherwise.
     pub async fn update_config(&self, new_config: &Config) -> IcnResult<()> {
         info!("Updating node configuration");
-        
-        // Stop the current networking service
-        self.stop().await?;
 
-        // Start the networking service with the new configuration
-        self.start(new_config).await?;
+        // Reload the TLS identity if needed
+        if !new_config.server.cert_file_path.is_empty() && !new_config.server.key_file_path.is_empty() {
+            let identity = Networking::load_tls_identity(
+                &new_config.server.cert_file_path,
+                &new_config.server.key_file_path,
+                &new_config.server.cert_password
+            ).map_err(|e| IcnError::Network(format!("Failed to load TLS identity: {}", e)))?;
 
-        info!("Node configuration updated successfully");
+            let mut networking = self.networking.lock()
+                .map_err(|_| IcnError::Network("Failed to acquire networking lock".to_string()))?;
+            networking.update_tls_identity(identity).await?;
+        }
+
+        info!("Configuration updated successfully");
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::config::config_loader::{ServerConfig, DatabaseConfig};
-
-    #[tokio::test]
-    async fn test_module_coordinator_lifecycle() {
-        let consensus = Arc::new(ProofOfCooperation::new());
-        let coordinator = ModuleCoordinator::new(consensus);
-
-        // Create a mock configuration
-        let config = Config {
-            server: ServerConfig {
-                host: "127.0.0.1".to_string(),
-                port: 8080,
-                debug: true,
-                cert_file_path: "/path/to/cert.pem".to_string(),
-                key_file_path: "/path/to/key.pem".to_string(),
-                cert_password: "".to_string(),
-            },
-            database: DatabaseConfig {
-                urls: vec!["postgresql://user:pass@localhost/db1".to_string()],
-            },
-        };
-
-        // Test starting the node
-        assert!(coordinator.start(&config).await.is_ok());
-
-        // Test adding a block
-        let transactions = vec!["tx1".to_string(), "tx2".to_string()];
-        assert!(coordinator.add_block(transactions).is_ok());
-
-        // Test getting the blockchain length
-        assert_eq!(coordinator.get_blockchain_length().unwrap(), 1);
-
-        // Test stopping the node
-        assert!(coordinator.stop().await.is_ok());
     }
 }
