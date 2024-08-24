@@ -94,7 +94,7 @@ impl BlockStorage {
         let mut hasher = Sha256::new();
         hasher.update(&block.index.to_be_bytes());
         hasher.update(&block.timestamp.to_be_bytes());
-        hasher.update(serde_json::to_string(&block.transactions).map_err(|e| IcnError::SerializationError(e.to_string()))?);
+        hasher.update(serde_json::to_string(&block.transactions).map_err(|e| IcnError::Serialization(e.to_string()))?);
         hasher.update(&block.previous_hash);
         hasher.update(&block.proposer_id);
         Ok(format!("{:x}", hasher.finalize()))

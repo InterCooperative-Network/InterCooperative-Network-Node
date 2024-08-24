@@ -3980,7 +3980,7 @@ impl From<toml::de::Error> for IcnError {
 use std::env;
 use log::{error, info};
 use std::sync::Arc;
-use icn_core::config::ConfigLoader; // Correct import
+use icn_core::config::ConfigLoader; 
 use icn_core::coordinator::ModuleCoordinator;
 use icn_consensus::ProofOfCooperation;
 use icn_shared::IcnError;
@@ -4021,16 +4021,21 @@ async fn main() -> Result<(), IcnError> {
 
     info!("Configuration loaded successfully from: {}", config_path);
 
+    // Initialize the consensus mechanism
     let consensus = Arc::new(ProofOfCooperation::new());
-    let coordinator = ModuleCoordinator::new(Arc::clone(&consensus));
 
-    coordinator.start(config_loader.get_config()).await.map_err(|e| {
+    // Initialize the module coordinator
+    let mut coordinator = ModuleCoordinator::new();
+
+    // Start the coordinator (no arguments required)
+    coordinator.start().map_err(|e| {
         error!("Coordinator failed to start: {}", e);
         IcnError::Other(format!("Coordinator failed to start: {}", e))
     })?;
 
     info!("ICN Core started successfully");
 
+    // Wait for the shutdown signal
     tokio::signal::ctrl_c().await.map_err(|e| {
         error!("Failed to listen for shutdown signal: {}", e);
         IcnError::Other(format!("Failed to listen for shutdown signal: {}", e))
@@ -4113,7 +4118,7 @@ pub use errors::IcnError;
 //! and coordinating the different modules of the InterCooperative Network (ICN).
 //! The coordinator handles initialization, starting, and stopping of all modules.
 
-use crate::errors::{IcnError, IcnResult};
+use icn_shared::{IcnResult}; // Correct import
 
 /// Define a custom error type for the coordinator module.
 #[derive(Debug)]
@@ -4404,7 +4409,7 @@ impl BlockStorage {
         let mut hasher = Sha256::new();
         hasher.update(&block.index.to_be_bytes());
         hasher.update(&block.timestamp.to_be_bytes());
-        hasher.update(serde_json::to_string(&block.transactions).map_err(|e| IcnError::SerializationError(e.to_string()))?);
+        hasher.update(serde_json::to_string(&block.transactions).map_err(|e| IcnError::Serialization(e.to_string()))?);
         hasher.update(&block.previous_hash);
         hasher.update(&block.proposer_id);
         Ok(format!("{:x}", hasher.finalize()))

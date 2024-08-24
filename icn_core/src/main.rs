@@ -3,7 +3,7 @@
 use std::env;
 use log::{error, info};
 use std::sync::Arc;
-use icn_core::config::ConfigLoader; // Correct import
+use icn_core::config::ConfigLoader; 
 use icn_core::coordinator::ModuleCoordinator;
 use icn_consensus::ProofOfCooperation;
 use icn_shared::IcnError;
@@ -44,16 +44,21 @@ async fn main() -> Result<(), IcnError> {
 
     info!("Configuration loaded successfully from: {}", config_path);
 
+    // Initialize the consensus mechanism
     let consensus = Arc::new(ProofOfCooperation::new());
-    let coordinator = ModuleCoordinator::new(Arc::clone(&consensus));
 
-    coordinator.start(config_loader.get_config()).await.map_err(|e| {
+    // Initialize the module coordinator
+    let mut coordinator = ModuleCoordinator::new();
+
+    // Start the coordinator (no arguments required)
+    coordinator.start().map_err(|e| {
         error!("Coordinator failed to start: {}", e);
         IcnError::Other(format!("Coordinator failed to start: {}", e))
     })?;
 
     info!("ICN Core started successfully");
 
+    // Wait for the shutdown signal
     tokio::signal::ctrl_c().await.map_err(|e| {
         error!("Failed to listen for shutdown signal: {}", e);
         IcnError::Other(format!("Failed to listen for shutdown signal: {}", e))
