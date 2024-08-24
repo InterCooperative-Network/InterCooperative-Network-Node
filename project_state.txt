@@ -446,14 +446,13 @@ native-tls = "0.2"  # Add this line
 
 
 === ./icn_shared/src/error.rs ===
-// icn_shared/src/error.rs
-
-// File: shared/src/errors.rs
+// File: icn_shared/src/error.rs
 
 //! This module defines the errors that can occur across various components of the ICN project.
 //! These errors are shared across different crates to maintain consistency in error handling.
 
 use thiserror::Error;
+use serde_json;
 
 /// The `IcnError` enum represents errors that can occur across different components of the ICN project.
 #[derive(Debug, Error)]
@@ -474,13 +473,22 @@ pub enum IcnError {
     #[error("Network error: {0}")]
     Network(String),
 
-    /// A generic error for any other type of failure.a
+    /// A generic error for any other type of failure.
     #[error("Generic error: {0}")]
     Generic(String),
 }
 
 /// A specialized Result type for the shared module.
 pub type IcnResult<T> = Result<T, IcnError>;
+
+// Implement conversion from serde_json errors to IcnError for serialization issues.
+impl From<serde_json::Error> for IcnError {
+    fn from(err: serde_json::Error) -> Self {
+        IcnError::Serialization(err.to_string())
+    }
+}
+
+// You can add more conversion implementations here if needed for other error types.
 
 
 
@@ -582,6 +590,8 @@ impl Block {
 
 
 === ./icn_shared/src/lib.rs ===
+// File: icn_shared/src/lib.rs
+
 //! This module defines the core structures and error handling for the InterCooperative Network (ICN) project.
 //! It includes custom error types, the `Block` struct representing a blockchain block, and utility functions.
 
@@ -632,18 +642,12 @@ impl fmt::Display for IcnError {
 
 impl Error for IcnError {}
 
-/// Conversion from `std::io::Error` to `IcnError`.
-///
-/// This allows automatic conversion of `std::io::Error` into `IcnError::Io` using the `?` operator.
 impl From<std::io::Error> for IcnError {
     fn from(err: std::io::Error) -> Self {
         IcnError::Io(err.to_string())
     }
 }
 
-/// Conversion from `String` to `IcnError`.
-///
-/// This allows automatic conversion of `String` into an appropriate `IcnError` variant using the `?` operator.
 impl From<String> for IcnError {
     fn from(err: String) -> Self {
         IcnError::Other(err)
@@ -656,8 +660,8 @@ pub type IcnResult<T> = Result<T, IcnError>;
 /// Represents a block in the blockchain.
 ///
 /// Each block contains an index, timestamp, a list of transactions, the hash of the previous block,
-/// a hash of the current block, and the ID of the proposer who created the block.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// a hash of the current block, the ID of the proposer who created the block, and a nonce for mining.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Block {
     pub index: u64,
     pub timestamp: u64,
@@ -665,6 +669,7 @@ pub struct Block {
     pub previous_hash: String,
     pub hash: String,
     pub proposer_id: String,
+    pub nonce: u64,
 }
 
 impl Block {
@@ -689,16 +694,17 @@ impl Block {
             .expect("Time went backwards")
             .as_secs();
 
-        let hash = format!("{:x}", Sha256::digest(format!("{:?}", index).as_bytes()));
-
-        Block {
+        let mut block = Block {
             index,
             timestamp,
             transactions,
             previous_hash,
-            hash,
+            hash: String::new(),
             proposer_id,
-        }
+            nonce: 0,
+        };
+        block.hash = block.calculate_hash();
+        block
     }
 
     /// Calculates the hash of the block.
@@ -715,7 +721,7 @@ impl Block {
         hasher.update(serde_json::to_string(&self.transactions).unwrap());
         hasher.update(&self.previous_hash);
         hasher.update(&self.proposer_id);
-        hasher.update(self.hash.as_bytes());
+        hasher.update(self.nonce.to_be_bytes());
         format!("{:x}", hasher.finalize())
     }
 
@@ -743,7 +749,7 @@ pub enum NodeState {
     Operational,
     /// The node is in the process of shutting down.
     ShuttingDown,
-    /// The node is congiguring.
+    /// The node is configuring.
     Configuring, 
 }
 
@@ -779,11 +785,51 @@ mod tests {
 
     #[test]
     fn test_block_creation() {
-        let block = Block::new(0, vec!["tx1".into()], "prev_hash".into(), "proposer1".into());
+        let block = Block::new(0, vec!["tx1".into()], "prev_hash".to_string(), "proposer1".to_string());
+        assert_eq!(block.index, 0);
+        assert_eq!(block.transactions, vec!["tx1".to_string()]);
+        assert_eq!(block.previous_hash, "prev_hash");
+        assert_eq!(block.proposer_id, "proposer1");
+        assert_eq!(block.nonce, 0);
+        assert!(!block.hash.is_empty());
         assert!(block.is_valid());
     }
-}
 
+    #[test]
+    fn test_block_validity() {
+        let mut block = Block::new(1, vec!["tx2".into()], "prev_hash".to_string(), "proposer2".to_string());
+        assert!(block.is_valid());
+
+        // Tamper with the block
+        block.transactions.push("tx3".into());
+        assert!(!block.is_valid());
+
+        // Recalculate the hash
+        block.hash = block.calculate_hash();
+        assert!(block.is_valid());
+    }
+
+    #[test]
+    fn test_block_hash_changes_with_nonce() {
+        let mut block = Block::new(2, vec!["tx4".into()], "prev_hash".to_string(), "proposer3".to_string());
+        let original_hash = block.hash.clone();
+
+        block.nonce += 1;
+        block.hash = block.calculate_hash();
+
+        assert_ne!(original_hash, block.hash);
+        assert!(block.is_valid());
+    }
+
+    #[test]
+    fn test_icn_error_display() {
+        let error = IcnError::Blockchain("Invalid block".to_string());
+        assert_eq!(error.to_string(), "Blockchain error: Invalid block");
+
+        let error = IcnError::Network("Connection failed".to_string());
+        assert_eq!(error.to_string(), "Network error: Connection failed");
+    }
+}
 
 
 === ./config/default_config.toml ===
@@ -3935,6 +3981,9 @@ pub enum IcnError {
     /// Storage error, used for errors related to data storage operations.
     Storage(String),
 
+    /// Serialization error, used for errors related to serialization and deserialization.
+    Serialization(String),
+
     /// Other errors, used for any miscellaneous errors that don't fit into the above categories.
     Other(String),
 }
@@ -3951,6 +4000,7 @@ impl fmt::Display for IcnError {
             IcnError::SmartContract(msg) => write!(f, "Smart Contract error: {}", msg),
             IcnError::VirtualMachine(msg) => write!(f, "Virtual Machine error: {}", msg),
             IcnError::Storage(msg) => write!(f, "Storage error: {}", msg),
+            IcnError::Serialization(msg) => write!(f, "Serialization error: {}", msg),
             IcnError::Other(msg) => write!(f, "Other error: {}", msg),
         }
     }
@@ -3969,6 +4019,13 @@ impl From<std::io::Error> for IcnError {
 impl From<toml::de::Error> for IcnError {
     fn from(err: toml::de::Error) -> Self {
         IcnError::Toml(err)
+    }
+}
+
+// Conversion from serde_json errors to IcnError for handling serialization errors.
+impl From<serde_json::Error> for IcnError {
+    fn from(err: serde_json::Error) -> Self {
+        IcnError::Serialization(err.to_string())
     }
 }
 
@@ -4014,20 +4071,16 @@ async fn main() -> Result<(), IcnError> {
     let config_path = env::args().nth(1).unwrap_or_else(|| default_config_file.to_string());
 
     // Load the configuration
-    let config_loader = ConfigLoader::new(&config_path).map_err(|e| {
+    let _config_loader = ConfigLoader::new(&config_path).map_err(|e| {
         error!("Failed to load configuration: {}", e);
         IcnError::Config(format!("Failed to load configuration: {}", e))
     })?;
 
     info!("Configuration loaded successfully from: {}", config_path);
 
-    // Initialize the consensus mechanism
-    let consensus = Arc::new(ProofOfCooperation::new());
-
-    // Initialize the module coordinator
+    let _consensus = Arc::new(ProofOfCooperation::new());
     let mut coordinator = ModuleCoordinator::new();
 
-    // Start the coordinator (no arguments required)
     coordinator.start().map_err(|e| {
         error!("Coordinator failed to start: {}", e);
         IcnError::Other(format!("Coordinator failed to start: {}", e))
@@ -4035,7 +4088,6 @@ async fn main() -> Result<(), IcnError> {
 
     info!("ICN Core started successfully");
 
-    // Wait for the shutdown signal
     tokio::signal::ctrl_c().await.map_err(|e| {
         error!("Failed to listen for shutdown signal: {}", e);
         IcnError::Other(format!("Failed to listen for shutdown signal: {}", e))
@@ -4117,8 +4169,6 @@ pub use errors::IcnError;
 //! This module defines the `ModuleCoordinator` responsible for managing
 //! and coordinating the different modules of the InterCooperative Network (ICN).
 //! The coordinator handles initialization, starting, and stopping of all modules.
-
-use icn_shared::{IcnResult}; // Correct import
 
 /// Define a custom error type for the coordinator module.
 #[derive(Debug)]
@@ -4315,17 +4365,22 @@ sha2 = "0.10"
 === ./icn_storage/src/block_storage.rs ===
 // File: icn_storage/src/block_storage.rs
 
-//! `BlockStorage` manages the storage of blockchain blocks. It provides methods for adding, retrieving,
-//! and verifying the integrity of blocks.
-
 use std::collections::HashMap;
-use icn_shared::{Block, IcnResult, IcnError};
+use icn_shared::{Block, IcnError, IcnResult};
 use sha2::{Sha256, Digest};
 use serde_json;
 
+/// `BlockStorage` manages the storage of blockchain blocks.
+///
+/// This struct provides methods for adding, retrieving, and verifying the
+/// integrity of blocks in the blockchain. It uses an in-memory HashMap for
+/// storage, making it efficient for quick access but not persistent across
+/// program restarts.
 pub struct BlockStorage {
+    /// Stores blocks with their hash as the key
     storage: HashMap<String, Block>,
-    integrity_checks: HashMap<String, String>, // Store checksums for integrity verification
+    /// Stores integrity checksums for each block
+    integrity_checks: HashMap<String, String>,
 }
 
 impl BlockStorage {
@@ -4333,7 +4388,7 @@ impl BlockStorage {
     ///
     /// # Returns
     ///
-    /// * `BlockStorage` - A new instance of `BlockStorage`.
+    /// * `BlockStorage` - A new, empty instance of `BlockStorage`.
     pub fn new() -> Self {
         BlockStorage {
             storage: HashMap::new(),
@@ -4343,13 +4398,17 @@ impl BlockStorage {
 
     /// Stores a block in the storage.
     ///
+    /// This method calculates a checksum for the block before storing it,
+    /// which can be used later to verify the block's integrity.
+    ///
     /// # Arguments
     ///
     /// * `block` - The block to store.
     ///
     /// # Returns
     ///
-    /// * `IcnResult<()>` - Returns `Ok(())` if the block is successfully stored, or an `IcnError` otherwise.
+    /// * `IcnResult<()>` - Returns `Ok(())` if the block is successfully stored,
+    ///   or an `IcnError` if there's an issue (e.g., duplicate block).
     pub fn store_block(&mut self, block: Block) -> IcnResult<()> {
         let block_hash = block.hash.clone();
         if self.storage.contains_key(&block_hash) {
@@ -4370,12 +4429,15 @@ impl BlockStorage {
     ///
     /// # Returns
     ///
-    /// * `Option<Block>` - The block if found, or `None` if not.
+    /// * `Option<Block>` - Returns `Some(Block)` if found, or `None` if not.
     pub fn retrieve_block(&self, hash: &str) -> Option<Block> {
         self.storage.get(hash).cloned()
     }
 
     /// Verifies the integrity of a block in the storage.
+    ///
+    /// This method recalculates the checksum for the stored block and compares
+    /// it with the stored checksum to ensure the block hasn't been tampered with.
     ///
     /// # Arguments
     ///
@@ -4383,7 +4445,8 @@ impl BlockStorage {
     ///
     /// # Returns
     ///
-    /// * `IcnResult<bool>` - Returns `Ok(true)` if the block's integrity is verified, or an `IcnError` otherwise.
+    /// * `IcnResult<bool>` - Returns `Ok(true)` if the block's integrity is verified,
+    ///   `Ok(false)` if it fails verification, or an `IcnError` if the block is not found.
     pub fn verify_integrity(&self, hash: &str) -> IcnResult<bool> {
         let block = self.retrieve_block(hash)
             .ok_or_else(|| IcnError::Storage("Block not found".to_string()))?;
@@ -4398,18 +4461,21 @@ impl BlockStorage {
 
     /// Calculates the checksum for a block.
     ///
+    /// This method uses SHA-256 to create a unique checksum based on the block's contents.
+    ///
     /// # Arguments
     ///
     /// * `block` - The block for which to calculate the checksum.
     ///
     /// # Returns
     ///
-    /// * `IcnResult<String>` - Returns the checksum as a string, or an `IcnError` otherwise.
+    /// * `IcnResult<String>` - Returns the checksum as a string, or an `IcnError` if serialization fails.
     fn calculate_checksum(&self, block: &Block) -> IcnResult<String> {
         let mut hasher = Sha256::new();
         hasher.update(&block.index.to_be_bytes());
         hasher.update(&block.timestamp.to_be_bytes());
-        hasher.update(serde_json::to_string(&block.transactions).map_err(|e| IcnError::Serialization(e.to_string()))?);
+        hasher.update(serde_json::to_string(&block.transactions)
+            .map_err(|e| IcnError::Storage(format!("Failed to serialize transactions: {}", e)))?);
         hasher.update(&block.previous_hash);
         hasher.update(&block.proposer_id);
         Ok(format!("{:x}", hasher.finalize()))
@@ -4450,7 +4516,8 @@ mod tests {
 
         assert!(storage.store_block(block.clone()).is_ok());
         let retrieved_block = storage.retrieve_block(&block_hash);
-        assert_eq!(retrieved_block, Some(block));
+        assert!(retrieved_block.is_some());
+        assert_eq!(retrieved_block.unwrap(), block);
     }
 
     #[test]
@@ -4478,7 +4545,6 @@ mod tests {
         assert!(!storage.block_exists("nonexistent_hash"));
     }
 }
-
 
 
 === ./icn_storage/src/state_storage.rs ===
@@ -4620,8 +4686,12 @@ mod tests {
 === ./icn_storage/src/lib.rs ===
 // File: icn_storage/src/lib.rs
 
-//! This file defines the entry point for the storage module within the InterCooperative Network (ICN).
-//! It manages both block and state storage, providing a centralized interface for storage operations.
+//! This module defines the storage components for the InterCooperative Network (ICN).
+//! 
+//! It provides a centralized interface for managing both block and state storage,
+//! offering thread-safe access to these storage components through the use of
+//! `Arc` and `RwLock`. The `Storage` struct serves as the main entry point for
+//! all storage-related operations in the ICN node.
 
 use std::sync::{Arc, RwLock};
 use icn_shared::{Block, IcnResult, IcnError};
@@ -4633,14 +4703,20 @@ use block_storage::BlockStorage;
 use state_storage::StateStorage;
 
 /// `Storage` is the central structure that manages block and state storage for the ICN node.
-/// It provides methods for adding blocks, retrieving states, and verifying data integrity.
+/// 
+/// This struct provides methods for adding blocks, retrieving states, and verifying data integrity.
+/// It uses `Arc` and `RwLock` to ensure thread-safe access to the underlying storage components.
 pub struct Storage {
+    /// Thread-safe access to block storage
     block_storage: Arc<RwLock<BlockStorage>>,
+    /// Thread-safe access to state storage
     state_storage: Arc<RwLock<StateStorage>>,
 }
 
 impl Storage {
     /// Creates a new instance of `Storage`.
+    ///
+    /// This method initializes both block and state storage components.
     ///
     /// # Returns
     ///
@@ -4653,6 +4729,8 @@ impl Storage {
     }
 
     /// Adds a block to the block storage.
+    ///
+    /// This method acquires a write lock on the block storage before adding the block.
     ///
     /// # Arguments
     ///
@@ -4669,13 +4747,15 @@ impl Storage {
 
     /// Retrieves a block from the block storage.
     ///
+    /// This method acquires a read lock on the block storage before retrieving the block.
+    ///
     /// # Arguments
     ///
     /// * `hash` - The hash of the block to retrieve.
     ///
     /// # Returns
     ///
-    /// * `IcnResult<Option<Block>>` - Returns the block if found, or `None` if not found, or an `IcnError` otherwise.
+    /// * `IcnResult<Option<Block>>` - Returns the block if found, or `None` if not found, or an `IcnError` if lock acquisition fails.
     pub fn get_block(&self, hash: &str) -> IcnResult<Option<Block>> {
         let storage = self.block_storage.read()
             .map_err(|_| IcnError::Storage("Failed to acquire read lock for block storage".to_string()))?;
@@ -4683,6 +4763,8 @@ impl Storage {
     }
 
     /// Updates a state in the state storage.
+    ///
+    /// This method acquires a write lock on the state storage before updating the state.
     ///
     /// # Arguments
     ///
@@ -4696,10 +4778,11 @@ impl Storage {
         let mut storage = self.state_storage.write()
             .map_err(|_| IcnError::Storage("Failed to acquire write lock for state storage".to_string()))?;
         storage.update_state(key, value)
-            .map_err(|e| IcnError::Storage(e.to_string()))
     }
 
     /// Retrieves a state from the state storage.
+    ///
+    /// This method acquires a read lock on the state storage before retrieving the state.
     ///
     /// # Arguments
     ///
@@ -4707,7 +4790,7 @@ impl Storage {
     ///
     /// # Returns
     ///
-    /// * `IcnResult<Option<String>>` - Returns the state value if found, or `None` if not found, or an `IcnError` otherwise.
+    /// * `IcnResult<Option<String>>` - Returns the state value if found, or `None` if not found, or an `IcnError` if lock acquisition fails.
     pub fn get_state(&self, key: &str) -> IcnResult<Option<String>> {
         let storage = self.state_storage.read()
             .map_err(|_| IcnError::Storage("Failed to acquire read lock for state storage".to_string()))?;
@@ -4716,13 +4799,15 @@ impl Storage {
 
     /// Verifies the integrity of a block in the block storage.
     ///
+    /// This method acquires a read lock on the block storage before verifying the block's integrity.
+    ///
     /// # Arguments
     ///
     /// * `hash` - The hash of the block to verify.
     ///
     /// # Returns
     ///
-    /// * `IcnResult<bool>` - Returns `Ok(true)` if the block's integrity is verified, or an `IcnError` otherwise.
+    /// * `IcnResult<bool>` - Returns `Ok(true)` if the block's integrity is verified, `Ok(false)` if it fails verification, or an `IcnError` if lock acquisition fails or the block is not found.
     pub fn verify_block_integrity(&self, hash: &str) -> IcnResult<bool> {
         let storage = self.block_storage.read()
             .map_err(|_| IcnError::Storage("Failed to acquire read lock for block storage".to_string()))?;
@@ -4742,7 +4827,8 @@ mod tests {
 
         assert!(storage.add_block(block.clone()).is_ok());
         let retrieved_block = storage.get_block(&block_hash).unwrap();
-        assert_eq!(retrieved_block, Some(block));
+        assert!(retrieved_block.is_some());
+        assert_eq!(retrieved_block.unwrap(), block);
     }
 
     #[test]
@@ -4759,11 +4845,10 @@ mod tests {
         let block = Block::new(0, vec![], "genesis".to_string(), "proposer".to_string());
         let block_hash = block.hash.clone();
 
-        assert!(storage.add_block(block.clone()).is_ok());
+        assert!(storage.add_block(block).is_ok());
         assert!(storage.verify_block_integrity(&block_hash).unwrap());
     }
 }
-
 
 
 === ./config.toml ===

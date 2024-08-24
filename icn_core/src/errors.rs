@@ -33,6 +33,9 @@ pub enum IcnError {
     /// Storage error, used for errors related to data storage operations.
     Storage(String),
 
+    /// Serialization error, used for errors related to serialization and deserialization.
+    Serialization(String),
+
     /// Other errors, used for any miscellaneous errors that don't fit into the above categories.
     Other(String),
 }
@@ -49,6 +52,7 @@ impl fmt::Display for IcnError {
             IcnError::SmartContract(msg) => write!(f, "Smart Contract error: {}", msg),
             IcnError::VirtualMachine(msg) => write!(f, "Virtual Machine error: {}", msg),
             IcnError::Storage(msg) => write!(f, "Storage error: {}", msg),
+            IcnError::Serialization(msg) => write!(f, "Serialization error: {}", msg),
             IcnError::Other(msg) => write!(f, "Other error: {}", msg),
         }
     }
@@ -67,5 +71,12 @@ impl From<std::io::Error> for IcnError {
 impl From<toml::de::Error> for IcnError {
     fn from(err: toml::de::Error) -> Self {
         IcnError::Toml(err)
+    }
+}
+
+// Conversion from serde_json errors to IcnError for handling serialization errors.
+impl From<serde_json::Error> for IcnError {
+    fn from(err: serde_json::Error) -> Self {
+        IcnError::Serialization(err.to_string())
     }
 }

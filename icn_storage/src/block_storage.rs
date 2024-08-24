@@ -1,16 +1,21 @@
 // File: icn_storage/src/block_storage.rs
 
-//! `BlockStorage` manages the storage of blockchain blocks. It provides methods for adding, retrieving,
-//! and verifying the integrity of blocks.
-
 use std::collections::HashMap;
-use icn_shared::{Block, IcnResult, IcnError};
+use icn_shared::{Block, IcnError, IcnResult};
 use sha2::{Sha256, Digest};
 use serde_json;
 
+/// `BlockStorage` manages the storage of blockchain blocks.
+///
+/// This struct provides methods for adding, retrieving, and verifying the
+/// integrity of blocks in the blockchain. It uses an in-memory HashMap for
+/// storage, making it efficient for quick access but not persistent across
+/// program restarts.
 pub struct BlockStorage {
+    /// Stores blocks with their hash as the key
     storage: HashMap<String, Block>,
-    integrity_checks: HashMap<String, String>, // Store checksums for integrity verification
+    /// Stores integrity checksums for each block
+    integrity_checks: HashMap<String, String>,
 }
 
 impl BlockStorage {
@@ -18,7 +23,7 @@ impl BlockStorage {
     ///
     /// # Returns
     ///
-    /// * `BlockStorage` - A new instance of `BlockStorage`.
+    /// * `BlockStorage` - A new, empty instance of `BlockStorage`.
     pub fn new() -> Self {
         BlockStorage {
             storage: HashMap::new(),
@@ -28,13 +33,17 @@ impl BlockStorage {
 
     /// Stores a block in the storage.
     ///
+    /// This method calculates a checksum for the block before storing it,
+    /// which can be used later to verify the block's integrity.
+    ///
     /// # Arguments
     ///
     /// * `block` - The block to store.
     ///
     /// # Returns
     ///
-    /// * `IcnResult<()>` - Returns `Ok(())` if the block is successfully stored, or an `IcnError` otherwise.
+    /// * `IcnResult<()>` - Returns `Ok(())` if the block is successfully stored,
+    ///   or an `IcnError` if there's an issue (e.g., duplicate block).
     pub fn store_block(&mut self, block: Block) -> IcnResult<()> {
         let block_hash = block.hash.clone();
         if self.storage.contains_key(&block_hash) {
@@ -55,12 +64,15 @@ impl BlockStorage {
     ///
     /// # Returns
     ///
-    /// * `Option<Block>` - The block if found, or `None` if not.
+    /// * `Option<Block>` - Returns `Some(Block)` if found, or `None` if not.
     pub fn retrieve_block(&self, hash: &str) -> Option<Block> {
         self.storage.get(hash).cloned()
     }
 
     /// Verifies the integrity of a block in the storage.
+    ///
+    /// This method recalculates the checksum for the stored block and compares
+    /// it with the stored checksum to ensure the block hasn't been tampered with.
     ///
     /// # Arguments
     ///
@@ -68,7 +80,8 @@ impl BlockStorage {
     ///
     /// # Returns
     ///
-    /// * `IcnResult<bool>` - Returns `Ok(true)` if the block's integrity is verified, or an `IcnError` otherwise.
+    /// * `IcnResult<bool>` - Returns `Ok(true)` if the block's integrity is verified,
+    ///   `Ok(false)` if it fails verification, or an `IcnError` if the block is not found.
     pub fn verify_integrity(&self, hash: &str) -> IcnResult<bool> {
         let block = self.retrieve_block(hash)
             .ok_or_else(|| IcnError::Storage("Block not found".to_string()))?;
@@ -83,18 +96,21 @@ impl BlockStorage {
 
     /// Calculates the checksum for a block.
     ///
+    /// This method uses SHA-256 to create a unique checksum based on the block's contents.
+    ///
     /// # Arguments
     ///
     /// * `block` - The block for which to calculate the checksum.
     ///
     /// # Returns
     ///
-    /// * `IcnResult<String>` - Returns the checksum as a string, or an `IcnError` otherwise.
+    /// * `IcnResult<String>` - Returns the checksum as a string, or an `IcnError` if serialization fails.
     fn calculate_checksum(&self, block: &Block) -> IcnResult<String> {
         let mut hasher = Sha256::new();
         hasher.update(&block.index.to_be_bytes());
         hasher.update(&block.timestamp.to_be_bytes());
-        hasher.update(serde_json::to_string(&block.transactions).map_err(|e| IcnError::Serialization(e.to_string()))?);
+        hasher.update(serde_json::to_string(&block.transactions)
+            .map_err(|e| IcnError::Storage(format!("Failed to serialize transactions: {}", e)))?);
         hasher.update(&block.previous_hash);
         hasher.update(&block.proposer_id);
         Ok(format!("{:x}", hasher.finalize()))
@@ -135,7 +151,8 @@ mod tests {
 
         assert!(storage.store_block(block.clone()).is_ok());
         let retrieved_block = storage.retrieve_block(&block_hash);
-        assert_eq!(retrieved_block, Some(block));
+        assert!(retrieved_block.is_some());
+        assert_eq!(retrieved_block.unwrap(), block);
     }
 
     #[test]

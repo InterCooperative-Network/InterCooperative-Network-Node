@@ -4,8 +4,6 @@
 //! and coordinating the different modules of the InterCooperative Network (ICN).
 //! The coordinator handles initialization, starting, and stopping of all modules.
 
-use icn_shared::{IcnResult}; // Correct import
-
 /// Define a custom error type for the coordinator module.
 #[derive(Debug)]
 pub enum CoordinatorError {

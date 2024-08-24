@@ -37,20 +37,16 @@ async fn main() -> Result<(), IcnError> {
     let config_path = env::args().nth(1).unwrap_or_else(|| default_config_file.to_string());
 
     // Load the configuration
-    let config_loader = ConfigLoader::new(&config_path).map_err(|e| {
+    let _config_loader = ConfigLoader::new(&config_path).map_err(|e| {
         error!("Failed to load configuration: {}", e);
         IcnError::Config(format!("Failed to load configuration: {}", e))
     })?;
 
     info!("Configuration loaded successfully from: {}", config_path);
 
-    // Initialize the consensus mechanism
-    let consensus = Arc::new(ProofOfCooperation::new());
-
-    // Initialize the module coordinator
+    let _consensus = Arc::new(ProofOfCooperation::new());
     let mut coordinator = ModuleCoordinator::new();
 
-    // Start the coordinator (no arguments required)
     coordinator.start().map_err(|e| {
         error!("Coordinator failed to start: {}", e);
         IcnError::Other(format!("Coordinator failed to start: {}", e))
@@ -58,7 +54,6 @@ async fn main() -> Result<(), IcnError> {
 
     info!("ICN Core started successfully");
 
-    // Wait for the shutdown signal
     tokio::signal::ctrl_c().await.map_err(|e| {
         error!("Failed to listen for shutdown signal: {}", e);
         IcnError::Other(format!("Failed to listen for shutdown signal: {}", e))

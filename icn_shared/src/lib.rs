@@ -1,3 +1,5 @@
+// File: icn_shared/src/lib.rs
+
 //! This module defines the core structures and error handling for the InterCooperative Network (ICN) project.
 //! It includes custom error types, the `Block` struct representing a blockchain block, and utility functions.
 
@@ -48,18 +50,12 @@ impl fmt::Display for IcnError {
 
 impl Error for IcnError {}
 
-/// Conversion from `std::io::Error` to `IcnError`.
-///
-/// This allows automatic conversion of `std::io::Error` into `IcnError::Io` using the `?` operator.
 impl From<std::io::Error> for IcnError {
     fn from(err: std::io::Error) -> Self {
         IcnError::Io(err.to_string())
     }
 }
 
-/// Conversion from `String` to `IcnError`.
-///
-/// This allows automatic conversion of `String` into an appropriate `IcnError` variant using the `?` operator.
 impl From<String> for IcnError {
     fn from(err: String) -> Self {
         IcnError::Other(err)
@@ -72,8 +68,8 @@ pub type IcnResult<T> = Result<T, IcnError>;
 /// Represents a block in the blockchain.
 ///
 /// Each block contains an index, timestamp, a list of transactions, the hash of the previous block,
-/// a hash of the current block, and the ID of the proposer who created the block.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// a hash of the current block, the ID of the proposer who created the block, and a nonce for mining.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Block {
     pub index: u64,
     pub timestamp: u64,
@@ -81,6 +77,7 @@ pub struct Block {
     pub previous_hash: String,
     pub hash: String,
     pub proposer_id: String,
+    pub nonce: u64,
 }
 
 impl Block {
@@ -105,16 +102,17 @@ impl Block {
             .expect("Time went backwards")
             .as_secs();
 
-        let hash = format!("{:x}", Sha256::digest(format!("{:?}", index).as_bytes()));
-
-        Block {
+        let mut block = Block {
             index,
             timestamp,
             transactions,
             previous_hash,
-            hash,
+            hash: String::new(),
             proposer_id,
-        }
+            nonce: 0,
+        };
+        block.hash = block.calculate_hash();
+        block
     }
 
     /// Calculates the hash of the block.
@@ -131,7 +129,7 @@ impl Block {
         hasher.update(serde_json::to_string(&self.transactions).unwrap());
         hasher.update(&self.previous_hash);
         hasher.update(&self.proposer_id);
-        hasher.update(self.hash.as_bytes());
+        hasher.update(self.nonce.to_be_bytes());
         format!("{:x}", hasher.finalize())
     }
 
@@ -159,7 +157,7 @@ pub enum NodeState {
     Operational,
     /// The node is in the process of shutting down.
     ShuttingDown,
-    /// The node is congiguring.
+    /// The node is configuring.
     Configuring, 
 }
 
@@ -195,7 +193,48 @@ mod tests {
 
     #[test]
     fn test_block_creation() {
-        let block = Block::new(0, vec!["tx1".into()], "prev_hash".into(), "proposer1".into());
+        let block = Block::new(0, vec!["tx1".into()], "prev_hash".to_string(), "proposer1".to_string());
+        assert_eq!(block.index, 0);
+        assert_eq!(block.transactions, vec!["tx1".to_string()]);
+        assert_eq!(block.previous_hash, "prev_hash");
+        assert_eq!(block.proposer_id, "proposer1");
+        assert_eq!(block.nonce, 0);
+        assert!(!block.hash.is_empty());
         assert!(block.is_valid());
+    }
+
+    #[test]
+    fn test_block_validity() {
+        let mut block = Block::new(1, vec!["tx2".into()], "prev_hash".to_string(), "proposer2".to_string());
+        assert!(block.is_valid());
+
+        // Tamper with the block
+        block.transactions.push("tx3".into());
+        assert!(!block.is_valid());
+
+        // Recalculate the hash
+        block.hash = block.calculate_hash();
+        assert!(block.is_valid());
+    }
+
+    #[test]
+    fn test_block_hash_changes_with_nonce() {
+        let mut block = Block::new(2, vec!["tx4".into()], "prev_hash".to_string(), "proposer3".to_string());
+        let original_hash = block.hash.clone();
+
+        block.nonce += 1;
+        block.hash = block.calculate_hash();
+
+        assert_ne!(original_hash, block.hash);
+        assert!(block.is_valid());
+    }
+
+    #[test]
+    fn test_icn_error_display() {
+        let error = IcnError::Blockchain("Invalid block".to_string());
+        assert_eq!(error.to_string(), "Blockchain error: Invalid block");
+
+        let error = IcnError::Network("Connection failed".to_string());
+        assert_eq!(error.to_string(), "Network error: Connection failed");
     }
 }

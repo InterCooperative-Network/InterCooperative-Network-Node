@@ -1,11 +1,10 @@
-// icn_shared/src/error.rs
-
-// File: shared/src/errors.rs
+// File: icn_shared/src/error.rs
 
 //! This module defines the errors that can occur across various components of the ICN project.
 //! These errors are shared across different crates to maintain consistency in error handling.
 
 use thiserror::Error;
+use serde_json;
 
 /// The `IcnError` enum represents errors that can occur across different components of the ICN project.
 #[derive(Debug, Error)]
@@ -26,10 +25,19 @@ pub enum IcnError {
     #[error("Network error: {0}")]
     Network(String),
 
-    /// A generic error for any other type of failure.a
+    /// A generic error for any other type of failure.
     #[error("Generic error: {0}")]
     Generic(String),
 }
 
 /// A specialized Result type for the shared module.
 pub type IcnResult<T> = Result<T, IcnError>;
+
+// Implement conversion from serde_json errors to IcnError for serialization issues.
+impl From<serde_json::Error> for IcnError {
+    fn from(err: serde_json::Error) -> Self {
+        IcnError::Serialization(err.to_string())
+    }
+}
+
+// You can add more conversion implementations here if needed for other error types.
