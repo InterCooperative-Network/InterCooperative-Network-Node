@@ -446,6 +446,41 @@ native-tls = "0.2"  # Add this line
 
 
 === ./icn_shared/src/error.rs ===
+// icn_shared/src/error.rs
+
+// File: shared/src/errors.rs
+
+//! This module defines the errors that can occur across various components of the ICN project.
+//! These errors are shared across different crates to maintain consistency in error handling.
+
+use thiserror::Error;
+
+/// The `IcnError` enum represents errors that can occur across different components of the ICN project.
+#[derive(Debug, Error)]
+pub enum IcnError {
+    /// An error that occurs during serialization or deserialization.
+    #[error("Serialization error: {0}")]
+    Serialization(String),
+
+    /// An error that occurs during storage operations.
+    #[error("Storage error: {0}")]
+    Storage(String),
+
+    /// An error related to consensus mechanisms.
+    #[error("Consensus error: {0}")]
+    Consensus(String),
+
+    /// An error related to network operations.
+    #[error("Network error: {0}")]
+    Network(String),
+
+    /// A generic error for any other type of failure.a
+    #[error("Generic error: {0}")]
+    Generic(String),
+}
+
+/// A specialized Result type for the shared module.
+pub type IcnResult<T> = Result<T, IcnError>;
 
 
 
@@ -2773,6 +2808,8 @@ version = "0.1.0"
 dependencies = [
  "icn_blockchain",
  "icn_shared",
+ "serde",
+ "serde_json",
  "sha2",
 ]
 
@@ -3863,40 +3900,42 @@ mod tests {
 
 
 === ./icn_core/src/errors.rs ===
+// File: icn_core/src/errors.rs
+
 use std::fmt;
 use std::error::Error;
 
-/// Custom error type for the ICN project
+/// Custom error type for the ICN project, used across core functionalities.
 #[derive(Debug)]
 pub enum IcnError {
-    /// Configuration error
+    /// Configuration error, typically occurs during loading or parsing configuration files.
     Config(String),
 
-    /// IO error
+    /// IO error, wraps standard I/O errors.
     Io(std::io::Error),
 
-    /// TOML parsing error
+    /// TOML parsing error, occurs during the parsing of TOML configuration files.
     Toml(toml::de::Error),
 
-    /// Blockchain error
+    /// Blockchain error, used for errors related to blockchain operations.
     Blockchain(String),
 
-    /// Consensus error
+    /// Consensus error, used for errors related to consensus algorithms and operations.
     Consensus(String),
 
-    /// Networking error
+    /// Networking error, used for errors during networking operations.
     Networking(String),
 
-    /// Smart Contract error
+    /// Smart Contract error, used for errors related to smart contract execution or validation.
     SmartContract(String),
 
-    /// Virtual Machine error
+    /// Virtual Machine error, used for errors within the virtual machine environment.
     VirtualMachine(String),
 
-    /// Storage error
+    /// Storage error, used for errors related to data storage operations.
     Storage(String),
 
-    /// Other errors
+    /// Other errors, used for any miscellaneous errors that don't fit into the above categories.
     Other(String),
 }
 
@@ -3919,12 +3958,14 @@ impl fmt::Display for IcnError {
 
 impl Error for IcnError {}
 
+// Conversion from standard IO errors to IcnError.
 impl From<std::io::Error> for IcnError {
     fn from(err: std::io::Error) -> Self {
         IcnError::Io(err)
     }
 }
 
+// Conversion from TOML parsing errors to IcnError.
 impl From<toml::de::Error> for IcnError {
     fn from(err: toml::de::Error) -> Self {
         IcnError::Toml(err)
@@ -4072,21 +4113,29 @@ pub use errors::IcnError;
 //! and coordinating the different modules of the InterCooperative Network (ICN).
 //! The coordinator handles initialization, starting, and stopping of all modules.
 
-use crate::coordinator::CoordinatorError;
-use crate::coordinator::CoordinatorResult;
+use crate::errors::{IcnError, IcnResult};
 
-/// Defines errors that can occur within the module coordination process.
-#[derive(Debug, thiserror::Error)]
+/// Define a custom error type for the coordinator module.
+#[derive(Debug)]
 pub enum CoordinatorError {
-    /// An error that occurs during the initialization of a module.
-    #[error("Initialization error: {0}")]
     InitializationError(String),
-    /// An error that occurs during the operation of a module.
-    #[error("Module operation error: {0}")]
-    OperationError(String),
+    StartError(String),
+    StopError(String),
 }
 
-/// A specialized Result type for the Coordinator module.
+impl std::fmt::Display for CoordinatorError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CoordinatorError::InitializationError(msg) => write!(f, "Initialization Error: {}", msg),
+            CoordinatorError::StartError(msg) => write!(f, "Start Error: {}", msg),
+            CoordinatorError::StopError(msg) => write!(f, "Stop Error: {}", msg),
+        }
+    }
+}
+
+impl std::error::Error for CoordinatorError {}
+
+/// Custom result type for the coordinator module.
 pub type CoordinatorResult<T> = Result<T, CoordinatorError>;
 
 /// The `ModuleCoordinator` struct is responsible for managing and coordinating
@@ -4105,12 +4154,24 @@ impl ModuleCoordinator {
     }
 
     /// Registers a new module with the coordinator.
+    ///
+    /// # Arguments
+    ///
+    /// * `module` - The module to be registered.
+    ///
+    /// # Returns
+    ///
+    /// * `CoordinatorResult<()>` - Returns `Ok(())` if the module is successfully registered, or an error otherwise.
     pub fn register_module(&mut self, module: Box<dyn Module>) -> CoordinatorResult<()> {
         self.modules.push(module);
         Ok(())
     }
 
     /// Initializes all registered modules.
+    ///
+    /// # Returns
+    ///
+    /// * `CoordinatorResult<()>` - Returns `Ok(())` if all modules are successfully initialized, or an error otherwise.
     pub fn initialize(&mut self) -> CoordinatorResult<()> {
         for module in &mut self.modules {
             module.initialize()?;
@@ -4119,6 +4180,10 @@ impl ModuleCoordinator {
     }
 
     /// Starts all registered modules.
+    ///
+    /// # Returns
+    ///
+    /// * `CoordinatorResult<()>` - Returns `Ok(())` if all modules are successfully started, or an error otherwise.
     pub fn start(&mut self) -> CoordinatorResult<()> {
         for module in &mut self.modules {
             module.start()?;
@@ -4127,6 +4192,10 @@ impl ModuleCoordinator {
     }
 
     /// Stops all registered modules.
+    ///
+    /// # Returns
+    ///
+    /// * `CoordinatorResult<()>` - Returns `Ok(())` if all modules are successfully stopped, or an error otherwise.
     pub fn stop(&mut self) -> CoordinatorResult<()> {
         for module in &mut self.modules {
             module.stop()?;
@@ -4138,8 +4207,25 @@ impl ModuleCoordinator {
 /// The `Module` trait defines the interface for modules that can be managed by the `ModuleCoordinator`.
 /// Each module must implement methods for initialization, starting, and stopping.
 pub trait Module {
+    /// Initializes the module.
+    ///
+    /// # Returns
+    ///
+    /// * `CoordinatorResult<()>` - Returns `Ok(())` if the module is successfully initialized, or an error otherwise.
     fn initialize(&mut self) -> CoordinatorResult<()>;
+
+    /// Starts the module.
+    ///
+    /// # Returns
+    ///
+    /// * `CoordinatorResult<()>` - Returns `Ok(())` if the module is successfully started, or an error otherwise.
     fn start(&mut self) -> CoordinatorResult<()>;
+
+    /// Stops the module.
+    ///
+    /// # Returns
+    ///
+    /// * `CoordinatorResult<()>` - Returns `Ok(())` if the module is successfully stopped, or an error otherwise.
     fn stop(&mut self) -> CoordinatorResult<()>;
 }
 
@@ -4160,7 +4246,9 @@ mod tests {
 
         fn start(&mut self) -> CoordinatorResult<()> {
             if !self.initialized {
-                return Err(CoordinatorError::InitializationError("Module not initialized".to_string()));
+                return Err(CoordinatorError::InitializationError(
+                    "Module not initialized".to_string(),
+                ));
             }
             self.started = true;
             Ok(())
@@ -4175,7 +4263,10 @@ mod tests {
     #[test]
     fn test_module_coordinator() {
         let mut coordinator = ModuleCoordinator::new();
-        let module = Box::new(TestModule { initialized: false, started: false });
+        let module = Box::new(TestModule {
+            initialized: false,
+            started: false,
+        });
 
         assert!(coordinator.register_module(module).is_ok());
         assert!(coordinator.initialize().is_ok());
@@ -4187,13 +4278,14 @@ mod tests {
 
 
 === ./icn_core/src/coordinator/mod.rs ===
-// Filename: icn_core/src/coordinator/mod.rs
+// File: icn_core/src/coordinator/mod.rs
+
+//! This is the module entry point for the coordinator module.
+//! It re-exports the `ModuleCoordinator`, `CoordinatorError`, and `CoordinatorResult`.
 
 pub mod module_coordinator;
 
-use module_coordinator::ModuleCoordinator;
-
-
+pub use self::module_coordinator::{ModuleCoordinator, CoordinatorError, CoordinatorResult};
 
 
 
@@ -4204,6 +4296,8 @@ version = "0.1.0"
 edition = "2018"
 
 [dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 icn_blockchain = { path = "../icn_blockchain" }
 icn_shared = { path = "../icn_shared" }
 sha2 = "0.10"
@@ -4216,13 +4310,14 @@ sha2 = "0.10"
 === ./icn_storage/src/block_storage.rs ===
 // File: icn_storage/src/block_storage.rs
 
+//! `BlockStorage` manages the storage of blockchain blocks. It provides methods for adding, retrieving,
+//! and verifying the integrity of blocks.
+
 use std::collections::HashMap;
 use icn_shared::{Block, IcnResult, IcnError};
 use sha2::{Sha256, Digest};
 use serde_json;
 
-/// `BlockStorage` manages the storage of blockchain blocks. It provides methods for adding, retrieving,
-/// and verifying the integrity of blocks.
 pub struct BlockStorage {
     storage: HashMap<String, Block>,
     integrity_checks: HashMap<String, String>, // Store checksums for integrity verification
@@ -4309,7 +4404,7 @@ impl BlockStorage {
         let mut hasher = Sha256::new();
         hasher.update(&block.index.to_be_bytes());
         hasher.update(&block.timestamp.to_be_bytes());
-        hasher.update(serde_json::to_string(&block.transactions).map_err(|e| IcnError::Serialization(e.to_string()))?);
+        hasher.update(serde_json::to_string(&block.transactions).map_err(|e| IcnError::SerializationError(e.to_string()))?);
         hasher.update(&block.previous_hash);
         hasher.update(&block.proposer_id);
         Ok(format!("{:x}", hasher.finalize()))
@@ -4518,7 +4613,8 @@ mod tests {
 
 
 === ./icn_storage/src/lib.rs ===
-//! lib.rs (in icn_storage)
+// File: icn_storage/src/lib.rs
+
 //! This file defines the entry point for the storage module within the InterCooperative Network (ICN).
 //! It manages both block and state storage, providing a centralized interface for storage operations.
 

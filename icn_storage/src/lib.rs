@@ -1,4 +1,5 @@
-//! lib.rs (in icn_storage)
+// File: icn_storage/src/lib.rs
+
 //! This file defines the entry point for the storage module within the InterCooperative Network (ICN).
 //! It manages both block and state storage, providing a centralized interface for storage operations.
 

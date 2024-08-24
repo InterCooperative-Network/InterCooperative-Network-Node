@@ -1,37 +1,39 @@
+// File: icn_core/src/errors.rs
+
 use std::fmt;
 use std::error::Error;
 
-/// Custom error type for the ICN project
+/// Custom error type for the ICN project, used across core functionalities.
 #[derive(Debug)]
 pub enum IcnError {
-    /// Configuration error
+    /// Configuration error, typically occurs during loading or parsing configuration files.
     Config(String),
 
-    /// IO error
+    /// IO error, wraps standard I/O errors.
     Io(std::io::Error),
 
-    /// TOML parsing error
+    /// TOML parsing error, occurs during the parsing of TOML configuration files.
     Toml(toml::de::Error),
 
-    /// Blockchain error
+    /// Blockchain error, used for errors related to blockchain operations.
     Blockchain(String),
 
-    /// Consensus error
+    /// Consensus error, used for errors related to consensus algorithms and operations.
     Consensus(String),
 
-    /// Networking error
+    /// Networking error, used for errors during networking operations.
     Networking(String),
 
-    /// Smart Contract error
+    /// Smart Contract error, used for errors related to smart contract execution or validation.
     SmartContract(String),
 
-    /// Virtual Machine error
+    /// Virtual Machine error, used for errors within the virtual machine environment.
     VirtualMachine(String),
 
-    /// Storage error
+    /// Storage error, used for errors related to data storage operations.
     Storage(String),
 
-    /// Other errors
+    /// Other errors, used for any miscellaneous errors that don't fit into the above categories.
     Other(String),
 }
 
@@ -54,12 +56,14 @@ impl fmt::Display for IcnError {
 
 impl Error for IcnError {}
 
+// Conversion from standard IO errors to IcnError.
 impl From<std::io::Error> for IcnError {
     fn from(err: std::io::Error) -> Self {
         IcnError::Io(err)
     }
 }
 
+// Conversion from TOML parsing errors to IcnError.
 impl From<toml::de::Error> for IcnError {
     fn from(err: toml::de::Error) -> Self {
         IcnError::Toml(err)

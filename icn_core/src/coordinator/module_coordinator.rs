@@ -4,21 +4,29 @@
 //! and coordinating the different modules of the InterCooperative Network (ICN).
 //! The coordinator handles initialization, starting, and stopping of all modules.
 
-use crate::coordinator::CoordinatorError;
-use crate::coordinator::CoordinatorResult;
+use crate::errors::{IcnError, IcnResult};
 
-/// Defines errors that can occur within the module coordination process.
-#[derive(Debug, thiserror::Error)]
+/// Define a custom error type for the coordinator module.
+#[derive(Debug)]
 pub enum CoordinatorError {
-    /// An error that occurs during the initialization of a module.
-    #[error("Initialization error: {0}")]
     InitializationError(String),
-    /// An error that occurs during the operation of a module.
-    #[error("Module operation error: {0}")]
-    OperationError(String),
+    StartError(String),
+    StopError(String),
 }
 
-/// A specialized Result type for the Coordinator module.
+impl std::fmt::Display for CoordinatorError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CoordinatorError::InitializationError(msg) => write!(f, "Initialization Error: {}", msg),
+            CoordinatorError::StartError(msg) => write!(f, "Start Error: {}", msg),
+            CoordinatorError::StopError(msg) => write!(f, "Stop Error: {}", msg),
+        }
+    }
+}
+
+impl std::error::Error for CoordinatorError {}
+
+/// Custom result type for the coordinator module.
 pub type CoordinatorResult<T> = Result<T, CoordinatorError>;
 
 /// The `ModuleCoordinator` struct is responsible for managing and coordinating
@@ -37,12 +45,24 @@ impl ModuleCoordinator {
     }
 
     /// Registers a new module with the coordinator.
+    ///
+    /// # Arguments
+    ///
+    /// * `module` - The module to be registered.
+    ///
+    /// # Returns
+    ///
+    /// * `CoordinatorResult<()>` - Returns `Ok(())` if the module is successfully registered, or an error otherwise.
     pub fn register_module(&mut self, module: Box<dyn Module>) -> CoordinatorResult<()> {
         self.modules.push(module);
         Ok(())
     }
 
     /// Initializes all registered modules.
+    ///
+    /// # Returns
+    ///
+    /// * `CoordinatorResult<()>` - Returns `Ok(())` if all modules are successfully initialized, or an error otherwise.
     pub fn initialize(&mut self) -> CoordinatorResult<()> {
         for module in &mut self.modules {
             module.initialize()?;
@@ -51,6 +71,10 @@ impl ModuleCoordinator {
     }
 
     /// Starts all registered modules.
+    ///
+    /// # Returns
+    ///
+    /// * `CoordinatorResult<()>` - Returns `Ok(())` if all modules are successfully started, or an error otherwise.
     pub fn start(&mut self) -> CoordinatorResult<()> {
         for module in &mut self.modules {
             module.start()?;
@@ -59,6 +83,10 @@ impl ModuleCoordinator {
     }
 
     /// Stops all registered modules.
+    ///
+    /// # Returns
+    ///
+    /// * `CoordinatorResult<()>` - Returns `Ok(())` if all modules are successfully stopped, or an error otherwise.
     pub fn stop(&mut self) -> CoordinatorResult<()> {
         for module in &mut self.modules {
             module.stop()?;
@@ -70,8 +98,25 @@ impl ModuleCoordinator {
 /// The `Module` trait defines the interface for modules that can be managed by the `ModuleCoordinator`.
 /// Each module must implement methods for initialization, starting, and stopping.
 pub trait Module {
+    /// Initializes the module.
+    ///
+    /// # Returns
+    ///
+    /// * `CoordinatorResult<()>` - Returns `Ok(())` if the module is successfully initialized, or an error otherwise.
     fn initialize(&mut self) -> CoordinatorResult<()>;
+
+    /// Starts the module.
+    ///
+    /// # Returns
+    ///
+    /// * `CoordinatorResult<()>` - Returns `Ok(())` if the module is successfully started, or an error otherwise.
     fn start(&mut self) -> CoordinatorResult<()>;
+
+    /// Stops the module.
+    ///
+    /// # Returns
+    ///
+    /// * `CoordinatorResult<()>` - Returns `Ok(())` if the module is successfully stopped, or an error otherwise.
     fn stop(&mut self) -> CoordinatorResult<()>;
 }
 
@@ -92,7 +137,9 @@ mod tests {
 
         fn start(&mut self) -> CoordinatorResult<()> {
             if !self.initialized {
-                return Err(CoordinatorError::InitializationError("Module not initialized".to_string()));
+                return Err(CoordinatorError::InitializationError(
+                    "Module not initialized".to_string(),
+                ));
             }
             self.started = true;
             Ok(())
@@ -107,7 +154,10 @@ mod tests {
     #[test]
     fn test_module_coordinator() {
         let mut coordinator = ModuleCoordinator::new();
-        let module = Box::new(TestModule { initialized: false, started: false });
+        let module = Box::new(TestModule {
+            initialized: false,
+            started: false,
+        });
 
         assert!(coordinator.register_module(module).is_ok());
         assert!(coordinator.initialize().is_ok());
