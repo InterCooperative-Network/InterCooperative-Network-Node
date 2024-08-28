@@ -1181,7 +1181,7 @@ impl<C: Consensus> Chain<C> {
     ///
     /// * `IcnResult<Vec<Validator>>` - Returns a vector of selected validators.
     fn select_validators(&self) -> IcnResult<Vec<Validator>> {
-        let mut consensus = self.consensus.lock().expect("Failed to lock consensus for selecting validators");
+        let consensus = self.consensus.lock().expect("Failed to lock consensus for selecting validators");
         let eligible_peers = consensus.get_eligible_peers();
         let mut rng = rand::thread_rng();
 
