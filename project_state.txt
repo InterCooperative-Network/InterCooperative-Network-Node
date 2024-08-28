@@ -493,7 +493,7 @@ impl From<serde_json::Error> for IcnError {
 
 
 === ./icn_shared/src/block.rs ===
-//icn_shared/src/block.rs
+// Filename: icn_shared/src/block.rs
 
 use serde::{Serialize, Deserialize};
 use sha2::{Sha256, Digest};
@@ -1002,17 +1002,17 @@ pub use crate::chain::Chain;
 
 use icn_shared::{Block, IcnError, IcnResult};
 use icn_consensus::Consensus; // Import Consensus trait from icn_consensus crate
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 /// Represents the blockchain and its operations.
 pub struct Blockchain<C: Consensus> {
     pub chain: Vec<Block>,
-    pub consensus: Arc<C>,
+    pub consensus: Arc<Mutex<C>>,
 }
 
 impl<C: Consensus> Blockchain<C> {
     /// Creates a new blockchain with the given consensus algorithm.
-    pub fn new(consensus: Arc<C>) -> Self {
+    pub fn new(consensus: Arc<Mutex<C>>) -> Self {
         Blockchain {
             chain: vec![Block::new(0, vec![], "genesis".to_string(), "genesis".to_string())],
             consensus,
@@ -1030,7 +1030,8 @@ impl<C: Consensus> Blockchain<C> {
         );
 
         // Validate the block using the consensus mechanism
-        if self.consensus.validate(&new_block)? {
+        let mut consensus = self.consensus.lock().expect("Failed to lock consensus for validation");
+        if consensus.validate(&new_block)? {
             self.chain.push(new_block);
             Ok(())
         } else {
@@ -1059,11 +1060,11 @@ impl<C: Consensus> Blockchain<C> {
 
 
 === ./icn_blockchain/src/chain/mod.rs ===
-// File: icn_blockchain/src/chain/mod.rs
+// icn_blockchain/src/chain/mod.rs
 
 use icn_shared::{Block, IcnError, IcnResult};
 use icn_consensus::Consensus;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use rand::Rng;
 
 /// The `Validator` struct represents a validator in the blockchain consensus process.
@@ -1118,7 +1119,7 @@ impl Validator {
 /// It manages the addition of new blocks, block validation, and access to the latest block.
 pub struct Chain<C: Consensus> {
     pub blocks: Vec<Block>,
-    pub consensus: Arc<C>,
+    pub consensus: Arc<Mutex<C>>,
 }
 
 impl<C: Consensus> Chain<C> {
@@ -1131,7 +1132,7 @@ impl<C: Consensus> Chain<C> {
     /// # Returns
     ///
     /// * `Chain<C>` - A new `Chain` instance.
-    pub fn new(consensus: Arc<C>) -> Self {
+    pub fn new(consensus: Arc<Mutex<C>>) -> Self {
         Chain {
             blocks: Vec::new(),
             consensus,
@@ -1156,7 +1157,8 @@ impl<C: Consensus> Chain<C> {
         let new_block = Block::new(index, transactions, previous_hash, proposer_id);
 
         // Validate the block using the consensus mechanism
-        self.consensus.validate(&new_block)?;
+        let mut consensus = self.consensus.lock().expect("Failed to lock consensus for block validation");
+        consensus.validate(&new_block)?;
         self.blocks.push(new_block);
         Ok(())
     }
@@ -1179,7 +1181,8 @@ impl<C: Consensus> Chain<C> {
     ///
     /// * `IcnResult<Vec<Validator>>` - Returns a vector of selected validators.
     fn select_validators(&self) -> IcnResult<Vec<Validator>> {
-        let eligible_peers = self.consensus.get_eligible_peers();
+        let mut consensus = self.consensus.lock().expect("Failed to lock consensus for selecting validators");
+        let eligible_peers = consensus.get_eligible_peers();
         let mut rng = rand::thread_rng();
 
         let validators: Vec<Validator> = eligible_peers
@@ -1581,7 +1584,7 @@ pub trait Consensus: Clone + Send + Sync {
     ///
     /// * `Result<bool, String>` - Returns `Ok(true)` if the block is valid,
     ///   or an error message if validation fails.
-    fn validate(&self, block: &Block) -> Result<bool, String>;
+    fn validate(&mut self, block: &Block) -> Result<bool, String>;
 
     /// Selects a proposer for the next block based on the consensus mechanism's rules.
     ///
@@ -1589,7 +1592,7 @@ pub trait Consensus: Clone + Send + Sync {
     ///
     /// * `Result<String, String>` - Returns the ID of the selected proposer,
     ///   or an error message if selection fails.
-    fn select_proposer(&self) -> Result<String, String>;
+    fn select_proposer(&mut self) -> Result<String, String>;
 
     /// Retrieves the list of eligible peers for proposer selection.
     ///
@@ -1620,7 +1623,7 @@ pub use crate::proof_of_cooperation::ProofOfCooperation;
 
 
 === ./icn_consensus/src/proof_of_cooperation.rs ===
-// File: icn_consensus/src/proof_of_cooperation.rs
+// Filename: icn_consensus/src/proof_of_cooperation.rs
 
 //! Proof of Cooperation (PoC) Consensus Mechanism Implementation
 //!
@@ -1637,14 +1640,15 @@ pub use crate::proof_of_cooperation::ProofOfCooperation;
 //! - Incentive alignment with network goals
 //! - Transparent and auditable decision-making processes
 //!
-//! The ProofOfCooperation struct is the central component, managing peer information, scoring, and consensus operations.
-//! It implements the Consensus trait, providing core functionality for block validation and proposer selection.
+//! The `ProofOfCooperation` struct is the central component, managing peer information, scoring, and consensus operations.
+//! It implements the `Consensus` trait, providing core functionality for block validation and proposer selection.
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::time::{SystemTime, UNIX_EPOCH};
 use icn_shared::{Block, IcnError, IcnResult};
 use rand::{Rng, thread_rng};
-use log::{info, warn, error};
+use log::info;
+
 use crate::consensus::Consensus;
 
 /// Constants used in the Proof of Cooperation consensus mechanism
@@ -2193,7 +2197,7 @@ impl ProofOfCooperation {
     /// # Returns
     ///
     /// * `IcnResult<HashMap<String, u64>>` - A result containing a map of peer IDs to their rewards, or an error
-    pub fn distribute_rewards(&self) -> IcnResult<HashMap<String, u64>> {
+    pub fn distribute_rewards(&mut self) -> IcnResult<HashMap<String, u64>> {
         let mut rewards = HashMap::new();
 
         for peer_id in self.get_eligible_peers() {
@@ -2272,27 +2276,27 @@ impl Consensus for ProofOfCooperation {
     ///
     /// # Returns
     ///
-    /// * `IcnResult<bool>` - A result containing true if the block is valid, false otherwise, or an error
-    fn validate(&self, block: &Block) -> IcnResult<bool> {
+    /// * `Result<bool, String>` - A result containing true if the block is valid, false otherwise, or an error
+    fn validate(&mut self, block: &Block) -> Result<bool, String> {
         if !self.known_peers.contains(&block.proposer_id) {
-            return Err(IcnError::Consensus(format!("Unknown proposer: {}", block.proposer_id)));
+            return Err(format!("Unknown proposer: {}", block.proposer_id));
         }
 
         let current_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .map_err(|e| IcnError::Other(format!("System time error: {}", e)))?
+            .map_err(|e| format!("System time error: {}", e))?
             .as_secs();
 
         if current_time < self.last_block_time + BLOCK_TIME_THRESHOLD {
-            return Err(IcnError::Consensus("Block proposed too soon".to_string()));
+            return Err("Block proposed too soon".to_string());
         }
 
-        let validators = self.select_validators()?;
+        let validators = self.select_validators().map_err(|e| e.to_string())?;
         let mut valid_votes = 0;
         let total_votes = validators.len();
 
         for validator in validators {
-            let vote = self.stake_weighted_vote(&validator, block)?;
+            let vote = self.stake_weighted_vote(&validator, block).map_err(|e| e.to_string())?;
             if vote {
                 valid_votes += 1;
             }
@@ -2302,7 +2306,7 @@ impl Consensus for ProofOfCooperation {
         let is_valid = valid_votes >= validation_threshold;
 
         // Update reputation of the proposer based on the block's validity
-        self.update_reputation(&block.proposer_id, is_valid)?;
+        self.update_reputation(&block.proposer_id, is_valid).map_err(|e| e.to_string())?;
 
         Ok(is_valid)
     }
@@ -2314,11 +2318,11 @@ impl Consensus for ProofOfCooperation {
     ///
     /// # Returns
     ///
-    /// * `IcnResult<String>` - A result containing the ID of the selected proposer or an error
-    fn select_proposer(&self) -> IcnResult<String> {
+    /// * `Result<String, String>` - A result containing the ID of the selected proposer or an error
+    fn select_proposer(&mut self) -> Result<String, String> {
         let eligible_peers = self.get_eligible_peers();
         if eligible_peers.is_empty() {
-            return Err(IcnError::Consensus("No eligible proposers available".to_string()));
+            return Err("No eligible proposers available".to_string());
         }
 
         let total_score: f64 = eligible_peers.iter()
@@ -2336,7 +2340,7 @@ impl Consensus for ProofOfCooperation {
             }
         }
 
-        Err(IcnError::Consensus("Failed to select proposer".to_string()))
+        Err("Failed to select proposer".to_string())
     }
 
     /// Gets the list of eligible peers for consensus participation

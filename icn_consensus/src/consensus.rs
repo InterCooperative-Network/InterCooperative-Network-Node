@@ -18,7 +18,7 @@ pub trait Consensus: Clone + Send + Sync {
     ///
     /// * `Result<bool, String>` - Returns `Ok(true)` if the block is valid,
     ///   or an error message if validation fails.
-    fn validate(&self, block: &Block) -> Result<bool, String>;
+    fn validate(&mut self, block: &Block) -> Result<bool, String>;
 
     /// Selects a proposer for the next block based on the consensus mechanism's rules.
     ///
@@ -26,7 +26,7 @@ pub trait Consensus: Clone + Send + Sync {
     ///
     /// * `Result<String, String>` - Returns the ID of the selected proposer,
     ///   or an error message if selection fails.
-    fn select_proposer(&self) -> Result<String, String>;
+    fn select_proposer(&mut self) -> Result<String, String>;
 
     /// Retrieves the list of eligible peers for proposer selection.
     ///

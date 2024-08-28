@@ -1,4 +1,4 @@
-// File: icn_consensus/src/proof_of_cooperation.rs
+// Filename: icn_consensus/src/proof_of_cooperation.rs
 
 //! Proof of Cooperation (PoC) Consensus Mechanism Implementation
 //!
@@ -15,14 +15,15 @@
 //! - Incentive alignment with network goals
 //! - Transparent and auditable decision-making processes
 //!
-//! The ProofOfCooperation struct is the central component, managing peer information, scoring, and consensus operations.
-//! It implements the Consensus trait, providing core functionality for block validation and proposer selection.
+//! The `ProofOfCooperation` struct is the central component, managing peer information, scoring, and consensus operations.
+//! It implements the `Consensus` trait, providing core functionality for block validation and proposer selection.
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::time::{SystemTime, UNIX_EPOCH};
 use icn_shared::{Block, IcnError, IcnResult};
 use rand::{Rng, thread_rng};
-use log::{info, warn, error};
+use log::info;
+
 use crate::consensus::Consensus;
 
 /// Constants used in the Proof of Cooperation consensus mechanism
@@ -571,7 +572,7 @@ impl ProofOfCooperation {
     /// # Returns
     ///
     /// * `IcnResult<HashMap<String, u64>>` - A result containing a map of peer IDs to their rewards, or an error
-    pub fn distribute_rewards(&self) -> IcnResult<HashMap<String, u64>> {
+    pub fn distribute_rewards(&mut self) -> IcnResult<HashMap<String, u64>> {
         let mut rewards = HashMap::new();
 
         for peer_id in self.get_eligible_peers() {
@@ -650,27 +651,27 @@ impl Consensus for ProofOfCooperation {
     ///
     /// # Returns
     ///
-    /// * `IcnResult<bool>` - A result containing true if the block is valid, false otherwise, or an error
-    fn validate(&self, block: &Block) -> IcnResult<bool> {
+    /// * `Result<bool, String>` - A result containing true if the block is valid, false otherwise, or an error
+    fn validate(&mut self, block: &Block) -> Result<bool, String> {
         if !self.known_peers.contains(&block.proposer_id) {
-            return Err(IcnError::Consensus(format!("Unknown proposer: {}", block.proposer_id)));
+            return Err(format!("Unknown proposer: {}", block.proposer_id));
         }
 
         let current_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .map_err(|e| IcnError::Other(format!("System time error: {}", e)))?
+            .map_err(|e| format!("System time error: {}", e))?
             .as_secs();
 
         if current_time < self.last_block_time + BLOCK_TIME_THRESHOLD {
-            return Err(IcnError::Consensus("Block proposed too soon".to_string()));
+            return Err("Block proposed too soon".to_string());
         }
 
-        let validators = self.select_validators()?;
+        let validators = self.select_validators().map_err(|e| e.to_string())?;
         let mut valid_votes = 0;
         let total_votes = validators.len();
 
         for validator in validators {
-            let vote = self.stake_weighted_vote(&validator, block)?;
+            let vote = self.stake_weighted_vote(&validator, block).map_err(|e| e.to_string())?;
             if vote {
                 valid_votes += 1;
             }
@@ -680,7 +681,7 @@ impl Consensus for ProofOfCooperation {
         let is_valid = valid_votes >= validation_threshold;
 
         // Update reputation of the proposer based on the block's validity
-        self.update_reputation(&block.proposer_id, is_valid)?;
+        self.update_reputation(&block.proposer_id, is_valid).map_err(|e| e.to_string())?;
 
         Ok(is_valid)
     }
@@ -692,11 +693,11 @@ impl Consensus for ProofOfCooperation {
     ///
     /// # Returns
     ///
-    /// * `IcnResult<String>` - A result containing the ID of the selected proposer or an error
-    fn select_proposer(&self) -> IcnResult<String> {
+    /// * `Result<String, String>` - A result containing the ID of the selected proposer or an error
+    fn select_proposer(&mut self) -> Result<String, String> {
         let eligible_peers = self.get_eligible_peers();
         if eligible_peers.is_empty() {
-            return Err(IcnError::Consensus("No eligible proposers available".to_string()));
+            return Err("No eligible proposers available".to_string());
         }
 
         let total_score: f64 = eligible_peers.iter()
@@ -714,7 +715,7 @@ impl Consensus for ProofOfCooperation {
             }
         }
 
-        Err(IcnError::Consensus("Failed to select proposer".to_string()))
+        Err("Failed to select proposer".to_string())
     }
 
     /// Gets the list of eligible peers for consensus participation

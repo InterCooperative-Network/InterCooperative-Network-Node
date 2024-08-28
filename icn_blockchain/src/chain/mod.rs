@@ -1,8 +1,8 @@
-// File: icn_blockchain/src/chain/mod.rs
+// icn_blockchain/src/chain/mod.rs
 
 use icn_shared::{Block, IcnError, IcnResult};
 use icn_consensus::Consensus;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use rand::Rng;
 
 /// The `Validator` struct represents a validator in the blockchain consensus process.
@@ -57,7 +57,7 @@ impl Validator {
 /// It manages the addition of new blocks, block validation, and access to the latest block.
 pub struct Chain<C: Consensus> {
     pub blocks: Vec<Block>,
-    pub consensus: Arc<C>,
+    pub consensus: Arc<Mutex<C>>,
 }
 
 impl<C: Consensus> Chain<C> {
@@ -70,7 +70,7 @@ impl<C: Consensus> Chain<C> {
     /// # Returns
     ///
     /// * `Chain<C>` - A new `Chain` instance.
-    pub fn new(consensus: Arc<C>) -> Self {
+    pub fn new(consensus: Arc<Mutex<C>>) -> Self {
         Chain {
             blocks: Vec::new(),
             consensus,
@@ -95,7 +95,8 @@ impl<C: Consensus> Chain<C> {
         let new_block = Block::new(index, transactions, previous_hash, proposer_id);
 
         // Validate the block using the consensus mechanism
-        self.consensus.validate(&new_block)?;
+        let mut consensus = self.consensus.lock().expect("Failed to lock consensus for block validation");
+        consensus.validate(&new_block)?;
         self.blocks.push(new_block);
         Ok(())
     }
@@ -118,7 +119,8 @@ impl<C: Consensus> Chain<C> {
     ///
     /// * `IcnResult<Vec<Validator>>` - Returns a vector of selected validators.
     fn select_validators(&self) -> IcnResult<Vec<Validator>> {
-        let eligible_peers = self.consensus.get_eligible_peers();
+        let mut consensus = self.consensus.lock().expect("Failed to lock consensus for selecting validators");
+        let eligible_peers = consensus.get_eligible_peers();
         let mut rng = rand::thread_rng();
 
         let validators: Vec<Validator> = eligible_peers

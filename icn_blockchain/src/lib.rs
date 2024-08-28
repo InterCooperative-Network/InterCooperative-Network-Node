@@ -6,17 +6,17 @@ pub use crate::chain::Chain;
 
 use icn_shared::{Block, IcnError, IcnResult};
 use icn_consensus::Consensus; // Import Consensus trait from icn_consensus crate
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 /// Represents the blockchain and its operations.
 pub struct Blockchain<C: Consensus> {
     pub chain: Vec<Block>,
-    pub consensus: Arc<C>,
+    pub consensus: Arc<Mutex<C>>,
 }
 
 impl<C: Consensus> Blockchain<C> {
     /// Creates a new blockchain with the given consensus algorithm.
-    pub fn new(consensus: Arc<C>) -> Self {
+    pub fn new(consensus: Arc<Mutex<C>>) -> Self {
         Blockchain {
             chain: vec![Block::new(0, vec![], "genesis".to_string(), "genesis".to_string())],
             consensus,
@@ -34,7 +34,8 @@ impl<C: Consensus> Blockchain<C> {
         );
 
         // Validate the block using the consensus mechanism
-        if self.consensus.validate(&new_block)? {
+        let mut consensus = self.consensus.lock().expect("Failed to lock consensus for validation");
+        if consensus.validate(&new_block)? {
             self.chain.push(new_block);
             Ok(())
         } else {
