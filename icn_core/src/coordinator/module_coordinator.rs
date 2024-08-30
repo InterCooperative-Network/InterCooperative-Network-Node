@@ -1,28 +1,23 @@
 // File: icn_core/src/coordinator/module_coordinator.rs
 
-//! This module defines the `ModuleCoordinator` responsible for managing
-//! and coordinating the different modules of the InterCooperative Network (ICN).
-//! The coordinator handles initialization, starting, and stopping of all modules.
+use log::{info, error, debug};
+use std::sync::{Arc, Mutex};
+use tokio::sync::mpsc;
+
+/// This module defines the `ModuleCoordinator` responsible for managing
+/// and coordinating the different modules of the InterCooperative Network (ICN).
+/// The coordinator handles initialization, starting, and stopping of all modules.
 
 /// Define a custom error type for the coordinator module.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum CoordinatorError {
+    #[error("Initialization Error: {0}")]
     InitializationError(String),
+    #[error("Start Error: {0}")]
     StartError(String),
+    #[error("Stop Error: {0}")]
     StopError(String),
 }
-
-impl std::fmt::Display for CoordinatorError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            CoordinatorError::InitializationError(msg) => write!(f, "Initialization Error: {}", msg),
-            CoordinatorError::StartError(msg) => write!(f, "Start Error: {}", msg),
-            CoordinatorError::StopError(msg) => write!(f, "Stop Error: {}", msg),
-        }
-    }
-}
-
-impl std::error::Error for CoordinatorError {}
 
 /// Custom result type for the coordinator module.
 pub type CoordinatorResult<T> = Result<T, CoordinatorError>;
@@ -31,14 +26,19 @@ pub type CoordinatorResult<T> = Result<T, CoordinatorError>;
 /// the various modules that make up the ICN node. It ensures that all modules
 /// are initialized, started, and stopped in the correct order.
 pub struct ModuleCoordinator {
-    modules: Vec<Box<dyn Module>>,
+    modules: Vec<Arc<Mutex<Box<dyn Module>>>>,
+    shutdown_sender: mpsc::Sender<()>,
+    shutdown_receiver: mpsc::Receiver<()>,
 }
 
 impl ModuleCoordinator {
     /// Creates a new instance of `ModuleCoordinator`.
     pub fn new() -> Self {
+        let (shutdown_sender, shutdown_receiver) = mpsc::channel(1);
         ModuleCoordinator {
             modules: Vec::new(),
+            shutdown_sender,
+            shutdown_receiver,
         }
     }
 
@@ -52,7 +52,8 @@ impl ModuleCoordinator {
     ///
     /// * `CoordinatorResult<()>` - Returns `Ok(())` if the module is successfully registered, or an error otherwise.
     pub fn register_module(&mut self, module: Box<dyn Module>) -> CoordinatorResult<()> {
-        self.modules.push(module);
+        debug!("Registering new module");
+        self.modules.push(Arc::new(Mutex::new(module)));
         Ok(())
     }
 
@@ -62,9 +63,15 @@ impl ModuleCoordinator {
     ///
     /// * `CoordinatorResult<()>` - Returns `Ok(())` if all modules are successfully initialized, or an error otherwise.
     pub fn initialize(&mut self) -> CoordinatorResult<()> {
-        for module in &mut self.modules {
-            module.initialize()?;
+        info!("Initializing all modules...");
+        for (index, module) in self.modules.iter().enumerate() {
+            debug!("Initializing module {}", index);
+            module.lock()
+                .map_err(|e| CoordinatorError::InitializationError(format!("Failed to acquire lock for module {}: {}", index, e)))?
+                .initialize()
+                .map_err(|e| CoordinatorError::InitializationError(format!("Failed to initialize module {}: {}", index, e)))?;
         }
+        info!("All modules initialized successfully");
         Ok(())
     }
 
@@ -74,9 +81,15 @@ impl ModuleCoordinator {
     ///
     /// * `CoordinatorResult<()>` - Returns `Ok(())` if all modules are successfully started, or an error otherwise.
     pub fn start(&mut self) -> CoordinatorResult<()> {
-        for module in &mut self.modules {
-            module.start()?;
+        info!("Starting all modules...");
+        for (index, module) in self.modules.iter().enumerate() {
+            debug!("Starting module {}", index);
+            module.lock()
+                .map_err(|e| CoordinatorError::StartError(format!("Failed to acquire lock for module {}: {}", index, e)))?
+                .start()
+                .map_err(|e| CoordinatorError::StartError(format!("Failed to start module {}: {}", index, e)))?;
         }
+        info!("All modules started successfully");
         Ok(())
     }
 
@@ -86,16 +99,34 @@ impl ModuleCoordinator {
     ///
     /// * `CoordinatorResult<()>` - Returns `Ok(())` if all modules are successfully stopped, or an error otherwise.
     pub fn stop(&mut self) -> CoordinatorResult<()> {
-        for module in &mut self.modules {
-            module.stop()?;
+        info!("Stopping all modules...");
+        for (index, module) in self.modules.iter().enumerate().rev() {
+            debug!("Stopping module {}", index);
+            module.lock()
+                .map_err(|e| CoordinatorError::StopError(format!("Failed to acquire lock for module {}: {}", index, e)))?
+                .stop()
+                .map_err(|e| CoordinatorError::StopError(format!("Failed to stop module {}: {}", index, e)))?;
         }
+        info!("All modules stopped successfully");
         Ok(())
+    }
+
+    /// Returns a clone of the shutdown sender.
+    pub fn get_shutdown_sender(&self) -> mpsc::Sender<()> {
+        self.shutdown_sender.clone()
+    }
+
+    /// Waits for a shutdown signal.
+    pub async fn wait_for_shutdown(&mut self) {
+        if self.shutdown_receiver.recv().await.is_some() {
+            info!("Received shutdown signal");
+        }
     }
 }
 
 /// The `Module` trait defines the interface for modules that can be managed by the `ModuleCoordinator`.
 /// Each module must implement methods for initialization, starting, and stopping.
-pub trait Module {
+pub trait Module: Send + Sync {
     /// Initializes the module.
     ///
     /// # Returns
@@ -149,8 +180,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_module_coordinator() {
+    #[tokio::test]
+    async fn test_module_coordinator() {
         let mut coordinator = ModuleCoordinator::new();
         let module = Box::new(TestModule {
             initialized: false,
@@ -161,5 +192,13 @@ mod tests {
         assert!(coordinator.initialize().is_ok());
         assert!(coordinator.start().is_ok());
         assert!(coordinator.stop().is_ok());
+
+        // Test shutdown signal
+        let shutdown_sender = coordinator.get_shutdown_sender();
+        tokio::spawn(async move {
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+            shutdown_sender.send(()).await.unwrap();
+        });
+        coordinator.wait_for_shutdown().await;
     }
 }

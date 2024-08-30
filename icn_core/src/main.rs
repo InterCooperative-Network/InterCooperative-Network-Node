@@ -1,51 +1,55 @@
 // File: icn_core/src/main.rs
 
-use std::env;
-use log::{error, info};
 use std::sync::Arc;
-use icn_core::config::ConfigLoader; 
+use std::sync::atomic::{AtomicBool, Ordering};
+use log::{error, info, debug};
+use clap::Parser;
+use icn_core::config::ConfigLoader;
 use icn_core::coordinator::ModuleCoordinator;
 use icn_consensus::ProofOfCooperation;
 use icn_shared::IcnError;
 
-/// The main entry point for the ICN Core module.
-///
-/// This function initializes the node by performing the following steps:
-/// 1. Sets up logging.
-/// 2. Loads the configuration file.
-/// 3. Initializes the consensus mechanism (Proof of Cooperation).
-/// 4. Initializes the `ModuleCoordinator`, which manages the various components of the node.
-/// 5. Starts the coordinator, which is responsible for the node's lifecycle management.
-///
-/// # Command-Line Arguments
-///
-/// The program accepts an optional command-line argument:
-/// - `config_path` (optional): The path to the configuration file. If not provided, the default
-///   configuration file `config.toml` will be used.
-///
-/// # Error Handling
-///
-/// If any step fails, an error will be logged, and the program will exit gracefully.
+#[derive(Parser)]
+#[command(author, version, about, long_about = None)]
+struct Cli {
+    /// Path to the configuration file
+    #[arg(short, long, default_value = "config.toml")]
+    config: String,
+
+    /// Set the log level (error, warn, info, debug, trace)
+    #[arg(short, long, default_value = "info")]
+    log_level: String,
+}
+
 #[tokio::main]
 async fn main() -> Result<(), IcnError> {
+    let cli = Cli::parse();
+
     // Initialize logging
-    env_logger::init();
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(&cli.log_level)).init();
 
     info!("Starting ICN Core...");
 
-    let default_config_file = "config.toml";
-    let config_path = env::args().nth(1).unwrap_or_else(|| default_config_file.to_string());
-
     // Load the configuration
-    let _config_loader = ConfigLoader::new(&config_path).map_err(|e| {
+    let _config_loader = ConfigLoader::new(&cli.config).map_err(|e| {
         error!("Failed to load configuration: {}", e);
         IcnError::Config(format!("Failed to load configuration: {}", e))
     })?;
 
-    info!("Configuration loaded successfully from: {}", config_path);
+    info!("Configuration loaded successfully from: {}", cli.config);
 
     let _consensus = Arc::new(ProofOfCooperation::new());
     let mut coordinator = ModuleCoordinator::new();
+
+    // Set up graceful shutdown
+    let running = Arc::new(AtomicBool::new(true));
+    let r = running.clone();
+
+    ctrlc::set_handler(move || {
+        info!("Received interrupt signal. Initiating graceful shutdown...");
+        r.store(false, Ordering::SeqCst);
+    })
+    .expect("Error setting Ctrl-C handler");
 
     coordinator.start().map_err(|e| {
         error!("Coordinator failed to start: {}", e);
@@ -54,14 +58,22 @@ async fn main() -> Result<(), IcnError> {
 
     info!("ICN Core started successfully");
 
-    tokio::signal::ctrl_c().await.map_err(|e| {
-        error!("Failed to listen for shutdown signal: {}", e);
-        IcnError::Other(format!("Failed to listen for shutdown signal: {}", e))
-    })?;
+    // Main loop
+    while running.load(Ordering::SeqCst) {
+        // Perform periodic tasks here
+        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+        debug!("Node is running...");
+    }
 
     info!("Shutting down ICN Core...");
 
-    // Perform cleanup here
+    // Perform cleanup
+    coordinator.stop().map_err(|e| {
+        error!("Coordinator failed to stop: {}", e);
+        IcnError::Other(format!("Coordinator failed to stop: {}", e))
+    })?;
+
+    info!("ICN Core shutdown complete.");
 
     Ok(())
 }

@@ -2704,6 +2704,55 @@ dependencies = [
 ]
 
 [[package]]
+name = "anstream"
+version = "0.6.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "64e15c1ab1f89faffbf04a634d5e1962e9074f2741eef6d97f3c4e322426d526"
+dependencies = [
+ "anstyle",
+ "anstyle-parse",
+ "anstyle-query",
+ "anstyle-wincon",
+ "colorchoice",
+ "is_terminal_polyfill",
+ "utf8parse",
+]
+
+[[package]]
+name = "anstyle"
+version = "1.0.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1bec1de6f59aedf83baf9ff929c98f2ad654b97c9510f4e70cf6f661d49fd5b1"
+
+[[package]]
+name = "anstyle-parse"
+version = "0.2.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eb47de1e80c2b463c735db5b217a0ddc39d612e7ac9e2e96a5aed1f57616c1cb"
+dependencies = [
+ "utf8parse",
+]
+
+[[package]]
+name = "anstyle-query"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6d36fc52c7f6c869915e99412912f22093507da8d9e942ceaf66fe4b7c14422a"
+dependencies = [
+ "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "anstyle-wincon"
+version = "3.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5bf74e1b6e971609db8ca7a9ce79fd5768ab6ae46441c572e46cf596f59e57f8"
+dependencies = [
+ "anstyle",
+ "windows-sys 0.52.0",
+]
+
+[[package]]
 name = "async-trait"
 version = "0.1.81"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2796,6 +2845,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
+name = "cfg_aliases"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "613afe47fcd5fac7ccf1db93babcb082c5994d996f20b8b159f2ad1658eb5724"
+
+[[package]]
 name = "chrono"
 version = "0.4.38"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2808,6 +2863,52 @@ dependencies = [
  "wasm-bindgen",
  "windows-targets",
 ]
+
+[[package]]
+name = "clap"
+version = "4.5.16"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ed6719fffa43d0d87e5fd8caeab59be1554fb028cd30edc88fc4369b17971019"
+dependencies = [
+ "clap_builder",
+ "clap_derive",
+]
+
+[[package]]
+name = "clap_builder"
+version = "4.5.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "216aec2b177652e3846684cbfe25c9964d18ec45234f0f5da5157b207ed1aab6"
+dependencies = [
+ "anstream",
+ "anstyle",
+ "clap_lex",
+ "strsim",
+]
+
+[[package]]
+name = "clap_derive"
+version = "4.5.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "501d359d5f3dcaf6ecdeee48833ae73ec6e42723a1e52419c79abf9507eec0a0"
+dependencies = [
+ "heck",
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "clap_lex"
+version = "0.7.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1462739cb27611015575c0c11df5df7601141071f07518d56fcc1be504cbec97"
+
+[[package]]
+name = "colorchoice"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d3fd119d74b830634cea2a0f58bbd0d54540518a14397557951e79340abc28c0"
 
 [[package]]
 name = "config"
@@ -2861,6 +2962,16 @@ checksum = "1bfb12502f3fc46cca1bb51ac28df9d618d813cdc3d2f25b9fe775a34af26bb3"
 dependencies = [
  "generic-array",
  "typenum",
+]
+
+[[package]]
+name = "ctrlc"
+version = "3.4.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "90eeab0aa92f3f9b4e87f258c72b139c207d251f9cbc1080a0086b86a8870dd3"
+dependencies = [
+ "nix",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2960,6 +3071,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "heck"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
+
+[[package]]
 name = "hermit-abi"
 version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3033,7 +3150,9 @@ dependencies = [
 name = "icn_core"
 version = "0.1.0"
 dependencies = [
+ "clap",
  "config",
+ "ctrlc",
  "env_logger",
  "icn_blockchain",
  "icn_consensus",
@@ -3115,6 +3234,12 @@ dependencies = [
  "libc",
  "windows-sys 0.52.0",
 ]
+
+[[package]]
+name = "is_terminal_polyfill"
+version = "1.70.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7943c866cc5cd64cbc25b2e01621d07fa8eb2a1a23160ee81ce38704e97b8ecf"
 
 [[package]]
 name = "itoa"
@@ -3230,6 +3355,18 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "tempfile",
+]
+
+[[package]]
+name = "nix"
+version = "0.29.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "71e2746dc3a24dd78b3cfcb7be93368c6de9963d30f43a6a73998a9cf4b17b46"
+dependencies = [
+ "bitflags 2.6.0",
+ "cfg-if",
+ "cfg_aliases",
+ "libc",
 ]
 
 [[package]]
@@ -3660,6 +3797,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "strsim"
+version = "0.11.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
+
+[[package]]
 name = "syn"
 version = "2.0.75"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3777,6 +3920,12 @@ name = "unicode-ident"
 version = "1.0.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3354b9ac3fae1ff6755cb6db53683adb661634f67557942dea4facebec0fee4b"
+
+[[package]]
+name = "utf8parse"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 
 [[package]]
 name = "vcpkg"
@@ -3991,7 +4140,7 @@ edition = "2021"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"  # Added serde_json dependency
+serde_json = "1.0"
 tempfile = "3.2"
 native-tls = "0.2"
 tokio = { version = "1", features = ["full"] }
@@ -4007,7 +4156,8 @@ icn_shared = { path = "../icn_shared" }
 toml = "0.5"
 thiserror = "1.0"
 rand = "0.8"
-
+clap = { version = "4.3", features = ["derive"] }
+ctrlc = "3.2"
 
 
 === ./icn_core/src/config/mod.rs ===
@@ -4020,9 +4170,12 @@ pub use config_loader::{Config, ConfigLoader};
 
 
 === ./icn_core/src/config/config_loader.rs ===
+// File: icn_core/src/config/config_loader.rs
+
 use std::fs;
 use serde::Deserialize;
 use icn_shared::{IcnError, IcnResult};
+use log::{info, debug, error};
 
 /// Represents the application configuration loaded from a TOML file.
 ///
@@ -4105,14 +4258,27 @@ impl ConfigLoader {
     ///
     /// * Returns an `IcnError::Config` if the file cannot be read or parsed.
     pub fn new(config_path: &str) -> IcnResult<Self> {
+        info!("Loading configuration from file: {}", config_path);
+        
         // Read the contents of the configuration file
         let config_content = fs::read_to_string(config_path)
-            .map_err(|e| IcnError::Config(format!("Failed to read config file '{}': {}", config_path, e)))?;
-        
+            .map_err(|e| {
+                error!("Failed to read config file '{}': {}", config_path, e);
+                IcnError::Config(format!("Failed to read config file '{}': {}", config_path, e))
+            })?;
+
+        debug!("Configuration file content loaded successfully");
+
         // Parse the TOML content into a Config struct
         let config: Config = toml::from_str(&config_content)
-            .map_err(|e| IcnError::Config(format!("Failed to parse TOML from '{}': {}", config_path, e)))?;
-        
+            .map_err(|e| {
+                error!("Failed to parse TOML from '{}': {}", config_path, e);
+                IcnError::Config(format!("Failed to parse TOML from '{}': {}", config_path, e))
+            })?;
+
+        info!("Configuration loaded and parsed successfully");
+        debug!("Loaded configuration: {:?}", config);
+
         Ok(ConfigLoader { config })
     }
 
@@ -4163,7 +4329,7 @@ mod tests {
     fn test_config_loader() {
         let test_config = create_test_config();
         let config_loader = ConfigLoader::new(test_config.path().to_str().unwrap()).unwrap();
-        
+
         let config = config_loader.get_config();
 
         assert_eq!(config.server.host, "localhost");
@@ -4276,52 +4442,56 @@ impl From<serde_json::Error> for IcnError {
 === ./icn_core/src/main.rs ===
 // File: icn_core/src/main.rs
 
-use std::env;
-use log::{error, info};
 use std::sync::Arc;
-use icn_core::config::ConfigLoader; 
+use std::sync::atomic::{AtomicBool, Ordering};
+use log::{error, info, debug};
+use clap::Parser;
+use icn_core::config::ConfigLoader;
 use icn_core::coordinator::ModuleCoordinator;
 use icn_consensus::ProofOfCooperation;
 use icn_shared::IcnError;
 
-/// The main entry point for the ICN Core module.
-///
-/// This function initializes the node by performing the following steps:
-/// 1. Sets up logging.
-/// 2. Loads the configuration file.
-/// 3. Initializes the consensus mechanism (Proof of Cooperation).
-/// 4. Initializes the `ModuleCoordinator`, which manages the various components of the node.
-/// 5. Starts the coordinator, which is responsible for the node's lifecycle management.
-///
-/// # Command-Line Arguments
-///
-/// The program accepts an optional command-line argument:
-/// - `config_path` (optional): The path to the configuration file. If not provided, the default
-///   configuration file `config.toml` will be used.
-///
-/// # Error Handling
-///
-/// If any step fails, an error will be logged, and the program will exit gracefully.
+#[derive(Parser)]
+#[command(author, version, about, long_about = None)]
+struct Cli {
+    /// Path to the configuration file
+    #[arg(short, long, default_value = "config.toml")]
+    config: String,
+
+    /// Set the log level (error, warn, info, debug, trace)
+    #[arg(short, long, default_value = "info")]
+    log_level: String,
+}
+
 #[tokio::main]
 async fn main() -> Result<(), IcnError> {
+    let cli = Cli::parse();
+
     // Initialize logging
-    env_logger::init();
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(&cli.log_level)).init();
 
     info!("Starting ICN Core...");
 
-    let default_config_file = "config.toml";
-    let config_path = env::args().nth(1).unwrap_or_else(|| default_config_file.to_string());
-
     // Load the configuration
-    let _config_loader = ConfigLoader::new(&config_path).map_err(|e| {
+    let _config_loader = ConfigLoader::new(&cli.config).map_err(|e| {
         error!("Failed to load configuration: {}", e);
         IcnError::Config(format!("Failed to load configuration: {}", e))
     })?;
 
-    info!("Configuration loaded successfully from: {}", config_path);
+    info!("Configuration loaded successfully from: {}", cli.config);
 
     let _consensus = Arc::new(ProofOfCooperation::new());
     let mut coordinator = ModuleCoordinator::new();
+
+    // Set up graceful shutdown
+    let running = Arc::new(AtomicBool::new(true));
+    let r = running.clone();
+
+    ctrlc::set_handler(move || {
+        info!("Received interrupt signal. Initiating graceful shutdown...");
+        r.store(false, Ordering::SeqCst);
+    })
+    .expect("Error setting Ctrl-C handler");
 
     coordinator.start().map_err(|e| {
         error!("Coordinator failed to start: {}", e);
@@ -4330,14 +4500,22 @@ async fn main() -> Result<(), IcnError> {
 
     info!("ICN Core started successfully");
 
-    tokio::signal::ctrl_c().await.map_err(|e| {
-        error!("Failed to listen for shutdown signal: {}", e);
-        IcnError::Other(format!("Failed to listen for shutdown signal: {}", e))
-    })?;
+    // Main loop
+    while running.load(Ordering::SeqCst) {
+        // Perform periodic tasks here
+        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+        debug!("Node is running...");
+    }
 
     info!("Shutting down ICN Core...");
 
-    // Perform cleanup here
+    // Perform cleanup
+    coordinator.stop().map_err(|e| {
+        error!("Coordinator failed to stop: {}", e);
+        IcnError::Other(format!("Coordinator failed to stop: {}", e))
+    })?;
+
+    info!("ICN Core shutdown complete.");
 
     Ok(())
 }
@@ -4408,29 +4586,24 @@ pub use errors::IcnError;
 === ./icn_core/src/coordinator/module_coordinator.rs ===
 // File: icn_core/src/coordinator/module_coordinator.rs
 
-//! This module defines the `ModuleCoordinator` responsible for managing
-//! and coordinating the different modules of the InterCooperative Network (ICN).
-//! The coordinator handles initialization, starting, and stopping of all modules.
+use log::{info, error, debug};
+use std::sync::{Arc, Mutex};
+use tokio::sync::mpsc;
+
+/// This module defines the `ModuleCoordinator` responsible for managing
+/// and coordinating the different modules of the InterCooperative Network (ICN).
+/// The coordinator handles initialization, starting, and stopping of all modules.
 
 /// Define a custom error type for the coordinator module.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum CoordinatorError {
+    #[error("Initialization Error: {0}")]
     InitializationError(String),
+    #[error("Start Error: {0}")]
     StartError(String),
+    #[error("Stop Error: {0}")]
     StopError(String),
 }
-
-impl std::fmt::Display for CoordinatorError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            CoordinatorError::InitializationError(msg) => write!(f, "Initialization Error: {}", msg),
-            CoordinatorError::StartError(msg) => write!(f, "Start Error: {}", msg),
-            CoordinatorError::StopError(msg) => write!(f, "Stop Error: {}", msg),
-        }
-    }
-}
-
-impl std::error::Error for CoordinatorError {}
 
 /// Custom result type for the coordinator module.
 pub type CoordinatorResult<T> = Result<T, CoordinatorError>;
@@ -4439,14 +4612,19 @@ pub type CoordinatorResult<T> = Result<T, CoordinatorError>;
 /// the various modules that make up the ICN node. It ensures that all modules
 /// are initialized, started, and stopped in the correct order.
 pub struct ModuleCoordinator {
-    modules: Vec<Box<dyn Module>>,
+    modules: Vec<Arc<Mutex<Box<dyn Module>>>>,
+    shutdown_sender: mpsc::Sender<()>,
+    shutdown_receiver: mpsc::Receiver<()>,
 }
 
 impl ModuleCoordinator {
     /// Creates a new instance of `ModuleCoordinator`.
     pub fn new() -> Self {
+        let (shutdown_sender, shutdown_receiver) = mpsc::channel(1);
         ModuleCoordinator {
             modules: Vec::new(),
+            shutdown_sender,
+            shutdown_receiver,
         }
     }
 
@@ -4460,7 +4638,8 @@ impl ModuleCoordinator {
     ///
     /// * `CoordinatorResult<()>` - Returns `Ok(())` if the module is successfully registered, or an error otherwise.
     pub fn register_module(&mut self, module: Box<dyn Module>) -> CoordinatorResult<()> {
-        self.modules.push(module);
+        debug!("Registering new module");
+        self.modules.push(Arc::new(Mutex::new(module)));
         Ok(())
     }
 
@@ -4470,9 +4649,15 @@ impl ModuleCoordinator {
     ///
     /// * `CoordinatorResult<()>` - Returns `Ok(())` if all modules are successfully initialized, or an error otherwise.
     pub fn initialize(&mut self) -> CoordinatorResult<()> {
-        for module in &mut self.modules {
-            module.initialize()?;
+        info!("Initializing all modules...");
+        for (index, module) in self.modules.iter().enumerate() {
+            debug!("Initializing module {}", index);
+            module.lock()
+                .map_err(|e| CoordinatorError::InitializationError(format!("Failed to acquire lock for module {}: {}", index, e)))?
+                .initialize()
+                .map_err(|e| CoordinatorError::InitializationError(format!("Failed to initialize module {}: {}", index, e)))?;
         }
+        info!("All modules initialized successfully");
         Ok(())
     }
 
@@ -4482,9 +4667,15 @@ impl ModuleCoordinator {
     ///
     /// * `CoordinatorResult<()>` - Returns `Ok(())` if all modules are successfully started, or an error otherwise.
     pub fn start(&mut self) -> CoordinatorResult<()> {
-        for module in &mut self.modules {
-            module.start()?;
+        info!("Starting all modules...");
+        for (index, module) in self.modules.iter().enumerate() {
+            debug!("Starting module {}", index);
+            module.lock()
+                .map_err(|e| CoordinatorError::StartError(format!("Failed to acquire lock for module {}: {}", index, e)))?
+                .start()
+                .map_err(|e| CoordinatorError::StartError(format!("Failed to start module {}: {}", index, e)))?;
         }
+        info!("All modules started successfully");
         Ok(())
     }
 
@@ -4494,16 +4685,34 @@ impl ModuleCoordinator {
     ///
     /// * `CoordinatorResult<()>` - Returns `Ok(())` if all modules are successfully stopped, or an error otherwise.
     pub fn stop(&mut self) -> CoordinatorResult<()> {
-        for module in &mut self.modules {
-            module.stop()?;
+        info!("Stopping all modules...");
+        for (index, module) in self.modules.iter().enumerate().rev() {
+            debug!("Stopping module {}", index);
+            module.lock()
+                .map_err(|e| CoordinatorError::StopError(format!("Failed to acquire lock for module {}: {}", index, e)))?
+                .stop()
+                .map_err(|e| CoordinatorError::StopError(format!("Failed to stop module {}: {}", index, e)))?;
         }
+        info!("All modules stopped successfully");
         Ok(())
+    }
+
+    /// Returns a clone of the shutdown sender.
+    pub fn get_shutdown_sender(&self) -> mpsc::Sender<()> {
+        self.shutdown_sender.clone()
+    }
+
+    /// Waits for a shutdown signal.
+    pub async fn wait_for_shutdown(&mut self) {
+        if self.shutdown_receiver.recv().await.is_some() {
+            info!("Received shutdown signal");
+        }
     }
 }
 
 /// The `Module` trait defines the interface for modules that can be managed by the `ModuleCoordinator`.
 /// Each module must implement methods for initialization, starting, and stopping.
-pub trait Module {
+pub trait Module: Send + Sync {
     /// Initializes the module.
     ///
     /// # Returns
@@ -4557,8 +4766,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_module_coordinator() {
+    #[tokio::test]
+    async fn test_module_coordinator() {
         let mut coordinator = ModuleCoordinator::new();
         let module = Box::new(TestModule {
             initialized: false,
@@ -4569,6 +4778,14 @@ mod tests {
         assert!(coordinator.initialize().is_ok());
         assert!(coordinator.start().is_ok());
         assert!(coordinator.stop().is_ok());
+
+        // Test shutdown signal
+        let shutdown_sender = coordinator.get_shutdown_sender();
+        tokio::spawn(async move {
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+            shutdown_sender.send(()).await.unwrap();
+        });
+        coordinator.wait_for_shutdown().await;
     }
 }
 

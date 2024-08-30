@@ -1,6 +1,9 @@
+// File: icn_core/src/config/config_loader.rs
+
 use std::fs;
 use serde::Deserialize;
 use icn_shared::{IcnError, IcnResult};
+use log::{info, debug, error};
 
 /// Represents the application configuration loaded from a TOML file.
 ///
@@ -83,14 +86,27 @@ impl ConfigLoader {
     ///
     /// * Returns an `IcnError::Config` if the file cannot be read or parsed.
     pub fn new(config_path: &str) -> IcnResult<Self> {
+        info!("Loading configuration from file: {}", config_path);
+        
         // Read the contents of the configuration file
         let config_content = fs::read_to_string(config_path)
-            .map_err(|e| IcnError::Config(format!("Failed to read config file '{}': {}", config_path, e)))?;
-        
+            .map_err(|e| {
+                error!("Failed to read config file '{}': {}", config_path, e);
+                IcnError::Config(format!("Failed to read config file '{}': {}", config_path, e))
+            })?;
+
+        debug!("Configuration file content loaded successfully");
+
         // Parse the TOML content into a Config struct
         let config: Config = toml::from_str(&config_content)
-            .map_err(|e| IcnError::Config(format!("Failed to parse TOML from '{}': {}", config_path, e)))?;
-        
+            .map_err(|e| {
+                error!("Failed to parse TOML from '{}': {}", config_path, e);
+                IcnError::Config(format!("Failed to parse TOML from '{}': {}", config_path, e))
+            })?;
+
+        info!("Configuration loaded and parsed successfully");
+        debug!("Loaded configuration: {:?}", config);
+
         Ok(ConfigLoader { config })
     }
 
@@ -141,7 +157,7 @@ mod tests {
     fn test_config_loader() {
         let test_config = create_test_config();
         let config_loader = ConfigLoader::new(test_config.path().to_str().unwrap()).unwrap();
-        
+
         let config = config_loader.get_config();
 
         assert_eq!(config.server.host, "localhost");
