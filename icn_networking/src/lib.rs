@@ -5,18 +5,34 @@ use std::io::Read;
 use std::sync::{Arc, RwLock};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::sync::Mutex;
 use tokio_native_tls::{TlsAcceptor, TlsConnector};
 use native_tls::Identity;
-use icn_shared::{IcnError, IcnResult};
+use futures::lock::Mutex as FuturesMutex;
+use thiserror::Error;
 use log::{info, error, warn};
+
+/// Custom error type for the networking module.
+#[derive(Error, Debug)]
+pub enum NetworkingError {
+    #[error("Network error: {0}")]
+    Network(String),
+    #[error("TLS error: {0}")]
+    Tls(#[from] native_tls::Error),
+    #[error("I/O error: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("Lock error")]
+    Lock,
+}
+
+/// Type alias for results returned by networking functions.
+pub type NetworkingResult<T> = Result<T, NetworkingError>;
 
 /// The `Networking` struct is responsible for managing peer-to-peer network connections
 /// in a secure manner using TLS (Transport Layer Security). It allows for starting a server,
 /// connecting to peers, and broadcasting messages to all connected peers.
 #[derive(Clone)]
 pub struct Networking {
-    peers: Arc<RwLock<Vec<Arc<Mutex<tokio_native_tls::TlsStream<TcpStream>>>>>>,
+    peers: Arc<RwLock<Vec<Arc<FuturesMutex<tokio_native_tls::TlsStream<TcpStream>>>>>>,
     identity: Option<Arc<Identity>>,
 }
 
@@ -42,39 +58,25 @@ impl Networking {
     ///
     /// # Returns
     ///
-    /// * `IcnResult<Arc<Identity>>` - The loaded TLS identity wrapped in an Arc, or an error if loading fails.
-    ///
-    /// # Errors
-    ///
-    /// * `IcnError::Network` - If the certificate or key file is not found, or if there's an error reading or parsing the files.
-    pub fn load_tls_identity(cert_path: &str, key_path: &str) -> IcnResult<Arc<Identity>> {
-        // Check if the certificate file exists
+    /// * `NetworkingResult<Arc<Identity>>` - The loaded TLS identity wrapped in an Arc, or an error if loading fails.
+    pub fn load_tls_identity(cert_path: &str, key_path: &str) -> NetworkingResult<Arc<Identity>> {
         if !std::path::Path::new(cert_path).exists() {
-            return Err(IcnError::Network(format!("Certificate file not found: {}", cert_path)));
+            return Err(NetworkingError::Network(format!("Certificate file not found: {}", cert_path)));
         }
 
-        // Check if the key file exists
         if !std::path::Path::new(key_path).exists() {
-            return Err(IcnError::Network(format!("Key file not found: {}", key_path)));
+            return Err(NetworkingError::Network(format!("Key file not found: {}", key_path)));
         }
 
-        // Open and read the certificate file
-        let mut cert_file = File::open(cert_path)
-            .map_err(|e| IcnError::Network(format!("Failed to open certificate file: {}", e)))?;
+        let mut cert_file = File::open(cert_path)?;
         let mut cert = Vec::new();
-        cert_file.read_to_end(&mut cert)
-            .map_err(|e| IcnError::Network(format!("Failed to read certificate file: {}", e)))?;
+        cert_file.read_to_end(&mut cert)?;
 
-        // Open and read the key file
-        let mut key_file = File::open(key_path)
-            .map_err(|e| IcnError::Network(format!("Failed to open key file: {}", e)))?;
+        let mut key_file = File::open(key_path)?;
         let mut key = Vec::new();
-        key_file.read_to_end(&mut key)
-            .map_err(|e| IcnError::Network(format!("Failed to read key file: {}", e)))?;
+        key_file.read_to_end(&mut key)?;
 
-        // Load the identity from the certificate and key
-        let identity = Identity::from_pkcs8(&cert, &key)
-            .map_err(|e| IcnError::Network(format!("Failed to load TLS identity: {}", e)))?;
+        let identity = Identity::from_pkcs8(&cert, &key)?;
 
         Ok(Arc::new(identity))
     }
@@ -88,37 +90,24 @@ impl Networking {
     ///
     /// # Returns
     ///
-    /// * `IcnResult<()>` - An empty result indicating success, or an error if starting the server fails.
-    ///
-    /// # Errors
-    ///
-    /// * `IcnError::Network` - If there's an error creating the TLS acceptor, binding to the address, or accepting a TCP connection.
-    pub async fn start_server(&mut self, address: &str, identity: Arc<Identity>) -> IcnResult<()> {
-        // Store the identity for future use
+    /// * `NetworkingResult<()>` - An empty result indicating success, or an error if starting the server fails.
+    pub async fn start_server(&mut self, address: &str, identity: Arc<Identity>) -> NetworkingResult<()> {
         self.identity = Some(identity.clone());
 
-        // Create a TLS acceptor from the identity
         let acceptor = TlsAcceptor::from(
-            native_tls::TlsAcceptor::new(identity.as_ref().clone())
-                .map_err(|e| IcnError::Network(format!("Failed to create TLS acceptor: {}", e)))?
+            native_tls::TlsAcceptor::new(identity.as_ref().clone())?
         );
 
-        // Bind a TCP listener to the specified address
-        let listener = TcpListener::bind(address).await
-            .map_err(|e| IcnError::Network(format!("Failed to bind to address: {}", e)))?;
+        let listener = TcpListener::bind(address).await?;
         info!("Server started on {}", address);
 
-        // Accept incoming connections in a loop
         loop {
             match listener.accept().await {
                 Ok((stream, _)) => {
-                    // Clone necessary data for the spawned task
                     let acceptor = acceptor.clone();
                     let peers = Arc::clone(&self.peers);
 
-                    // Spawn a task to handle the client connection
                     tokio::spawn(async move {
-                        // Handle the client connection and log any errors
                         if let Err(e) = handle_client_connection(stream, acceptor, peers, None).await {
                             error!("Error handling client: {:?}", e);
                         }
@@ -137,32 +126,20 @@ impl Networking {
     ///
     /// # Returns
     ///
-    /// * `IcnResult<()>` - An empty result indicating success, or an error if the connection fails.
-    ///
-    /// # Errors
-    ///
-    /// * `IcnError::Network` - If there's an error creating the TLS connector, connecting to the peer, establishing the TLS connection, or acquiring the peers lock.
-    pub async fn connect_to_peer(&self, address: &str) -> IcnResult<()> {
-        // Create a TLS connector
+    /// * `NetworkingResult<()>` - An empty result indicating success, or an error if the connection fails.
+    pub async fn connect_to_peer(&self, address: &str) -> NetworkingResult<()> {
         let connector = TlsConnector::from(
-            native_tls::TlsConnector::new()
-                .map_err(|e| IcnError::Network(format!("Failed to create TLS connector: {}", e)))?
+            native_tls::TlsConnector::new()?
         );
 
-        // Connect a TCP stream to the peer address
-        let stream = TcpStream::connect(address).await
-            .map_err(|e| IcnError::Network(format!("Failed to connect to peer: {}", e)))?;
+        let stream = TcpStream::connect(address).await?;
 
-        // Establish a TLS connection over the TCP stream
-        let tls_stream = connector.connect(address, stream).await
-            .map_err(|e| IcnError::Network(format!("Failed to establish TLS connection: {}", e)))?;
+        let tls_stream = connector.connect(address, stream).await?;
 
-        // Wrap the TLS stream in an Arc<Mutex> for shared, asynchronous access
-        let tls_stream = Arc::new(Mutex::new(tls_stream));
+        let tls_stream = Arc::new(FuturesMutex::new(tls_stream));
 
-        // Add the new peer to the list of connected peers
         {
-            let mut peers_guard = self.peers.write().map_err(|_| IcnError::Network("Failed to acquire peers lock".to_string()))?;
+            let mut peers_guard = self.peers.write().map_err(|_| NetworkingError::Lock)?;
             peers_guard.push(tls_stream.clone());
         }
 
@@ -178,24 +155,16 @@ impl Networking {
     ///
     /// # Returns
     ///
-    /// * `IcnResult<()>` - An empty result indicating success, or an error if broadcasting fails.
-    ///
-    /// # Errors
-    ///
-    /// * `IcnError::Network` - If there's an error acquiring the peers lock or sending the message to a peer.
-    pub async fn broadcast_message(&self, message: &str) -> IcnResult<()> {
-        // Collect all peers in a temporary vector to avoid holding the lock while sending messages
+    /// * `NetworkingResult<()>` - An empty result indicating success, or an error if broadcasting fails.
+    pub async fn broadcast_message(&self, message: &str) -> NetworkingResult<()> {
         let peers_snapshot = {
-            let peers = self.peers.read().map_err(|_| IcnError::Network("Failed to acquire peers lock".to_string()))?;
+            let peers = self.peers.read().map_err(|_| NetworkingError::Lock)?;
             peers.clone()
         };
 
-        // Iterate over the snapshot of peers and send the message to each one
         for peer in peers_snapshot.iter() {
             let mut locked_peer = peer.lock().await;
-            // Attempt to write the message to the peer, handling potential errors
             if let Err(e) = locked_peer.write_all(message.as_bytes()).await {
-                // Log the error and remove the peer from the list if the write fails
                 error!("Failed to send message to peer: {}", e);
                 if let Err(e) = self.remove_peer(peer).await {
                     error!("Failed to remove peer: {:?}", e);
@@ -213,13 +182,9 @@ impl Networking {
     ///
     /// # Returns
     ///
-    /// * `IcnResult<()>` - An empty result indicating success, or an error if the removal fails.
-    ///
-    /// # Errors
-    ///
-    /// * `IcnError::Network` - If there's an error acquiring the peers lock.
-    async fn remove_peer(&self, peer: &Arc<Mutex<tokio_native_tls::TlsStream<TcpStream>>>) -> IcnResult<()> {
-        let mut peers = self.peers.write().map_err(|_| IcnError::Network("Failed to acquire peers lock".to_string()))?;
+    /// * `NetworkingResult<()>` - An empty result indicating success, or an error if the removal fails.
+    async fn remove_peer(&self, peer: &Arc<FuturesMutex<tokio_native_tls::TlsStream<TcpStream>>>) -> NetworkingResult<()> {
+        let mut peers = self.peers.write().map_err(|_| NetworkingError::Lock)?;
         peers.retain(|p| !Arc::ptr_eq(p, peer));
         warn!("Removed disconnected peer");
         Ok(())
@@ -229,21 +194,17 @@ impl Networking {
     ///
     /// # Returns
     ///
-    /// * `IcnResult<()>` - An empty result indicating success or an error if stopping fails.
-    pub async fn stop(&self) -> IcnResult<()> {
-        // Acquire a write lock on the list of peers to modify it
-        let mut peers = self.peers.write().map_err(|_| IcnError::Network("Failed to acquire peers lock".to_string()))?;
+    /// * `NetworkingResult<()>` - An empty result indicating success or an error if stopping fails.
+    pub async fn stop(&self) -> NetworkingResult<()> {
+        let mut peers = self.peers.write().map_err(|_| NetworkingError::Lock)?;
 
-        // Iterate over the peers and attempt to shut down each connection
         for peer in peers.iter() {
             let mut locked_peer = peer.lock().await;
             if let Err(e) = locked_peer.shutdown().await {
-                // Log an error if shutting down a peer connection fails
                 error!("Failed to close peer connection: {:?}", e);
             }
         }
 
-        // Clear the list of peers after disconnecting them
         peers.clear();
         info!("Networking component stopped.");
         Ok(())
@@ -262,27 +223,22 @@ impl Networking {
 ///
 /// # Returns
 ///
-/// * `IcnResult<()>` - An empty result indicating success or an error if the connection fails.
+/// * `NetworkingResult<()>` - An empty result indicating success or an error if the connection fails.
 async fn handle_client_connection(
     stream: TcpStream,
     acceptor: TlsAcceptor,
-    peers: Arc<RwLock<Vec<Arc<Mutex<tokio_native_tls::TlsStream<TcpStream>>>>>>,
+    peers: Arc<RwLock<Vec<Arc<FuturesMutex<tokio_native_tls::TlsStream<TcpStream>>>>>>,
     _custom_arg: Option<()>
-) -> IcnResult<()> {
-    // Accept the TLS connection from the incoming TCP stream
-    let tls_stream = acceptor.accept(stream).await
-        .map_err(|e| IcnError::Network(format!("Failed to accept TLS connection: {:?}", e)))?;
+) -> NetworkingResult<()> {
+    let tls_stream = acceptor.accept(stream).await?;
 
-    // Wrap the TLS stream in an Arc<Mutex> for shared, asynchronous access
-    let tls_stream = Arc::new(Mutex::new(tls_stream));
+    let tls_stream = Arc::new(FuturesMutex::new(tls_stream));
 
-    // Add the new peer to the list of connected peers
     {
-        let mut peers_guard = peers.write().map_err(|_| IcnError::Network("Failed to acquire peers lock".to_string()))?;
+        let mut peers_guard = peers.write().map_err(|_| NetworkingError::Lock)?;
         peers_guard.push(tls_stream.clone());
     }
 
-    // Handle communication with the connected client
     handle_client(tls_stream, peers).await
 }
 
@@ -295,50 +251,39 @@ async fn handle_client_connection(
 ///
 /// # Returns
 ///
-/// * `IcnResult<()>` - An empty result indicating success or an error if the connection fails.
+/// * `NetworkingResult<()>` - An empty result indicating success or an error if the connection fails.
 async fn handle_client(
-    stream: Arc<Mutex<tokio_native_tls::TlsStream<TcpStream>>>,
-    peers: Arc<RwLock<Vec<Arc<Mutex<tokio_native_tls::TlsStream<TcpStream>>>>>>,
-) -> IcnResult<()> {
+    stream: Arc<FuturesMutex<tokio_native_tls::TlsStream<TcpStream>>>,
+    peers: Arc<RwLock<Vec<Arc<FuturesMutex<tokio_native_tls::TlsStream<TcpStream>>>>>>,
+) -> NetworkingResult<()> {
     let mut buffer = [0; 1024];
 
     loop {
-        // Acquire a lock on the TLS stream to read from it
         let mut locked_stream = stream.lock().await;
 
-        // Attempt to read data from the stream into the buffer
         match locked_stream.read(&mut buffer).await {
-            // Connection closed gracefully by the peer
             Ok(0) => {
                 info!("Peer disconnected gracefully");
                 break;
             }
-            // Data successfully read from the stream
             Ok(n) => {
-                // Convert the read bytes into a UTF-8 string (lossy conversion)
                 let message = String::from_utf8_lossy(&buffer[..n]);
                 info!("Received message: {}", message);
-
                 // TODO: Process the received message here
             }
-            // An error occurred while reading from the stream
             Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                // This is not a real error, just indicates no data is currently available
-                continue; 
+                continue;
             }
-            // Other errors
             Err(e) => {
-                // Log the error and break the loop to disconnect the peer
                 error!("Error reading from stream: {:?}", e);
                 break;
             }
         }
     }
 
-    // Remove the disconnected peer from the list of peers
     {
-        let mut peers = peers.write().map_err(|_| IcnError::Network("Failed to acquire peers lock".to_string()))?;
-        peers.retain(|p| !Arc::ptr_eq(p, &stream));
+        let mut peers_guard = peers.write().map_err(|_| NetworkingError::Lock)?;
+        peers_guard.retain(|p| !Arc::ptr_eq(p, &stream));
         warn!("Removed disconnected peer");
     }
 

@@ -4,5 +4,21 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+# Shared types and utilities used across the ICN project
 icn_shared = { path = "../icn_shared" }
 
+# Blockchain-related functionalities like DID registration and transactions
+icn_blockchain = { path = "../icn_blockchain" }
+
+# Governance module for reputation and voting systems
+icn_governance = { path = "../icn_governance" }
+
+# Smart contract engine for executing contracts related to identity and access control
+icn_smart_contracts = { path = "../icn_smart_contracts" }
+
+
+# Serialization and deserialization support
+serde = { version = "1.0", features = ["derive"] }
+
+# Synchronization primitives like Arc and RwLock
+tokio = { version = "1", features = ["full"] }

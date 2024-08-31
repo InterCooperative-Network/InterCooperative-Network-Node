@@ -168,10 +168,15 @@ tokio = { version = "1.0", features = ["full"] }
 tokio-native-tls = "0.3"
 native-tls = "0.2"
 log = "0.4"
+futures = "0.3"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "1.0"
 icn_shared = { path = "../icn_shared" }
 
 [dev-dependencies]
 tempfile = "3.2"
+
 
 
 === ./icn_networking/src/lib/mod.rs ===
@@ -186,18 +191,34 @@ use std::io::Read;
 use std::sync::{Arc, RwLock};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::sync::Mutex;
 use tokio_native_tls::{TlsAcceptor, TlsConnector};
 use native_tls::Identity;
-use icn_shared::{IcnError, IcnResult};
+use futures::lock::Mutex as FuturesMutex;
+use thiserror::Error;
 use log::{info, error, warn};
+
+/// Custom error type for the networking module.
+#[derive(Error, Debug)]
+pub enum NetworkingError {
+    #[error("Network error: {0}")]
+    Network(String),
+    #[error("TLS error: {0}")]
+    Tls(#[from] native_tls::Error),
+    #[error("I/O error: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("Lock error")]
+    Lock,
+}
+
+/// Type alias for results returned by networking functions.
+pub type NetworkingResult<T> = Result<T, NetworkingError>;
 
 /// The `Networking` struct is responsible for managing peer-to-peer network connections
 /// in a secure manner using TLS (Transport Layer Security). It allows for starting a server,
 /// connecting to peers, and broadcasting messages to all connected peers.
 #[derive(Clone)]
 pub struct Networking {
-    peers: Arc<RwLock<Vec<Arc<Mutex<tokio_native_tls::TlsStream<TcpStream>>>>>>,
+    peers: Arc<RwLock<Vec<Arc<FuturesMutex<tokio_native_tls::TlsStream<TcpStream>>>>>>,
     identity: Option<Arc<Identity>>,
 }
 
@@ -223,39 +244,25 @@ impl Networking {
     ///
     /// # Returns
     ///
-    /// * `IcnResult<Arc<Identity>>` - The loaded TLS identity wrapped in an Arc, or an error if loading fails.
-    ///
-    /// # Errors
-    ///
-    /// * `IcnError::Network` - If the certificate or key file is not found, or if there's an error reading or parsing the files.
-    pub fn load_tls_identity(cert_path: &str, key_path: &str) -> IcnResult<Arc<Identity>> {
-        // Check if the certificate file exists
+    /// * `NetworkingResult<Arc<Identity>>` - The loaded TLS identity wrapped in an Arc, or an error if loading fails.
+    pub fn load_tls_identity(cert_path: &str, key_path: &str) -> NetworkingResult<Arc<Identity>> {
         if !std::path::Path::new(cert_path).exists() {
-            return Err(IcnError::Network(format!("Certificate file not found: {}", cert_path)));
+            return Err(NetworkingError::Network(format!("Certificate file not found: {}", cert_path)));
         }
 
-        // Check if the key file exists
         if !std::path::Path::new(key_path).exists() {
-            return Err(IcnError::Network(format!("Key file not found: {}", key_path)));
+            return Err(NetworkingError::Network(format!("Key file not found: {}", key_path)));
         }
 
-        // Open and read the certificate file
-        let mut cert_file = File::open(cert_path)
-            .map_err(|e| IcnError::Network(format!("Failed to open certificate file: {}", e)))?;
+        let mut cert_file = File::open(cert_path)?;
         let mut cert = Vec::new();
-        cert_file.read_to_end(&mut cert)
-            .map_err(|e| IcnError::Network(format!("Failed to read certificate file: {}", e)))?;
+        cert_file.read_to_end(&mut cert)?;
 
-        // Open and read the key file
-        let mut key_file = File::open(key_path)
-            .map_err(|e| IcnError::Network(format!("Failed to open key file: {}", e)))?;
+        let mut key_file = File::open(key_path)?;
         let mut key = Vec::new();
-        key_file.read_to_end(&mut key)
-            .map_err(|e| IcnError::Network(format!("Failed to read key file: {}", e)))?;
+        key_file.read_to_end(&mut key)?;
 
-        // Load the identity from the certificate and key
-        let identity = Identity::from_pkcs8(&cert, &key)
-            .map_err(|e| IcnError::Network(format!("Failed to load TLS identity: {}", e)))?;
+        let identity = Identity::from_pkcs8(&cert, &key)?;
 
         Ok(Arc::new(identity))
     }
@@ -269,37 +276,24 @@ impl Networking {
     ///
     /// # Returns
     ///
-    /// * `IcnResult<()>` - An empty result indicating success, or an error if starting the server fails.
-    ///
-    /// # Errors
-    ///
-    /// * `IcnError::Network` - If there's an error creating the TLS acceptor, binding to the address, or accepting a TCP connection.
-    pub async fn start_server(&mut self, address: &str, identity: Arc<Identity>) -> IcnResult<()> {
-        // Store the identity for future use
+    /// * `NetworkingResult<()>` - An empty result indicating success, or an error if starting the server fails.
+    pub async fn start_server(&mut self, address: &str, identity: Arc<Identity>) -> NetworkingResult<()> {
         self.identity = Some(identity.clone());
 
-        // Create a TLS acceptor from the identity
         let acceptor = TlsAcceptor::from(
-            native_tls::TlsAcceptor::new(identity.as_ref().clone())
-                .map_err(|e| IcnError::Network(format!("Failed to create TLS acceptor: {}", e)))?
+            native_tls::TlsAcceptor::new(identity.as_ref().clone())?
         );
 
-        // Bind a TCP listener to the specified address
-        let listener = TcpListener::bind(address).await
-            .map_err(|e| IcnError::Network(format!("Failed to bind to address: {}", e)))?;
+        let listener = TcpListener::bind(address).await?;
         info!("Server started on {}", address);
 
-        // Accept incoming connections in a loop
         loop {
             match listener.accept().await {
                 Ok((stream, _)) => {
-                    // Clone necessary data for the spawned task
                     let acceptor = acceptor.clone();
                     let peers = Arc::clone(&self.peers);
 
-                    // Spawn a task to handle the client connection
                     tokio::spawn(async move {
-                        // Handle the client connection and log any errors
                         if let Err(e) = handle_client_connection(stream, acceptor, peers, None).await {
                             error!("Error handling client: {:?}", e);
                         }
@@ -318,32 +312,20 @@ impl Networking {
     ///
     /// # Returns
     ///
-    /// * `IcnResult<()>` - An empty result indicating success, or an error if the connection fails.
-    ///
-    /// # Errors
-    ///
-    /// * `IcnError::Network` - If there's an error creating the TLS connector, connecting to the peer, establishing the TLS connection, or acquiring the peers lock.
-    pub async fn connect_to_peer(&self, address: &str) -> IcnResult<()> {
-        // Create a TLS connector
+    /// * `NetworkingResult<()>` - An empty result indicating success, or an error if the connection fails.
+    pub async fn connect_to_peer(&self, address: &str) -> NetworkingResult<()> {
         let connector = TlsConnector::from(
-            native_tls::TlsConnector::new()
-                .map_err(|e| IcnError::Network(format!("Failed to create TLS connector: {}", e)))?
+            native_tls::TlsConnector::new()?
         );
 
-        // Connect a TCP stream to the peer address
-        let stream = TcpStream::connect(address).await
-            .map_err(|e| IcnError::Network(format!("Failed to connect to peer: {}", e)))?;
+        let stream = TcpStream::connect(address).await?;
 
-        // Establish a TLS connection over the TCP stream
-        let tls_stream = connector.connect(address, stream).await
-            .map_err(|e| IcnError::Network(format!("Failed to establish TLS connection: {}", e)))?;
+        let tls_stream = connector.connect(address, stream).await?;
 
-        // Wrap the TLS stream in an Arc<Mutex> for shared, asynchronous access
-        let tls_stream = Arc::new(Mutex::new(tls_stream));
+        let tls_stream = Arc::new(FuturesMutex::new(tls_stream));
 
-        // Add the new peer to the list of connected peers
         {
-            let mut peers_guard = self.peers.write().map_err(|_| IcnError::Network("Failed to acquire peers lock".to_string()))?;
+            let mut peers_guard = self.peers.write().map_err(|_| NetworkingError::Lock)?;
             peers_guard.push(tls_stream.clone());
         }
 
@@ -359,24 +341,16 @@ impl Networking {
     ///
     /// # Returns
     ///
-    /// * `IcnResult<()>` - An empty result indicating success, or an error if broadcasting fails.
-    ///
-    /// # Errors
-    ///
-    /// * `IcnError::Network` - If there's an error acquiring the peers lock or sending the message to a peer.
-    pub async fn broadcast_message(&self, message: &str) -> IcnResult<()> {
-        // Collect all peers in a temporary vector to avoid holding the lock while sending messages
+    /// * `NetworkingResult<()>` - An empty result indicating success, or an error if broadcasting fails.
+    pub async fn broadcast_message(&self, message: &str) -> NetworkingResult<()> {
         let peers_snapshot = {
-            let peers = self.peers.read().map_err(|_| IcnError::Network("Failed to acquire peers lock".to_string()))?;
+            let peers = self.peers.read().map_err(|_| NetworkingError::Lock)?;
             peers.clone()
         };
 
-        // Iterate over the snapshot of peers and send the message to each one
         for peer in peers_snapshot.iter() {
             let mut locked_peer = peer.lock().await;
-            // Attempt to write the message to the peer, handling potential errors
             if let Err(e) = locked_peer.write_all(message.as_bytes()).await {
-                // Log the error and remove the peer from the list if the write fails
                 error!("Failed to send message to peer: {}", e);
                 if let Err(e) = self.remove_peer(peer).await {
                     error!("Failed to remove peer: {:?}", e);
@@ -394,13 +368,9 @@ impl Networking {
     ///
     /// # Returns
     ///
-    /// * `IcnResult<()>` - An empty result indicating success, or an error if the removal fails.
-    ///
-    /// # Errors
-    ///
-    /// * `IcnError::Network` - If there's an error acquiring the peers lock.
-    async fn remove_peer(&self, peer: &Arc<Mutex<tokio_native_tls::TlsStream<TcpStream>>>) -> IcnResult<()> {
-        let mut peers = self.peers.write().map_err(|_| IcnError::Network("Failed to acquire peers lock".to_string()))?;
+    /// * `NetworkingResult<()>` - An empty result indicating success, or an error if the removal fails.
+    async fn remove_peer(&self, peer: &Arc<FuturesMutex<tokio_native_tls::TlsStream<TcpStream>>>) -> NetworkingResult<()> {
+        let mut peers = self.peers.write().map_err(|_| NetworkingError::Lock)?;
         peers.retain(|p| !Arc::ptr_eq(p, peer));
         warn!("Removed disconnected peer");
         Ok(())
@@ -410,21 +380,17 @@ impl Networking {
     ///
     /// # Returns
     ///
-    /// * `IcnResult<()>` - An empty result indicating success or an error if stopping fails.
-    pub async fn stop(&self) -> IcnResult<()> {
-        // Acquire a write lock on the list of peers to modify it
-        let mut peers = self.peers.write().map_err(|_| IcnError::Network("Failed to acquire peers lock".to_string()))?;
+    /// * `NetworkingResult<()>` - An empty result indicating success or an error if stopping fails.
+    pub async fn stop(&self) -> NetworkingResult<()> {
+        let mut peers = self.peers.write().map_err(|_| NetworkingError::Lock)?;
 
-        // Iterate over the peers and attempt to shut down each connection
         for peer in peers.iter() {
             let mut locked_peer = peer.lock().await;
             if let Err(e) = locked_peer.shutdown().await {
-                // Log an error if shutting down a peer connection fails
                 error!("Failed to close peer connection: {:?}", e);
             }
         }
 
-        // Clear the list of peers after disconnecting them
         peers.clear();
         info!("Networking component stopped.");
         Ok(())
@@ -443,27 +409,22 @@ impl Networking {
 ///
 /// # Returns
 ///
-/// * `IcnResult<()>` - An empty result indicating success or an error if the connection fails.
+/// * `NetworkingResult<()>` - An empty result indicating success or an error if the connection fails.
 async fn handle_client_connection(
     stream: TcpStream,
     acceptor: TlsAcceptor,
-    peers: Arc<RwLock<Vec<Arc<Mutex<tokio_native_tls::TlsStream<TcpStream>>>>>>,
+    peers: Arc<RwLock<Vec<Arc<FuturesMutex<tokio_native_tls::TlsStream<TcpStream>>>>>>,
     _custom_arg: Option<()>
-) -> IcnResult<()> {
-    // Accept the TLS connection from the incoming TCP stream
-    let tls_stream = acceptor.accept(stream).await
-        .map_err(|e| IcnError::Network(format!("Failed to accept TLS connection: {:?}", e)))?;
+) -> NetworkingResult<()> {
+    let tls_stream = acceptor.accept(stream).await?;
 
-    // Wrap the TLS stream in an Arc<Mutex> for shared, asynchronous access
-    let tls_stream = Arc::new(Mutex::new(tls_stream));
+    let tls_stream = Arc::new(FuturesMutex::new(tls_stream));
 
-    // Add the new peer to the list of connected peers
     {
-        let mut peers_guard = peers.write().map_err(|_| IcnError::Network("Failed to acquire peers lock".to_string()))?;
+        let mut peers_guard = peers.write().map_err(|_| NetworkingError::Lock)?;
         peers_guard.push(tls_stream.clone());
     }
 
-    // Handle communication with the connected client
     handle_client(tls_stream, peers).await
 }
 
@@ -476,50 +437,39 @@ async fn handle_client_connection(
 ///
 /// # Returns
 ///
-/// * `IcnResult<()>` - An empty result indicating success or an error if the connection fails.
+/// * `NetworkingResult<()>` - An empty result indicating success or an error if the connection fails.
 async fn handle_client(
-    stream: Arc<Mutex<tokio_native_tls::TlsStream<TcpStream>>>,
-    peers: Arc<RwLock<Vec<Arc<Mutex<tokio_native_tls::TlsStream<TcpStream>>>>>>,
-) -> IcnResult<()> {
+    stream: Arc<FuturesMutex<tokio_native_tls::TlsStream<TcpStream>>>,
+    peers: Arc<RwLock<Vec<Arc<FuturesMutex<tokio_native_tls::TlsStream<TcpStream>>>>>>,
+) -> NetworkingResult<()> {
     let mut buffer = [0; 1024];
 
     loop {
-        // Acquire a lock on the TLS stream to read from it
         let mut locked_stream = stream.lock().await;
 
-        // Attempt to read data from the stream into the buffer
         match locked_stream.read(&mut buffer).await {
-            // Connection closed gracefully by the peer
             Ok(0) => {
                 info!("Peer disconnected gracefully");
                 break;
             }
-            // Data successfully read from the stream
             Ok(n) => {
-                // Convert the read bytes into a UTF-8 string (lossy conversion)
                 let message = String::from_utf8_lossy(&buffer[..n]);
                 info!("Received message: {}", message);
-
                 // TODO: Process the received message here
             }
-            // An error occurred while reading from the stream
             Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                // This is not a real error, just indicates no data is currently available
-                continue; 
+                continue;
             }
-            // Other errors
             Err(e) => {
-                // Log the error and break the loop to disconnect the peer
                 error!("Error reading from stream: {:?}", e);
                 break;
             }
         }
     }
 
-    // Remove the disconnected peer from the list of peers
     {
-        let mut peers = peers.write().map_err(|_| IcnError::Network("Failed to acquire peers lock".to_string()))?;
-        peers.retain(|p| !Arc::ptr_eq(p, &stream));
+        let mut peers_guard = peers.write().map_err(|_| NetworkingError::Lock)?;
+        peers_guard.retain(|p| !Arc::ptr_eq(p, &stream));
         warn!("Removed disconnected peer");
     }
 
@@ -3192,6 +3142,95 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "00b0228411908ca8685dba7fc2cdd70ec9990a6e753e89b6ac91a84c40fbaf4b"
 
 [[package]]
+name = "futures"
+version = "0.3.30"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "645c6916888f6cb6350d2550b80fb63e734897a8498abe35cfb732b6487804b0"
+dependencies = [
+ "futures-channel",
+ "futures-core",
+ "futures-executor",
+ "futures-io",
+ "futures-sink",
+ "futures-task",
+ "futures-util",
+]
+
+[[package]]
+name = "futures-channel"
+version = "0.3.30"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eac8f7d7865dcb88bd4373ab671c8cf4508703796caa2b1985a9ca867b3fcb78"
+dependencies = [
+ "futures-core",
+ "futures-sink",
+]
+
+[[package]]
+name = "futures-core"
+version = "0.3.30"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dfc6580bb841c5a68e9ef15c77ccc837b40a7504914d52e47b8b0e9bbda25a1d"
+
+[[package]]
+name = "futures-executor"
+version = "0.3.30"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a576fc72ae164fca6b9db127eaa9a9dda0d61316034f33a0a0d4eda41f02b01d"
+dependencies = [
+ "futures-core",
+ "futures-task",
+ "futures-util",
+]
+
+[[package]]
+name = "futures-io"
+version = "0.3.30"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a44623e20b9681a318efdd71c299b6b222ed6f231972bfe2f224ebad6311f0c1"
+
+[[package]]
+name = "futures-macro"
+version = "0.3.30"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "87750cf4b7a4c0625b1529e4c543c2182106e4dedc60a2a6455e00d212c489ac"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "futures-sink"
+version = "0.3.30"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9fb8e00e87438d937621c1c6269e53f536c14d3fbd6a042bb24879e57d474fb5"
+
+[[package]]
+name = "futures-task"
+version = "0.3.30"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "38d84fa142264698cdce1a9f9172cf383a0c82de1bddcf3092901442c4097004"
+
+[[package]]
+name = "futures-util"
+version = "0.3.30"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3d6401deb83407ab3da39eba7e33987a73c3df0c82b4bb5813ee871c19c41d48"
+dependencies = [
+ "futures-channel",
+ "futures-core",
+ "futures-io",
+ "futures-macro",
+ "futures-sink",
+ "futures-task",
+ "memchr",
+ "pin-project-lite",
+ "pin-utils",
+ "slab",
+]
+
+[[package]]
 name = "generic-array"
 version = "0.14.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3336,17 +3375,26 @@ version = "0.1.0"
 name = "icn_identity"
 version = "0.1.0"
 dependencies = [
+ "icn_blockchain",
+ "icn_governance",
  "icn_shared",
+ "icn_smart_contracts",
+ "serde",
+ "tokio",
 ]
 
 [[package]]
 name = "icn_networking"
 version = "0.1.0"
 dependencies = [
+ "futures",
  "icn_shared",
  "log",
  "native-tls",
+ "serde",
+ "serde_json",
  "tempfile",
+ "thiserror",
  "tokio",
  "tokio-native-tls",
 ]
@@ -3695,6 +3743,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bda66fc9667c18cb2758a2ac84d1167245054bcf85d5d1aaa6923f45801bdd02"
 
 [[package]]
+name = "pin-utils"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8b870d8c151b6f2fb93e84a13146138f05d02ed11c7e7c54f8826aaaf7c9f184"
+
+[[package]]
 name = "pkg-config"
 version = "0.3.30"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3935,6 +3989,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a9e9e0b4211b72e7b8b6e85c807d36c212bdb33ea8587f7569562a84df5465b1"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "slab"
+version = "0.4.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8f92a496fb766b417c996b9c5e57daf2f7ad3b0bebe1ccfca4856390e3d3bb67"
+dependencies = [
+ "autocfg",
 ]
 
 [[package]]
@@ -5496,8 +5559,24 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+# Shared types and utilities used across the ICN project
 icn_shared = { path = "../icn_shared" }
 
+# Blockchain-related functionalities like DID registration and transactions
+icn_blockchain = { path = "../icn_blockchain" }
+
+# Governance module for reputation and voting systems
+icn_governance = { path = "../icn_governance" }
+
+# Smart contract engine for executing contracts related to identity and access control
+icn_smart_contracts = { path = "../icn_smart_contracts" }
+
+
+# Serialization and deserialization support
+serde = { version = "1.0", features = ["derive"] }
+
+# Synchronization primitives like Arc and RwLock
+tokio = { version = "1", features = ["full"] }
 
 
 
