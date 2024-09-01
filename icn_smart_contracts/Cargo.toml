@@ -4,3 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+icn_shared = { path = "../icn_shared" }
+icn_virtual_machine = { path = "../icn_virtual_machine" }
+thiserror = "1.0"
+
+

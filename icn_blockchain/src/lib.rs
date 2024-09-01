@@ -1,5 +1,3 @@
-// File: icn_blockchain/src/lib.rs
-
 use std::sync::{Arc, RwLock};
 use icn_shared::{Block, IcnError, IcnResult};
 use icn_consensus::Consensus;
@@ -100,13 +98,13 @@ impl<C: Consensus> Blockchain<C> {
                 self.vm.execute(bytecode)?;
                 Ok(())
             }
-            TransactionType::ExecuteContract { contract_id, method, params } => {
+            TransactionType::SmartContractExecution { contract_id, method, params } => {
                 // Execute the smart contract method using the VM
                 let bytecode = self.vm.prepare_execution(contract_id, method, params)?;
                 self.vm.execute(bytecode)?;
                 Ok(())
             }
-            TransactionType::ValidateProof { proof_id, data } => {
+            TransactionType::ProofValidation { proof_id, data } => {
                 // Implement proof validation logic
                 self.validate_proof(proof_id, data)?;
                 Ok(())
@@ -134,7 +132,7 @@ impl<C: Consensus> Blockchain<C> {
         Ok(())
     }
 
-/// Validates a proof submitted to the blockchain.
+    /// Validates a proof submitted to the blockchain.
     ///
     /// # Arguments
     ///

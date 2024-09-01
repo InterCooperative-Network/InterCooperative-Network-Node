@@ -1,5 +1,3 @@
-// icn_blockchain/src/chain/mod.rs
-
 use std::sync::{Arc, RwLock};
 use icn_shared::{Block, IcnError, IcnResult};
 use icn_consensus::Consensus;
@@ -7,7 +5,7 @@ use rand::rngs::OsRng;
 use rand::Rng;
 
 /// Represents a validator in the blockchain network.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Validator {
     /// The unique identifier of the validator.
     id: String,
@@ -195,7 +193,7 @@ impl<C: Consensus> Chain<C> {
         if selected_validators.is_empty() {
             Err(IcnError::Consensus("No validators selected".to_string()))
         } else {
-            Ok(selected_validators)
+            Ok(selected_validators.into_iter().collect())
         }
     }
 

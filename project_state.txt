@@ -1047,8 +1047,6 @@ pub use transaction::{Transaction, TransactionType};
 
 
 === ./icn_blockchain/src/transaction/transaction.rs ===
-// icn_blockchain/src/transaction/transaction.rs
-
 use serde::{Serialize, Deserialize};
 use icn_shared::{IcnError, IcnResult};
 
@@ -1371,6 +1369,7 @@ mod tests {
 }
 
 
+
 === ./icn_blockchain/src/transaction/transaction_type.rs ===
 // File Location: icn_blockchain/src/transaction/transaction_type.rs
 
@@ -1430,8 +1429,6 @@ impl TransactionType {
 
 
 === ./icn_blockchain/src/lib.rs ===
-// File: icn_blockchain/src/lib.rs
-
 use std::sync::{Arc, RwLock};
 use icn_shared::{Block, IcnError, IcnResult};
 use icn_consensus::Consensus;
@@ -1532,13 +1529,13 @@ impl<C: Consensus> Blockchain<C> {
                 self.vm.execute(bytecode)?;
                 Ok(())
             }
-            TransactionType::ExecuteContract { contract_id, method, params } => {
+            TransactionType::SmartContractExecution { contract_id, method, params } => {
                 // Execute the smart contract method using the VM
                 let bytecode = self.vm.prepare_execution(contract_id, method, params)?;
                 self.vm.execute(bytecode)?;
                 Ok(())
             }
-            TransactionType::ValidateProof { proof_id, data } => {
+            TransactionType::ProofValidation { proof_id, data } => {
                 // Implement proof validation logic
                 self.validate_proof(proof_id, data)?;
                 Ok(())
@@ -1566,7 +1563,7 @@ impl<C: Consensus> Blockchain<C> {
         Ok(())
     }
 
-/// Validates a proof submitted to the blockchain.
+    /// Validates a proof submitted to the blockchain.
     ///
     /// # Arguments
     ///
@@ -1622,9 +1619,8 @@ mod tests {
 }
 
 
-=== ./icn_blockchain/src/chain/mod.rs ===
-// icn_blockchain/src/chain/mod.rs
 
+=== ./icn_blockchain/src/chain/mod.rs ===
 use std::sync::{Arc, RwLock};
 use icn_shared::{Block, IcnError, IcnResult};
 use icn_consensus::Consensus;
@@ -1632,7 +1628,7 @@ use rand::rngs::OsRng;
 use rand::Rng;
 
 /// Represents a validator in the blockchain network.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Validator {
     /// The unique identifier of the validator.
     id: String,
@@ -1820,7 +1816,7 @@ impl<C: Consensus> Chain<C> {
         if selected_validators.is_empty() {
             Err(IcnError::Consensus("No validators selected".to_string()))
         } else {
-            Ok(selected_validators)
+            Ok(selected_validators.into_iter().collect())
         }
     }
 
@@ -1970,6 +1966,7 @@ mod tests {
 
     // Add more tests for stake_weighted_vote, select_validators, etc.
 }
+
 
 
 === ./.github/workflows/ci.yml ===
@@ -4670,6 +4667,11 @@ dependencies = [
 [[package]]
 name = "icn_smart_contracts"
 version = "0.1.0"
+dependencies = [
+ "icn_shared",
+ "icn_virtual_machine",
+ "thiserror",
+]
 
 [[package]]
 name = "icn_storage"
@@ -7657,6 +7659,11 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+icn_shared = { path = "../icn_shared" }
+icn_virtual_machine = { path = "../icn_virtual_machine" }
+thiserror = "1.0"
+
+
 
 
 
@@ -7777,8 +7784,6 @@ impl SmartContract {
 
 
 === ./icn_smart_contracts/src/lib.rs ===
-// File: icn_smart_contracts/src/lib.rs
-
 use std::collections::HashMap;
 use icn_shared::{IcnError, IcnResult};
 use icn_virtual_machine::{Bytecode, VirtualMachine};
@@ -7937,8 +7942,8 @@ impl SmartContractEngine {
     ///
     /// Compiled bytecode, or an error if compilation fails
     fn compile_contract(&self, code: &str) -> SmartContractResult<Bytecode> {
-        // TODO: Implement actual compilation logic
-        // For now, we'll return a placeholder bytecode
+        // Placeholder for actual compilation logic
+        // Return dummy bytecode for now
         Ok(Bytecode::new(vec![0, 1, 2, 3]))
     }
 
@@ -7953,8 +7958,8 @@ impl SmartContractEngine {
     ///
     /// Encoded function call as bytecode, or an error if encoding fails
     fn encode_function_call(&self, function: &str, args: Vec<String>) -> SmartContractResult<Vec<u8>> {
-        // TODO: Implement actual function call encoding
-        // For now, we'll return a placeholder encoding
+        // Placeholder for actual function call encoding
+        // Return dummy encoding for now
         Ok(vec![0, 1, 2, 3])
     }
 
@@ -7964,8 +7969,8 @@ impl SmartContractEngine {
     ///
     /// The result of the VM execution as a string, or an error if retrieval fails
     fn get_vm_result(&self) -> SmartContractResult<String> {
-        // TODO: Implement actual result retrieval from the VM
-        // For now, we'll return a placeholder result
+        // Placeholder for actual result retrieval from the VM
+        // Return dummy result for now
         Ok("Function executed successfully".to_string())
     }
 }
@@ -8001,6 +8006,7 @@ mod tests {
         assert!(matches!(result, Err(SmartContractError::ContractNotFound(1))));
     }
 }
+
 
 
 === ./icn_smart_contracts/src/standard_library.rs ===
