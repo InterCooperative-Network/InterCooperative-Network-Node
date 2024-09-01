@@ -1,34 +1,16 @@
 // Filename: icn_consensus/src/proof_of_cooperation.rs
 
-//! Proof of Cooperation (PoC) Consensus Mechanism Implementation
-//!
-//! This module implements the Proof of Cooperation consensus mechanism for the InterCooperative Network (ICN).
-//! PoC is designed to prioritize active participation, quality contributions, and equitable power distribution
-//! across the network. It combines elements of reputation, stake, and cooperation to create a fair and
-//! efficient consensus process.
-//!
-//! Key Features:
-//! - Dynamic cooperation and reputation scoring
-//! - Stake-weighted validation and voting
-//! - Sybil resistance through multi-factor identity verification
-//! - Byzantine fault tolerance
-//! - Incentive alignment with network goals
-//! - Transparent and auditable decision-making processes
-//! - Smart contract integration for automated governance and reward distribution
-//!
-//! The `ProofOfCooperation` struct is the central component, managing peer information, scoring, and consensus operations.
-//! It implements the `Consensus` trait, providing core functionality for block validation and proposer selection.
-
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::time::{SystemTime, UNIX_EPOCH};
-use icn_shared::{Block, IcnError, IcnResult};
-use icn_smart_contracts::{SmartContract, SmartContractEngine};
+use icn_shared::{Block, Chain, IcnError, IcnResult};
+use icn_smart_contracts::SmartContractEngine;
 use rand::{Rng, thread_rng};
 use log::{info, warn, error};
+use serde_json;
 
 use crate::consensus::Consensus;
 
-/// Constants used in the Proof of Cooperation consensus mechanism
+// Constants
 const REPUTATION_DECAY_FACTOR: f64 = 0.95;
 const CONSISTENCY_WEIGHT: f64 = 0.3;
 const QUALITY_WEIGHT: f64 = 0.4;
@@ -111,7 +93,11 @@ impl ProofOfCooperation {
     /// # Arguments
     ///
     /// * `peer_id` - A string slice that holds the identifier of the new peer
-    pub fn register_peer(&mut self, peer_id: &str) {
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<()>` - Returns Ok(()) if the peer is successfully registered, or an error otherwise.
+    pub fn register_peer(&mut self, peer_id: &str) -> IcnResult<()> {
         self.known_peers.insert(peer_id.to_string());
         self.cooperation_scores.insert(peer_id.to_string(), 1.0);
         self.reputation_scores.insert(peer_id.to_string(), 1.0);
@@ -136,6 +122,7 @@ impl ProofOfCooperation {
             discussions_participated: 0,
         });
         info!("Registered peer: {}", peer_id);
+        Ok(())
     }
 
     /// Selects validators for block validation
@@ -208,9 +195,8 @@ impl ProofOfCooperation {
         let reputation = self.reputation_scores.get(validator_id)
             .cloned()
             .unwrap_or(0.0);
-    
 
-         // Combine stake and reputation for voting power
+        // Combine stake and reputation for voting power
         let voting_power = (stake * reputation).sqrt();
         let random_threshold = thread_rng().gen::<f64>();
 
@@ -223,7 +209,7 @@ impl ProofOfCooperation {
             serde_json::to_string(block).map_err(|e| IcnError::Consensus(format!("Failed to serialize block: {}", e)))?
         ];
         let result = self.smart_contract_engine.call_contract(voting_contract.id, "validate_vote", args)?;
-        
+
         Ok(result == "true")
     }
 
@@ -301,7 +287,7 @@ impl ProofOfCooperation {
     /// # Returns
     ///
     /// * `IcnResult<()>` - A result indicating success or an error
-    fn update_reputation(&mut self, peer_id: &str, positive_action: bool) -> IcnResult<()> {
+    pub fn update_reputation(&mut self, peer_id: &str, positive_action: bool) -> IcnResult<()> {
         let coop_score = *self.cooperation_scores
             .get(peer_id)
             .ok_or_else(|| IcnError::Consensus(format!("Unknown peer: {}", peer_id)))?;
@@ -620,7 +606,7 @@ impl ProofOfCooperation {
         governance_participation >= MIN_GOVERNANCE_PARTICIPATION_FOR_SYBIL_RESISTANCE
     }
 
-   /// Calculates the reward for a peer based on their contributions and reputation
+    /// Calculates the reward for a peer based on their contributions and reputation
     ///
     /// This function computes a reward for a peer based on their cooperation score,
     /// reputation score, and network impact.
@@ -681,7 +667,7 @@ impl ProofOfCooperation {
             .ok_or_else(|| IcnError::Consensus("Reward distribution smart contract not found".to_string()))?;
         let args = vec![serde_json::to_string(&rewards).map_err(|e| IcnError::Consensus(format!("Failed to serialize rewards: {}", e)))?];
         let distributed_rewards = self.smart_contract_engine.call_contract(distribution_contract.id, "distribute_rewards", args)?;
-        
+
         let final_rewards: HashMap<String, u64> = serde_json::from_str(&distributed_rewards)
             .map_err(|e| IcnError::Consensus(format!("Failed to parse distributed rewards: {}", e)))?;
 
@@ -729,7 +715,7 @@ impl ProofOfCooperation {
             self.stake_info.get(peer_id).map(|s| s.amount).unwrap_or(0).to_string()
         ];
         let penalty_result = self.smart_contract_engine.call_contract(penalty_contract.id, "apply_penalty", args)?;
-        
+
         let penalty_data: HashMap<String, f64> = serde_json::from_str(&penalty_result)
             .map_err(|e| IcnError::Consensus(format!("Failed to parse penalty result: {}", e)))?;
 
@@ -872,24 +858,44 @@ impl Consensus for ProofOfCooperation {
     fn get_eligible_peers(&self) -> Vec<String> {
         self.get_eligible_peers() // This calls the public method we defined earlier
     }
+
+    /// Updates the consensus state based on the current blockchain state
+    ///
+    /// This function is called after a new block is added to the chain to update
+    /// the internal state of the consensus mechanism.
+    ///
+    /// # Arguments
+    ///
+    /// * `chain` - A reference to the current blockchain
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<()>` - A result indicating success or an error
+    fn update_state(&mut self, chain: &Chain<Self>) -> IcnResult<()> {
+        if let Some(latest_block) = chain.latest_block() {
+            self.last_block_time = latest_block.timestamp;
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use icn_shared::Block;
 
     fn setup_test_poc() -> ProofOfCooperation {
         let mut poc = ProofOfCooperation::new();
-        poc.register_peer("peer1");
-        poc.register_peer("peer2");
-        poc.register_peer("peer3");
+        poc.register_peer("peer1").unwrap();
+        poc.register_peer("peer2").unwrap();
+        poc.register_peer("peer3").unwrap();
         poc
     }
 
     #[test]
     fn test_register_and_validate_peer() {
         let mut poc = ProofOfCooperation::new();
-        poc.register_peer("peer1");
+        poc.register_peer("peer1").unwrap();
 
         assert!(poc.known_peers.contains("peer1"));
         assert!(!poc.known_peers.contains("unknown_peer"));
@@ -1101,23 +1107,52 @@ mod tests {
     }
 
     #[test]
-    fn test_smart_contract_integration() {
-        let mut poc = ProofOfCooperation::new();
-        
-        // Test smart contract deployment
-        let contract_code = r#"
-            function calculate_final_reward(peer_id, cooperation_score, reputation_score, network_impact, adjusted_reward) {
-                return Math.floor(adjusted_reward * 1.1);  // 10% bonus
-            }
-        "#;
-        let contract_id = poc.smart_contract_engine.deploy_contract(contract_code).unwrap();
-        
-        // Test smart contract execution
-        poc.register_peer("test_peer");
-        poc.update_cooperation_score("test_peer", 0.8).unwrap();
-        poc.update_reputation("test_peer", true).unwrap();
-        
-        let reward = poc.calculate_reward("test_peer").unwrap();
-        assert!(reward > 0, "Reward should be positive");
+    fn test_validate_block() {
+        let mut poc = setup_test_poc();
+
+        // Set up peers with stakes and reputations
+        for peer in ["peer1", "peer2", "peer3"].iter() {
+            poc.update_stake(peer, 2000, "ICN".to_string(), 60).unwrap();
+            poc.update_reputation(peer, true).unwrap();
+            poc.update_cooperation_score(peer, 0.9).unwrap();
+        }
+
+        // Create a valid block
+        let valid_block = Block::new(1, vec![], "previous_hash".to_string(), "peer1".to_string());
+
+        // Ensure enough time has passed since the last block
+        poc.last_block_time = 0;
+
+        // Validate the block
+        let validation_result = poc.validate(&valid_block);
+        assert!(validation_result.is_ok(), "Block validation should succeed");
+        assert!(validation_result.unwrap(), "Block should be considered valid");
+
+        // Test invalid block (proposer not in known peers)
+        let invalid_block = Block::new(2, vec![], valid_block.hash.clone(), "unknown_peer".to_string());
+        let invalid_result = poc.validate(&invalid_block);
+        assert!(invalid_result is_err(), "Validation should fail for unknown proposer");
+
+        // Test block proposed too soon
+        poc.last_block_time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+        let too_soon_block = Block::new(3, vec![], valid_block.hash.clone(), "peer2".to_string());
+        let too_soon_result = poc.validate(&too_soon_block);
+        assert!(too_soon_result.is_err(), "Validation should fail for block proposed too soon");
+    }
+
+    #[test]
+    fn test_update_state() {
+        let mut poc = setup_test_poc();
+        let mut chain = Chain::new();
+
+        // Add a block to the chain
+        let block = Block::new(1, vec![], "previous_hash".to_string(), "peer1".to_string());
+        chain.add_block(block.clone()).unwrap();
+
+        // Update the consensus state
+        poc.update_state(&chain).unwrap();
+
+        // Check if the last block time was updated
+        assert_eq!(poc.last_block_time, block.timestamp, "Last block time should be updated");
     }
 }

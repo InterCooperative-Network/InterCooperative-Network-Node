@@ -1,3 +1,7 @@
+// File: icn_blockchain/src/chain/mod.rs
+// Description: This file defines the Chain structure for the blockchain, 
+//              including functions to manage blocks, validators, and consensus.
+
 use std::sync::{Arc, RwLock};
 use icn_shared::{Block, IcnError, IcnResult};
 use icn_consensus::Consensus;
@@ -341,5 +345,5 @@ mod tests {
         assert!(chain.update_validator("non_existent", 100, 0.9, 0.9, 0.9).is_err());
     }
 
-    // Add more tests for stake_weighted_vote, select_validators, etc.
+    // Additional tests for stake_weighted_vote, select_validators, etc.
 }

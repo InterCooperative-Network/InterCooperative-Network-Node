@@ -1,3 +1,6 @@
+// File: icn_smart_contracts/src/lib.rs
+// Description: This file defines the SmartContractEngine and SmartContract structures, handling operations like deployment and execution of smart contracts.
+
 use std::collections::HashMap;
 use icn_shared::{IcnError, IcnResult};
 use icn_virtual_machine::{Bytecode, VirtualMachine};
@@ -100,16 +103,16 @@ impl SmartContractEngine {
     ///
     /// The ID of the newly deployed contract, or an error if deployment fails
     pub fn deploy_contract(&mut self, code: &str) -> SmartContractResult<u32> {
-        // 1. Compile the contract code
+        // Compile the contract code
         let bytecode = self.compile_contract(code)?;
 
-        // 2. Create and store the smart contract
+        // Create and store the smart contract
         let id = self.contracts.len() as u32 + 1;
         let mut contract = SmartContract::new(id, code);
         contract.set_bytecode(bytecode.clone());
         self.contracts.insert(id, contract);
 
-        // 3. Deploy bytecode to the virtual machine
+        // Deploy bytecode to the virtual machine
         self.vm.execute(bytecode)
             .map_err(|e| SmartContractError::ExecutionError(e.to_string()))?;
 
@@ -128,20 +131,20 @@ impl SmartContractEngine {
     ///
     /// The result of the function call as a string, or an error if the call fails
     pub fn call_contract(&mut self, id: u32, function: &str, args: Vec<String>) -> SmartContractResult<String> {
-        // 1. Retrieve the contract
+        // Retrieve the contract
         let contract = self.contracts.get(&id)
             .ok_or_else(|| SmartContractError::ContractNotFound(id))?;
 
-        // 2. Prepare the function call
+        // Prepare the function call
         let call_data = self.encode_function_call(function, args)?;
 
-        // 3. Execute the function call on the VM
+        // Execute the function call on the VM
         let bytecode = contract.bytecode.clone()
             .ok_or_else(|| SmartContractError::ExecutionError("Contract bytecode not available".to_string()))?;
         self.vm.execute(bytecode)
             .map_err(|e| SmartContractError::ExecutionError(e.to_string()))?;
 
-        // 4. Retrieve and return the result from the VM
+        // Retrieve and return the result from the VM
         let result = self.get_vm_result()?;
         Ok(result)
     }

@@ -1,4 +1,5 @@
-// Filename: icn_shared/src/block.rs
+
+// File: icn_shared/src/block.rs
 
 use serde::{Serialize, Deserialize};
 use sha2::{Sha256, Digest};
