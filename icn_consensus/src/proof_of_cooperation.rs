@@ -208,7 +208,9 @@ impl ProofOfCooperation {
         let reputation = self.reputation_scores.get(validator_id)
             .cloned()
             .unwrap_or(0.0);
+    
 
+         // Combine stake and reputation for voting power
         let voting_power = (stake * reputation).sqrt();
         let random_threshold = thread_rng().gen::<f64>();
 
