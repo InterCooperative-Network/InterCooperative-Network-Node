@@ -1,16 +1,24 @@
 // icn_blockchain/src/chain/mod.rs
 
+use std::sync::{Arc, RwLock};
 use icn_shared::{Block, IcnError, IcnResult};
 use icn_consensus::Consensus;
-use std::sync::{Arc, Mutex};
+use rand::rngs::OsRng;
 use rand::Rng;
 
-/// The `Validator` struct represents a validator in the blockchain consensus process.
-/// It includes the stake, reputation, and methods for validation and voting.
+/// Represents a validator in the blockchain network.
 #[derive(Debug)]
-struct Validator {
-    stake: f64,
+pub struct Validator {
+    /// The unique identifier of the validator.
+    id: String,
+    /// The amount of stake the validator has in the network.
+    stake: u64,
+    /// The reputation score of the validator.
     reputation: f64,
+    /// The validator's uptime as a percentage.
+    uptime: f64,
+    /// The validator's past performance score.
+    past_performance: f64,
 }
 
 impl Validator {
@@ -18,46 +26,96 @@ impl Validator {
     ///
     /// # Arguments
     ///
-    /// * `stake` - The stake of the validator.
-    /// * `reputation` - The reputation of the validator.
-    fn new(stake: f64, reputation: f64) -> Self {
-        Validator { stake, reputation }
+    /// * `id` - The unique identifier of the validator.
+    /// * `stake` - The amount of stake the validator has.
+    /// * `reputation` - The reputation score of the validator.
+    /// * `uptime` - The validator's uptime as a percentage.
+    /// * `past_performance` - The validator's past performance score.
+    pub fn new(id: String, stake: u64, reputation: f64, uptime: f64, past_performance: f64) -> Self {
+        Validator {
+            id,
+            stake,
+            reputation,
+            uptime,
+            past_performance,
+        }
     }
 
     /// Validates a block based on the consensus rules.
     ///
     /// # Arguments
     ///
-    /// * `_block` - The block to validate.
+    /// * `block` - The block to validate.
     ///
     /// # Returns
     ///
     /// * `IcnResult<bool>` - Returns `Ok(true)` if the block is valid, otherwise returns an error.
-    fn validate(&self, _block: &Block) -> IcnResult<bool> {
-        // Placeholder logic; implement actual validation logic here
+    pub fn validate(&self, block: &Block) -> IcnResult<bool> {
+        // Implement comprehensive block validation logic
+        if !self.verify_block_hash(block) {
+            return Err(IcnError::Consensus("Invalid block hash".to_string()));
+        }
+
+        if !self.verify_transactions(block) {
+            return Err(IcnError::Consensus("Invalid transactions".to_string()));
+        }
+
+        if !self.verify_timestamp(block) {
+            return Err(IcnError::Consensus("Invalid timestamp".to_string()));
+        }
+
+        // Add more validation checks as needed
+
         Ok(true)
+    }
+
+    /// Verifies the block's hash.
+    fn verify_block_hash(&self, block: &Block) -> bool {
+        block.hash == block.calculate_hash()
+    }
+
+    /// Verifies the transactions in the block.
+    fn verify_transactions(&self, block: &Block) -> bool {
+        // Implement transaction verification logic
+        // This is a placeholder implementation
+        !block.transactions.is_empty()
+    }
+
+    /// Verifies the block's timestamp.
+    fn verify_timestamp(&self, block: &Block) -> bool {
+        // Implement timestamp verification logic
+        // This is a placeholder implementation
+        block.timestamp > 0
     }
 
     /// Casts a vote on a block.
     ///
     /// # Arguments
     ///
-    /// * `_block` - The block to vote on.
+    /// * `block` - The block to vote on.
     ///
     /// # Returns
     ///
     /// * `IcnResult<bool>` - Returns `Ok(true)` if the vote is positive, otherwise returns an error.
-    fn vote(&self, _block: &Block) -> IcnResult<bool> {
-        // Placeholder logic; implement actual voting logic here
-        Ok(true)
+    pub fn vote(&self, block: &Block) -> IcnResult<bool> {
+        // Implement voting logic based on validation and other criteria
+        if self.validate(block)? {
+            // Additional voting criteria can be added here
+            Ok(true)
+        } else {
+            Ok(false)
+        }
     }
 }
 
-/// The `Chain` struct represents the blockchain, which consists of a series of blocks.
-/// It manages the addition of new blocks, block validation, and access to the latest block.
+/// Represents the blockchain, which consists of a series of blocks.
 pub struct Chain<C: Consensus> {
+    /// The list of blocks in the chain.
     pub blocks: Vec<Block>,
-    pub consensus: Arc<Mutex<C>>,
+    /// The consensus mechanism used for the chain.
+    pub consensus: Arc<RwLock<C>>,
+    /// The list of active validators.
+    validators: Vec<Validator>,
 }
 
 impl<C: Consensus> Chain<C> {
@@ -70,10 +128,11 @@ impl<C: Consensus> Chain<C> {
     /// # Returns
     ///
     /// * `Chain<C>` - A new `Chain` instance.
-    pub fn new(consensus: Arc<Mutex<C>>) -> Self {
+    pub fn new(consensus: Arc<RwLock<C>>) -> Self {
         Chain {
             blocks: Vec::new(),
             consensus,
+            validators: Vec::new(),
         }
     }
 
@@ -81,24 +140,21 @@ impl<C: Consensus> Chain<C> {
     ///
     /// # Arguments
     ///
-    /// * `transactions` - A vector of transactions to include in the block.
-    /// * `previous_hash` - The hash of the previous block in the chain.
-    /// * `proposer_id` - The ID of the proposer of the block.
+    /// * `block` - The block to be added to the chain.
     ///
     /// # Returns
     ///
     /// * `IcnResult<()>` - Returns `Ok(())` if the block is successfully added,
     ///   or an `IcnError` if validation fails.
-    pub fn add_block(&mut self, transactions: Vec<String>, previous_hash: String, proposer_id: String) -> IcnResult<()> {
-        let index = self.blocks.len() as u64;
-
-        let new_block = Block::new(index, transactions, previous_hash, proposer_id);
-
-        // Validate the block using the consensus mechanism
-        let mut consensus = self.consensus.lock().expect("Failed to lock consensus for block validation");
-        consensus.validate(&new_block)?;
-        self.blocks.push(new_block);
-        Ok(())
+    pub fn add_block(&mut self, block: Block) -> IcnResult<()> {
+        let consensus = self.consensus.read().map_err(|_| IcnError::Consensus("Failed to acquire read lock on consensus".to_string()))?;
+        
+        if consensus.validate(&block)? {
+            self.blocks.push(block);
+            Ok(())
+        } else {
+            Err(IcnError::Consensus("Block validation failed".to_string()))
+        }
     }
 
     /// Returns the latest block in the blockchain.
@@ -111,56 +167,39 @@ impl<C: Consensus> Chain<C> {
         self.blocks.last()
     }
 
-    /// Selects validators for block validation based on the consensus mechanism.
+    /// Returns the number of blocks in the chain.
     ///
-    /// The selection process may involve factors such as stake, reputation, and recent activity.
+    /// # Returns
+    ///
+    /// * `usize` - The number of blocks in the chain.
+    pub fn block_count(&self) -> usize {
+        self.blocks.len()
+    }
+
+    /// Selects validators for block validation based on the consensus mechanism's rules.
     ///
     /// # Returns
     ///
     /// * `IcnResult<Vec<Validator>>` - Returns a vector of selected validators.
-    fn select_validators(&self) -> IcnResult<Vec<Validator>> {
-        let consensus = self.consensus.lock().expect("Failed to lock consensus for selecting validators");
-        let eligible_peers = consensus.get_eligible_peers();
-        let mut rng = rand::thread_rng();
+    pub fn select_validators(&self) -> IcnResult<Vec<Validator>> {
+        let mut rng = OsRng;
+        let mut selected_validators = Vec::new();
 
-        let validators: Vec<Validator> = eligible_peers
-            .iter()
-            .map(|_| {
-                let stake = rng.gen_range(0.5..1.5);
-                let reputation = rng.gen_range(0.5..1.5);
-                Validator::new(stake, reputation)
-            })
-            .collect();
-
-        Ok(validators)
-    }
-
-    /// Validates a block according to the consensus mechanism.
-    ///
-    /// This method ensures that the block meets the criteria set by the consensus mechanism, including
-    /// cooperation scores, reputation scores, and other factors.
-    ///
-    /// # Arguments
-    ///
-    /// * `block` - The block to validate.
-    ///
-    /// # Returns
-    ///
-    /// * `IcnResult<()>` - Returns `Ok(())` if the block is valid, otherwise returns an error.
-    pub fn validate_block(&self, block: &Block) -> IcnResult<()> {
-        let validators = self.select_validators()?;
-        for validator in validators {
-            let is_valid = validator.validate(block)?;
-            if !is_valid {
-                return Err(IcnError::Consensus("Block validation failed.".to_string()));
+        for validator in &self.validators {
+            let selection_score = validator.stake as f64 * validator.reputation * validator.uptime * validator.past_performance;
+            if rng.gen::<f64>() < selection_score {
+                selected_validators.push(validator.clone());
             }
         }
-        Ok(())
+
+        if selected_validators.is_empty() {
+            Err(IcnError::Consensus("No validators selected".to_string()))
+        } else {
+            Ok(selected_validators)
+        }
     }
 
     /// Performs stake-weighted voting on a block.
-    ///
-    /// Voting influence is proportional to the validator's stake and reputation, ensuring a fair and balanced decision.
     ///
     /// # Arguments
     ///
@@ -170,17 +209,139 @@ impl<C: Consensus> Chain<C> {
     ///
     /// * `IcnResult<bool>` - Returns `Ok(true)` if the vote passes, otherwise returns an error.
     pub fn stake_weighted_vote(&self, block: &Block) -> IcnResult<bool> {
-        let mut total_weight = 0.0;
-        let mut weighted_votes = 0.0;
-
         let validators = self.select_validators()?;
-        for validator in validators.iter() {
-            let weight = validator.stake + validator.reputation;
-            let vote = validator.vote(block)?;
-            total_weight += weight;
-            weighted_votes += (vote as u64) as f64 * weight;
+        let mut total_stake = 0u64;
+        let mut positive_stake = 0u64;
+
+        for validator in validators {
+            if validator.vote(block)? {
+                positive_stake += validator.stake;
+            }
+            total_stake += validator.stake;
         }
 
-        Ok(weighted_votes / total_weight > 0.5)
+        if total_stake == 0 {
+            return Err(IcnError::Consensus("No stake in voting validators".to_string()));
+        }
+
+        // Calculate the percentage of positive votes weighted by stake
+        let approval_percentage = (positive_stake as f64 / total_stake as f64) * 100.0;
+
+        // Require a 2/3 majority for the vote to pass
+        Ok(approval_percentage >= 66.67)
     }
+
+    /// Validates the integrity of the entire blockchain.
+    ///
+    /// # Returns
+    ///
+    /// * `bool` - Returns true if the blockchain is valid, otherwise false.
+    pub fn is_valid(&self) -> bool {
+        for i in 1..self.blocks.len() {
+            let current_block = &self.blocks[i];
+            let previous_block = &self.blocks[i - 1];
+
+            if current_block.previous_hash != previous_block.hash {
+                return false;
+            }
+
+            if !current_block.is_valid() {
+                return false;
+            }
+        }
+        true
+    }
+
+    /// Adds a new validator to the network.
+    ///
+    /// # Arguments
+    ///
+    /// * `validator` - The validator to add.
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<()>` - Returns Ok if the validator is successfully added, otherwise an error.
+    pub fn add_validator(&mut self, validator: Validator) -> IcnResult<()> {
+        if self.validators.iter().any(|v| v.id == validator.id) {
+            return Err(IcnError::Consensus("Validator already exists".to_string()));
+        }
+        self.validators.push(validator);
+        Ok(())
+    }
+
+    /// Updates a validator's information.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The ID of the validator to update.
+    /// * `stake` - The new stake amount.
+    /// * `reputation` - The new reputation score.
+    /// * `uptime` - The new uptime percentage.
+    /// * `past_performance` - The new past performance score.
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<()>` - Returns Ok if the validator is successfully updated, otherwise an error.
+    pub fn update_validator(&mut self, id: &str, stake: u64, reputation: f64, uptime: f64, past_performance: f64) -> IcnResult<()> {
+        if let Some(validator) = self.validators.iter_mut().find(|v| v.id == id) {
+            validator.stake = stake;
+            validator.reputation = reputation;
+            validator.uptime = uptime;
+            validator.past_performance = past_performance;
+            Ok(())
+        } else {
+            Err(IcnError::Consensus("Validator not found".to_string()))
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use icn_consensus::ProofOfCooperation;
+
+    fn create_test_block() -> Block {
+        Block::new(0, vec![], "genesis".to_string(), "test_proposer".to_string())
+    }
+
+    #[test]
+    fn test_chain_creation() {
+        let consensus = Arc::new(RwLock::new(ProofOfCooperation::new()));
+        let chain = Chain::new(consensus);
+        assert_eq!(chain.block_count(), 0);
+    }
+
+    #[test]
+    fn test_add_block() {
+        let consensus = Arc::new(RwLock::new(ProofOfCooperation::new()));
+        let mut chain = Chain::new(consensus);
+        let block = create_test_block();
+        assert!(chain.add_block(block).is_ok());
+        assert_eq!(chain.block_count(), 1);
+    }
+
+    #[test]
+    fn test_chain_validity() {
+        let consensus = Arc::new(RwLock::new(ProofOfCooperation::new()));
+        let mut chain = Chain::new(consensus);
+        let block1 = create_test_block();
+        let block2 = Block::new(1, vec![], block1.hash.clone(), "test_proposer".to_string());
+        
+        assert!(chain.add_block(block1).is_ok());
+        assert!(chain.add_block(block2).is_ok());
+        assert!(chain.is_valid());
+    }
+
+    #[test]
+    fn test_validator_management() {
+        let consensus = Arc::new(RwLock::new(ProofOfCooperation::new()));
+        let mut chain = Chain::new(consensus);
+        let validator = Validator::new("test_validator".to_string(), 100, 0.95, 0.99, 0.98);
+        
+        assert!(chain.add_validator(validator).is_ok());
+        assert!(chain.update_validator("test_validator", 200, 0.96, 0.995, 0.99).is_ok());
+        assert!(chain.update_validator("non_existent", 100, 0.9, 0.9, 0.9).is_err());
+    }
+
+    // Add more tests for stake_weighted_vote, select_validators, etc.
 }

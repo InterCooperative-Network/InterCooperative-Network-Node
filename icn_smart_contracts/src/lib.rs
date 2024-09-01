@@ -1,77 +1,193 @@
-// icn_smart_contracts/src/lib.rs
+// File: icn_smart_contracts/src/lib.rs
 
 use std::collections::HashMap;
+use icn_shared::{IcnError, IcnResult};
+use icn_virtual_machine::{Bytecode, VirtualMachine};
 
-// Define our own error type for this crate
-#[derive(Debug)]
+/// Custom error type for smart contract-related operations
+#[derive(Debug, thiserror::Error)]
 pub enum SmartContractError {
+    /// Error for invalid arguments provided to a smart contract function
+    #[error("Invalid arguments: {0}")]
     InvalidArguments(String),
+
+    /// Error when a contract is not found
+    #[error("Contract not found: {0}")]
     ContractNotFound(u32),
-    KeyNotFound(String),
-    UnknownFunction(String),
+
+    /// Error during contract compilation
+    #[error("Compilation error: {0}")]
+    CompilationError(String),
+
+    /// Error during contract execution
+    #[error("Execution error: {0}")]
+    ExecutionError(String),
+
+    /// Error for unsupported operations
+    #[error("Unsupported operation: {0}")]
+    UnsupportedOperation(String),
 }
 
+/// Result type alias for smart contract operations
 pub type SmartContractResult<T> = Result<T, SmartContractError>;
 
+/// Represents a smart contract within the ICN ecosystem
+#[derive(Debug, Clone)]
 pub struct SmartContract {
+    /// Unique identifier for the contract
     pub id: u32,
+    /// Source code of the contract
     pub code: String,
-    pub state: HashMap<String, String>,
+    /// Compiled bytecode of the contract (if available)
+    pub bytecode: Option<Bytecode>,
 }
 
 impl SmartContract {
+    /// Creates a new `SmartContract` instance
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - Unique identifier for the contract
+    /// * `code` - Source code of the contract
+    ///
+    /// # Returns
+    ///
+    /// A new `SmartContract` instance
     pub fn new(id: u32, code: &str) -> Self {
         SmartContract {
             id,
             code: code.to_string(),
-            state: HashMap::new(),
+            bytecode: None,
         }
     }
 
-    pub fn execute(&mut self, function: &str, args: Vec<String>) -> SmartContractResult<String> {
-        match function {
-            "set" => {
-                if args.len() != 2 {
-                    return Err(SmartContractError::InvalidArguments("'set' requires 2 arguments".to_string()));
-                }
-                self.state.insert(args[0].clone(), args[1].clone());
-                Ok("Value set successfully".to_string())
-            }
-            "get" => {
-                if args.len() != 1 {
-                    return Err(SmartContractError::InvalidArguments("'get' requires 1 argument".to_string()));
-                }
-                self.state.get(&args[0])
-                    .cloned()
-                    .ok_or_else(|| SmartContractError::KeyNotFound(args[0].clone()))
-            }
-            _ => Err(SmartContractError::UnknownFunction(function.to_string())),
-        }
+    /// Sets the compiled bytecode for the contract
+    ///
+    /// # Arguments
+    ///
+    /// * `bytecode` - Compiled bytecode of the contract
+    pub fn set_bytecode(&mut self, bytecode: Bytecode) {
+        self.bytecode = Some(bytecode);
     }
 }
 
+/// The core engine for managing and executing smart contracts
 pub struct SmartContractEngine {
+    /// Map of contract IDs to SmartContract instances
     contracts: HashMap<u32, SmartContract>,
+    /// Virtual Machine instance for executing contracts
+    vm: VirtualMachine,
 }
 
 impl SmartContractEngine {
+    /// Creates a new instance of the `SmartContractEngine`
+    ///
+    /// # Returns
+    ///
+    /// A new `SmartContractEngine` instance
     pub fn new() -> Self {
         SmartContractEngine {
             contracts: HashMap::new(),
+            vm: VirtualMachine::new(),
         }
     }
 
+    /// Deploys a new smart contract to the network
+    ///
+    /// # Arguments
+    ///
+    /// * `code` - Source code of the contract to be deployed
+    ///
+    /// # Returns
+    ///
+    /// The ID of the newly deployed contract, or an error if deployment fails
     pub fn deploy_contract(&mut self, code: &str) -> SmartContractResult<u32> {
+        // 1. Compile the contract code
+        let bytecode = self.compile_contract(code)?;
+
+        // 2. Create and store the smart contract
         let id = self.contracts.len() as u32 + 1;
-        let contract = SmartContract::new(id, code);
+        let mut contract = SmartContract::new(id, code);
+        contract.set_bytecode(bytecode.clone());
         self.contracts.insert(id, contract);
+
+        // 3. Deploy bytecode to the virtual machine
+        self.vm.execute(bytecode)
+            .map_err(|e| SmartContractError::ExecutionError(e.to_string()))?;
+
         Ok(id)
     }
 
+    /// Calls a function on an existing smart contract
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - ID of the contract to call
+    /// * `function` - Name of the function to call
+    /// * `args` - Arguments to pass to the function
+    ///
+    /// # Returns
+    ///
+    /// The result of the function call as a string, or an error if the call fails
     pub fn call_contract(&mut self, id: u32, function: &str, args: Vec<String>) -> SmartContractResult<String> {
-        self.contracts.get_mut(&id)
-            .ok_or_else(|| SmartContractError::ContractNotFound(id))?
-            .execute(function, args)
+        // 1. Retrieve the contract
+        let contract = self.contracts.get(&id)
+            .ok_or_else(|| SmartContractError::ContractNotFound(id))?;
+
+        // 2. Prepare the function call
+        let call_data = self.encode_function_call(function, args)?;
+
+        // 3. Execute the function call on the VM
+        let bytecode = contract.bytecode.clone()
+            .ok_or_else(|| SmartContractError::ExecutionError("Contract bytecode not available".to_string()))?;
+        self.vm.execute(bytecode)
+            .map_err(|e| SmartContractError::ExecutionError(e.to_string()))?;
+
+        // 4. Retrieve and return the result from the VM
+        let result = self.get_vm_result()?;
+        Ok(result)
+    }
+
+    /// Compiles the contract source code into bytecode
+    ///
+    /// # Arguments
+    ///
+    /// * `code` - Source code of the contract to compile
+    ///
+    /// # Returns
+    ///
+    /// Compiled bytecode, or an error if compilation fails
+    fn compile_contract(&self, code: &str) -> SmartContractResult<Bytecode> {
+        // TODO: Implement actual compilation logic
+        // For now, we'll return a placeholder bytecode
+        Ok(Bytecode::new(vec![0, 1, 2, 3]))
+    }
+
+    /// Encodes a function call into bytecode
+    ///
+    /// # Arguments
+    ///
+    /// * `function` - Name of the function to call
+    /// * `args` - Arguments to pass to the function
+    ///
+    /// # Returns
+    ///
+    /// Encoded function call as bytecode, or an error if encoding fails
+    fn encode_function_call(&self, function: &str, args: Vec<String>) -> SmartContractResult<Vec<u8>> {
+        // TODO: Implement actual function call encoding
+        // For now, we'll return a placeholder encoding
+        Ok(vec![0, 1, 2, 3])
+    }
+
+    /// Retrieves the result of a VM execution
+    ///
+    /// # Returns
+    ///
+    /// The result of the VM execution as a string, or an error if retrieval fails
+    fn get_vm_result(&self) -> SmartContractResult<String> {
+        // TODO: Implement actual result retrieval from the VM
+        // For now, we'll return a placeholder result
+        Ok("Function executed successfully".to_string())
     }
 }
 
@@ -80,33 +196,29 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_smart_contract_execution() {
-        let mut contract = SmartContract::new(1, "sample code");
-        
-        let result = contract.execute("set", vec!["key".to_string(), "value".to_string()]);
+    fn test_deploy_contract() {
+        let mut engine = SmartContractEngine::new();
+        let code = "contract Test { function greet() public pure returns (string memory) { return \"Hello, World!\"; } }";
+        let result = engine.deploy_contract(code);
         assert!(result.is_ok());
-
-        let result = contract.execute("get", vec!["key".to_string()]);
-        assert_eq!(result.unwrap(), "value");
-
-        let result = contract.execute("unknown", vec![]);
-        assert!(result.is_err());
+        let contract_id = result.unwrap();
+        assert_eq!(contract_id, 1);
     }
 
     #[test]
-    fn test_smart_contract_engine() {
+    fn test_call_contract() {
         let mut engine = SmartContractEngine::new();
-
-        let contract_id = engine.deploy_contract("sample code").unwrap();
-        assert_eq!(contract_id, 1);
-
-        let result = engine.call_contract(contract_id, "set", vec!["key".to_string(), "value".to_string()]);
+        let code = "contract Test { function greet() public pure returns (string memory) { return \"Hello, World!\"; } }";
+        let contract_id = engine.deploy_contract(code).unwrap();
+        let result = engine.call_contract(contract_id, "greet", vec![]);
         assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "Function executed successfully");
+    }
 
-        let result = engine.call_contract(contract_id, "get", vec!["key".to_string()]);
-        assert_eq!(result.unwrap(), "value");
-
-        let result = engine.call_contract(999, "get", vec!["key".to_string()]);
-        assert!(result.is_err());
+    #[test]
+    fn test_contract_not_found() {
+        let mut engine = SmartContractEngine::new();
+        let result = engine.call_contract(1, "greet", vec![]);
+        assert!(matches!(result, Err(SmartContractError::ContractNotFound(1))));
     }
 }

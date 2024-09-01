@@ -8,47 +8,39 @@ use std::fmt;
 use serde::{Serialize, Deserialize};
 use sha2::{Sha256, Digest};
 use std::time::{SystemTime, UNIX_EPOCH};
+use thiserror::Error;
 
 /// Custom error type for the ICN project.
 ///
 /// This enum encapsulates various types of errors that can occur within the ICN project, including
 /// configuration, blockchain, consensus, network, smart contract, storage, I/O, and other errors.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Error)]
 pub enum IcnError {
     /// Configuration-related errors.
+    #[error("Configuration error: {0}")]
     Config(String),
     /// Blockchain-related errors.
+    #[error("Blockchain error: {0}")]
     Blockchain(String),
     /// Consensus-related errors.
+    #[error("Consensus error: {0}")]
     Consensus(String),
     /// Network-related errors.
+    #[error("Network error: {0}")]
     Network(String),
     /// Smart contract-related errors.
+    #[error("Smart contract error: {0}")]
     SmartContract(String),
     /// Storage-related errors.
+    #[error("Storage error: {0}")]
     Storage(String),
     /// I/O-related errors.
+    #[error("I/O error: {0}")]
     Io(String),
     /// Other miscellaneous errors.
+    #[error("Other error: {0}")]
     Other(String),
 }
-
-impl fmt::Display for IcnError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            IcnError::Config(msg) => write!(f, "Configuration error: {}", msg),
-            IcnError::Blockchain(msg) => write!(f, "Blockchain error: {}", msg),
-            IcnError::Consensus(msg) => write!(f, "Consensus error: {}", msg),
-            IcnError::Network(msg) => write!(f, "Network error: {}", msg),
-            IcnError::SmartContract(msg) => write!(f, "Smart contract error: {}", msg),
-            IcnError::Storage(msg) => write!(f, "Storage error: {}", msg),
-            IcnError::Io(msg) => write!(f, "I/O error: {}", msg),
-            IcnError::Other(msg) => write!(f, "Other error: {}", msg),
-        }
-    }
-}
-
-impl Error for IcnError {}
 
 impl From<std::io::Error> for IcnError {
     fn from(err: std::io::Error) -> Self {
@@ -71,12 +63,19 @@ pub type IcnResult<T> = Result<T, IcnError>;
 /// a hash of the current block, the ID of the proposer who created the block, and a nonce for mining.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Block {
+    /// The position of the block within the blockchain.
     pub index: u64,
+    /// The timestamp when the block was created.
     pub timestamp: u64,
+    /// A vector of transactions included in the block.
     pub transactions: Vec<String>,
+    /// The hash of the previous block in the chain.
     pub previous_hash: String,
+    /// The hash of the current block.
     pub hash: String,
+    /// The ID of the proposer who created the block.
     pub proposer_id: String,
+    /// A nonce value used for mining/consensus purposes.
     pub nonce: u64,
 }
 

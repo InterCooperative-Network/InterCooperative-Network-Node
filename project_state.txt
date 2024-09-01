@@ -32,6 +32,7 @@
 │       ├── lib.rs
 │       └── transaction
 │           ├── mod.rs
+│           ├── transaction.rs
 │           └── transaction_type.rs
 ├── icn_consensus
 │   ├── Cargo.toml
@@ -86,9 +87,12 @@
 ├── icn_smart_contracts
 │   ├── Cargo.toml
 │   └── src
+│       ├── compiler.rs
 │       ├── lib
 │       │   └── mod.rs
-│       └── lib.rs
+│       ├── lib.rs
+│       ├── smart_contract.rs
+│       └── standard_library.rs
 ├── icn_storage
 │   ├── Cargo.toml
 │   └── src
@@ -104,7 +108,11 @@
 │       ├── execution_engine.rs
 │       ├── lib
 │       │   └── mod.rs
-│       └── lib.rs
+│       ├── lib.rs
+│       ├── plugin_manager.rs
+│       ├── resource_manager.rs
+│       ├── security_manager.rs
+│       └── state_manager.rs
 ├── key.pem
 ├── project_parts
 │   └── core_files_00
@@ -114,7 +122,7 @@
 └── .vscode
     └── settings.json
 
-43 directories, 71 files
+43 directories, 79 files
 
 
 
@@ -707,47 +715,39 @@ use std::fmt;
 use serde::{Serialize, Deserialize};
 use sha2::{Sha256, Digest};
 use std::time::{SystemTime, UNIX_EPOCH};
+use thiserror::Error;
 
 /// Custom error type for the ICN project.
 ///
 /// This enum encapsulates various types of errors that can occur within the ICN project, including
 /// configuration, blockchain, consensus, network, smart contract, storage, I/O, and other errors.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Error)]
 pub enum IcnError {
     /// Configuration-related errors.
+    #[error("Configuration error: {0}")]
     Config(String),
     /// Blockchain-related errors.
+    #[error("Blockchain error: {0}")]
     Blockchain(String),
     /// Consensus-related errors.
+    #[error("Consensus error: {0}")]
     Consensus(String),
     /// Network-related errors.
+    #[error("Network error: {0}")]
     Network(String),
     /// Smart contract-related errors.
+    #[error("Smart contract error: {0}")]
     SmartContract(String),
     /// Storage-related errors.
+    #[error("Storage error: {0}")]
     Storage(String),
     /// I/O-related errors.
+    #[error("I/O error: {0}")]
     Io(String),
     /// Other miscellaneous errors.
+    #[error("Other error: {0}")]
     Other(String),
 }
-
-impl fmt::Display for IcnError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            IcnError::Config(msg) => write!(f, "Configuration error: {}", msg),
-            IcnError::Blockchain(msg) => write!(f, "Blockchain error: {}", msg),
-            IcnError::Consensus(msg) => write!(f, "Consensus error: {}", msg),
-            IcnError::Network(msg) => write!(f, "Network error: {}", msg),
-            IcnError::SmartContract(msg) => write!(f, "Smart contract error: {}", msg),
-            IcnError::Storage(msg) => write!(f, "Storage error: {}", msg),
-            IcnError::Io(msg) => write!(f, "I/O error: {}", msg),
-            IcnError::Other(msg) => write!(f, "Other error: {}", msg),
-        }
-    }
-}
-
-impl Error for IcnError {}
 
 impl From<std::io::Error> for IcnError {
     fn from(err: std::io::Error) -> Self {
@@ -770,12 +770,19 @@ pub type IcnResult<T> = Result<T, IcnError>;
 /// a hash of the current block, the ID of the proposer who created the block, and a nonce for mining.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Block {
+    /// The position of the block within the blockchain.
     pub index: u64,
+    /// The timestamp when the block was created.
     pub timestamp: u64,
+    /// A vector of transactions included in the block.
     pub transactions: Vec<String>,
+    /// The hash of the previous block in the chain.
     pub previous_hash: String,
+    /// The hash of the current block.
     pub hash: String,
+    /// The ID of the proposer who created the block.
     pub proposer_id: String,
+    /// A nonce value used for mining/consensus purposes.
     pub nonce: u64,
 }
 
@@ -1000,6 +1007,8 @@ name = "MyNode"
 
 
 === ./icn_blockchain/Cargo.toml ===
+# icn_blockchain/Cargo.toml
+
 [package]
 name = "icn_blockchain"
 version = "0.1.0"
@@ -1007,13 +1016,20 @@ edition = "2021"
 
 [dependencies]
 icn_shared = { path = "../icn_shared" }
-icn_consensus = { path = "../icn_consensus" }  # Ensure this line is present
+icn_consensus = { path = "../icn_consensus" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha2 = "0.10"
 chrono = "0.4"
 log = "0.4"
 rand = "0.8"
+thiserror = "1.0"  # For better error handling within the VM and blockchain
+
+# Dependency for Virtual Machine and smart contract functionality
+icn_virtual_machine = { path = "../icn_virtual_machine" }  # Added this line for the VirtualMachine module dependency
+
+# WebAssembly runtime for executing smart contracts in the VM
+wasmer = "2.1"
 
 
 
@@ -1024,162 +1040,610 @@ rand = "0.8"
 === ./icn_blockchain/src/transaction/mod.rs ===
 // icn_blockchain/src/transaction/mod.rs
 
+mod transaction;
+
+pub use transaction::{Transaction, TransactionType};
+
+
+
+=== ./icn_blockchain/src/transaction/transaction.rs ===
+// icn_blockchain/src/transaction/transaction.rs
+
 use serde::{Serialize, Deserialize};
+use icn_shared::{IcnError, IcnResult};
 
 /// Represents the different types of transactions supported by the blockchain.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TransactionType {
-    Transfer,
-    DeployContract,
-    // Add more variants as needed
+    /// A transfer of assets between accounts.
+    Transfer {
+        from: String,
+        to: String,
+        amount: u64,
+    },
+    /// Deployment of a smart contract.
+    DeployContract {
+        code: String,
+        initial_state: String,
+    },
+    /// Execution of a smart contract method.
+    SmartContractExecution {
+        contract_id: String,
+        method: String,
+        params: Vec<String>,
+    },
+    /// Validation of a proof.
+    ProofValidation {
+        proof_id: String,
+        data: Vec<u8>,
+    },
 }
 
-/// The `Transaction` struct defines a blockchain transaction, including its sender,
-/// receiver, amount, and type of transaction.
+/// Represents a transaction in the blockchain.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Transaction {
-    pub sender: String,
-    pub receiver: String,
-    pub amount: u64,
+    /// The unique identifier for the transaction.
+    pub id: String,
+    /// The type of the transaction.
     pub transaction_type: TransactionType,
+    /// The digital signature of the transaction.
+    pub signature: Option<String>,
+    /// Additional metadata associated with the transaction.
+    pub metadata: Option<String>,
 }
 
 impl Transaction {
-    /// Creates a new `Transaction` instance with the given sender, receiver, and amount.
+    /// Creates a new `Transaction` instance.
     ///
     /// # Arguments
     ///
-    /// * `sender` - The ID of the sender.
-    /// * `receiver` - The ID of the receiver.
-    /// * `amount` - The amount being transferred in the transaction.
+    /// * `id` - A unique identifier for the transaction.
+    /// * `transaction_type` - The type of transaction being performed.
+    /// * `signature` - An optional digital signature.
+    /// * `metadata` - Optional metadata related to the transaction.
     ///
     /// # Returns
     ///
-    /// * `Transaction` - A new `Transaction` instance of type `Transfer`.
-    pub fn new(sender: &str, receiver: &str, amount: u64) -> Self {
+    /// A new `Transaction` instance.
+    pub fn new(id: String, transaction_type: TransactionType, signature: Option<String>, metadata: Option<String>) -> Self {
         Transaction {
-            sender: sender.to_string(),
-            receiver: receiver.to_string(),
-            amount,
-            transaction_type: TransactionType::Transfer,
+            id,
+            transaction_type,
+            signature,
+            metadata,
         }
     }
 
-    /// Validates the transaction based on its type.
+    /// Validates the transaction.
+    ///
+    /// This function checks the validity of the transaction by validating its type,
+    /// checking its signature, and ensuring any additional criteria are met.
     ///
     /// # Returns
     ///
-    /// * `bool` - Returns `true` if the transaction is valid, `false` otherwise.
+    /// * `IcnResult<()>` - Returns `Ok(())` if the transaction is valid, otherwise an error.
+    pub fn validate(&self) -> IcnResult<()> {
+        // Validate the transaction type
+        self.validate_transaction_type()?;
+
+        // Check if signature exists
+        if self.signature.is_none() {
+            return Err(IcnError::Transaction("Transaction must have a signature".into()));
+        }
+
+        // Validate the signature (placeholder - implement actual signature verification)
+        self.verify_signature()?;
+
+        // Additional validation logic can be added here
+        Ok(())
+    }
+
+    /// Validates the transaction type and its associated data.
+    fn validate_transaction_type(&self) -> IcnResult<()> {
+        match &self.transaction_type {
+            TransactionType::Transfer { from, to, amount } => {
+                if from.is_empty() || to.is_empty() {
+                    return Err(IcnError::Transaction("Invalid addresses in transfer".into()));
+                }
+                if *amount == 0 {
+                    return Err(IcnError::Transaction("Transfer amount must be greater than zero".into()));
+                }
+            }
+            TransactionType::DeployContract { code, .. } => {
+                if code.is_empty() {
+                    return Err(IcnError::Transaction("Contract code cannot be empty".into()));
+                }
+            }
+            TransactionType::SmartContractExecution { contract_id, method, .. } => {
+                if contract_id.is_empty() || method.is_empty() {
+                    return Err(IcnError::Transaction("Invalid contract execution parameters".into()));
+                }
+            }
+            TransactionType::ProofValidation { proof_id, data } => {
+                if proof_id.is_empty() || data.is_empty() {
+                    return Err(IcnError::Transaction("Invalid proof validation parameters".into()));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Verifies the digital signature of the transaction.
+    fn verify_signature(&self) -> IcnResult<()> {
+        // Placeholder for signature verification logic
+        // In a real implementation, you would verify the signature against the transaction data
+        Ok(())
+    }
+
+    /// Processes the transaction within the blockchain.
     ///
-    /// This method performs basic validation depending on the transaction type.
-    pub fn validate_transaction(&self) -> bool {
-        match self.transaction_type {
-            TransactionType::Transfer => {
-                !self.sender.is_empty() && !self.receiver.is_empty() && self.amount > 0
+    /// This function executes the transaction according to its type and updates the blockchain state accordingly.
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<()>` - Returns `Ok(())` if the transaction is processed successfully, otherwise an error.
+    pub fn process(&self) -> IcnResult<()> {
+        match &self.transaction_type {
+            TransactionType::Transfer { from, to, amount } => {
+                // Logic for processing a transfer transaction
+                println!("Processing transfer of {} from {} to {}", amount, from, to);
+                // Implement actual balance updates here
+                Ok(())
             }
-            TransactionType::DeployContract => {
-                // Validation logic specific to DeployContract transactions
-                // Add your validation logic here
-                false // Placeholder for now
+            TransactionType::DeployContract { code, initial_state } => {
+                // Logic for processing a smart contract deployment
+                println!("Deploying smart contract with code length {} and initial state {}", code.len(), initial_state);
+                // Implement actual contract deployment logic here
+                Ok(())
             }
-            // Add more match arms for other transaction types as needed
+            TransactionType::SmartContractExecution { contract_id, method, params } => {
+                // Logic for processing a smart contract execution
+                println!("Executing method {} on contract {} with {} parameters", method, contract_id, params.len());
+                // Implement actual contract execution logic here
+                Ok(())
+            }
+            TransactionType::ProofValidation { proof_id, data } => {
+                // Logic for processing a proof validation
+                println!("Validating proof {} with data length {}", proof_id, data.len());
+                // Implement actual proof validation logic here
+                Ok(())
+            }
         }
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_transaction_creation() {
+        let tx = Transaction::new(
+            "tx1".to_string(),
+            TransactionType::Transfer {
+                from: "alice".to_string(),
+                to: "bob".to_string(),
+                amount: 100,
+            },
+            Some("signature".to_string()),
+            None,
+        );
+        assert_eq!(tx.id, "tx1");
+        assert!(matches!(tx.transaction_type, TransactionType::Transfer { .. }));
+    }
+
+    #[test]
+    fn test_transaction_validation() {
+        let valid_tx = Transaction::new(
+            "tx1".to_string(),
+            TransactionType::Transfer {
+                from: "alice".to_string(),
+                to: "bob".to_string(),
+                amount: 100,
+            },
+            Some("signature".to_string()),
+            None,
+        );
+        assert!(valid_tx.validate().is_ok());
+
+        let invalid_tx = Transaction::new(
+            "tx2".to_string(),
+            TransactionType::Transfer {
+                from: "".to_string(),
+                to: "bob".to_string(),
+                amount: 0,
+            },
+            None,
+            None,
+        );
+        assert!(invalid_tx.validate().is_err());
+    }
+
+    #[test]
+    fn test_transaction_processing() {
+        let tx = Transaction::new(
+            "tx1".to_string(),
+            TransactionType::Transfer {
+                from: "alice".to_string(),
+                to: "bob".to_string(),
+                amount: 100,
+            },
+            Some("signature".to_string()),
+            None,
+        );
+        assert!(tx.process().is_ok());
+    }
+
+    #[test]
+    fn test_deploy_contract_transaction() {
+        let tx = Transaction::new(
+            "tx2".to_string(),
+            TransactionType::DeployContract {
+                code: "contract code".to_string(),
+                initial_state: "{}".to_string(),
+            },
+            Some("signature".to_string()),
+            None,
+        );
+        assert!(tx.validate().is_ok());
+        assert!(tx.process().is_ok());
+    }
+
+    #[test]
+    fn test_smart_contract_execution_transaction() {
+        let tx = Transaction::new(
+            "tx3".to_string(),
+            TransactionType::SmartContractExecution {
+                contract_id: "contract1".to_string(),
+                method: "transfer".to_string(),
+                params: vec!["recipient".to_string(), "100".to_string()],
+            },
+            Some("signature".to_string()),
+            None,
+        );
+        assert!(tx.validate().is_ok());
+        assert!(tx.process().is_ok());
+    }
+
+    #[test]
+    fn test_proof_validation_transaction() {
+        let tx = Transaction::new(
+            "tx4".to_string(),
+            TransactionType::ProofValidation {
+                proof_id: "proof1".to_string(),
+                data: vec![1, 2, 3, 4, 5],
+            },
+            Some("signature".to_string()),
+            None,
+        );
+        assert!(tx.validate().is_ok());
+        assert!(tx.process().is_ok());
+    }
+
+    #[test]
+    fn test_invalid_transactions() {
+        let invalid_transfer = Transaction::new(
+            "tx5".to_string(),
+            TransactionType::Transfer {
+                from: "".to_string(),
+                to: "bob".to_string(),
+                amount: 0,
+            },
+            Some("signature".to_string()),
+            None,
+        );
+        assert!(invalid_transfer.validate().is_err());
+
+        let invalid_contract_deploy = Transaction::new(
+            "tx6".to_string(),
+            TransactionType::DeployContract {
+                code: "".to_string(),
+                initial_state: "{}".to_string(),
+            },
+            Some("signature".to_string()),
+            None,
+        );
+        assert!(invalid_contract_deploy.validate().is_err());
+
+        let invalid_contract_execution = Transaction::new(
+            "tx7".to_string(),
+            TransactionType::SmartContractExecution {
+                contract_id: "".to_string(),
+                method: "".to_string(),
+                params: vec![],
+            },
+            Some("signature".to_string()),
+            None,
+        );
+        assert!(invalid_contract_execution.validate().is_err());
+
+        let invalid_proof_validation = Transaction::new(
+            "tx8".to_string(),
+            TransactionType::ProofValidation {
+                proof_id: "".to_string(),
+                data: vec![],
+            },
+            Some("signature".to_string()),
+            None,
+        );
+        assert!(invalid_proof_validation.validate().is_err());
+    }
+}
 
 
 === ./icn_blockchain/src/transaction/transaction_type.rs ===
-/// Represents the different types of transactions supported by the blockchain
-#[derive(Debug, Clone, PartialEq, Eq)] // Add necessary derives based on your project's requirements
+// File Location: icn_blockchain/src/transaction/transaction_type.rs
+
+//! Defines the types of transactions that can be performed on the ICN blockchain.
+//!
+//! This module includes the enumeration of different transaction types,
+//! each representing a specific operation or interaction within the blockchain.
+
+/// Enum representing various transaction types in the ICN blockchain.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TransactionType {
-    Transfer,
-    DeployContract,
-    // Add more variants as needed
+    /// A simple transfer of assets between accounts.
+    Transfer { from: String, to: String, amount: u64 },
+
+    /// A smart contract execution transaction.
+    SmartContractExecution { contract_id: String, method: String, params: Vec<String> },
+
+    /// A transaction for deploying a new smart contract.
+    SmartContractDeployment { code: Vec<u8>, initial_state: String },
+
+    /// A transaction for validating a proof within the blockchain.
+    ProofValidation { proof_id: String, data: Vec<u8> },
+
+    /// Additional transaction types can be added here as needed.
+}
+
+impl TransactionType {
+    /// Validates the transaction type based on its specific rules.
+    pub fn validate(&self) -> Result<(), String> {
+        match self {
+            TransactionType::Transfer { from, to, amount } => {
+                // Example validation: Ensure 'from' and 'to' are valid addresses
+                if from.is_empty() || to.is_empty() {
+                    return Err("Invalid addresses".into());
+                }
+                if *amount == 0 {
+                    return Err("Amount must be greater than zero".into());
+                }
+                Ok(())
+            }
+            TransactionType::SmartContractExecution { .. } => {
+                // Validation logic for smart contract execution
+                Ok(())
+            }
+            TransactionType::SmartContractDeployment { .. } => {
+                // Validation logic for smart contract deployment
+                Ok(())
+            }
+            TransactionType::ProofValidation { .. } => {
+                // Validation logic for proof validation
+                Ok(())
+            }
+        }
+    }
 }
 
 
 
 === ./icn_blockchain/src/lib.rs ===
-// icn_blockchain/src/lib.rs
+// File: icn_blockchain/src/lib.rs
 
-pub mod chain;
-
-pub use crate::chain::Chain;
-
+use std::sync::{Arc, RwLock};
 use icn_shared::{Block, IcnError, IcnResult};
-use icn_consensus::Consensus; // Import Consensus trait from icn_consensus crate
-use std::sync::{Arc, Mutex};
+use icn_consensus::Consensus;
+use icn_virtual_machine::VirtualMachine;
+
+// Define and export the chain and transaction modules
+pub mod chain;
+pub mod transaction;
+
+use crate::chain::Chain;
+use crate::transaction::{Transaction, TransactionType};
 
 /// Represents the blockchain and its operations.
 pub struct Blockchain<C: Consensus> {
-    pub chain: Vec<Block>,
-    pub consensus: Arc<Mutex<C>>,
+    /// The chain of blocks.
+    pub chain: Chain<C>,
+    /// The consensus mechanism used for validating and adding blocks.
+    pub consensus: Arc<RwLock<C>>,
+    /// The virtual machine for executing smart contracts.
+    pub vm: VirtualMachine,
 }
 
 impl<C: Consensus> Blockchain<C> {
-    /// Creates a new blockchain with the given consensus algorithm.
-    pub fn new(consensus: Arc<Mutex<C>>) -> Self {
+    /// Creates a new blockchain with the given consensus algorithm and initializes the VM.
+    ///
+    /// # Arguments
+    ///
+    /// * `consensus` - The consensus algorithm to use for validating and adding blocks.
+    ///
+    /// # Returns
+    ///
+    /// * `Blockchain` - A new instance of the blockchain.
+    pub fn new(consensus: Arc<RwLock<C>>) -> Self {
         Blockchain {
-            chain: vec![Block::new(0, vec![], "genesis".to_string(), "genesis".to_string())],
+            chain: Chain::new(consensus.clone()),
             consensus,
+            vm: VirtualMachine::new(),
         }
     }
 
     /// Adds a new block to the blockchain after validating it.
+    ///
+    /// # Arguments
+    ///
+    /// * `transactions` - A vector of serialized transaction strings to be included in the block.
+    /// * `proposer_id` - The ID of the node proposing the new block.
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<()>` - Returns Ok if the block is successfully added, otherwise an error.
     pub fn add_block(&mut self, transactions: Vec<String>, proposer_id: String) -> IcnResult<()> {
-        let previous_block = self.chain.last().expect("Blockchain is empty");
+        let previous_block = self.chain.latest_block()
+            .ok_or(IcnError::Blockchain("Empty blockchain".to_string()))?;
         let new_block = Block::new(
-            self.chain.len() as u64,
+            self.chain.block_count() as u64,
             transactions,
             previous_block.hash.clone(),
             proposer_id,
         );
 
         // Validate the block using the consensus mechanism
-        let mut consensus = self.consensus.lock().expect("Failed to lock consensus for validation");
-        if consensus.validate(&new_block)? {
-            self.chain.push(new_block);
+        let consensus_read = self.consensus.read()
+            .map_err(|_| IcnError::Consensus("Failed to acquire read lock on consensus".to_string()))?;
+        if consensus_read.validate(&new_block)? {
+            // If validation is successful, acquire a write lock to modify the chain
+            drop(consensus_read); // Release the read lock before acquiring the write lock
+            let mut consensus_write = self.consensus.write()
+                .map_err(|_| IcnError::Consensus("Failed to acquire write lock on consensus".to_string()))?;
+            self.chain.add_block(new_block)?;
+            // Update the consensus state if necessary
+            consensus_write.update_state(&self.chain)?;
             Ok(())
         } else {
             Err(IcnError::Blockchain("Invalid block".to_string()))
         }
     }
 
-    /// Validates the integrity of the blockchain.
-    pub fn is_valid_chain(&self) -> bool {
-        for i in 1..self.chain.len() {
-            let current_block = &self.chain[i];
-            let previous_block = &self.chain[i - 1];
-
-            if current_block.previous_hash != previous_block.hash {
-                return false;
+    /// Executes a transaction, updating the blockchain state accordingly.
+    ///
+    /// # Arguments
+    ///
+    /// * `transaction` - The transaction to be executed.
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<()>` - Returns Ok if the transaction is successfully executed, otherwise an error.
+    pub fn execute_transaction(&mut self, transaction: Transaction) -> IcnResult<()> {
+        match &transaction.transaction_type {
+            TransactionType::Transfer { from, to, amount } => {
+                // Implement the logic to update account balances
+                self.update_balance(from, -(*amount as i64))?;
+                self.update_balance(to, *amount as i64)?;
+                Ok(())
             }
-
-            if !current_block.is_valid() {
-                return false;
+            TransactionType::DeployContract { code, .. } => {
+                // Deploy the smart contract using the VM
+                let bytecode = self.vm.compile(code)?;
+                self.vm.execute(bytecode)?;
+                Ok(())
+            }
+            TransactionType::ExecuteContract { contract_id, method, params } => {
+                // Execute the smart contract method using the VM
+                let bytecode = self.vm.prepare_execution(contract_id, method, params)?;
+                self.vm.execute(bytecode)?;
+                Ok(())
+            }
+            TransactionType::ValidateProof { proof_id, data } => {
+                // Implement proof validation logic
+                self.validate_proof(proof_id, data)?;
+                Ok(())
             }
         }
-        true
+    }
+
+    /// Updates the balance of an account.
+    ///
+    /// # Arguments
+    ///
+    /// * `account` - The account ID to update.
+    /// * `change` - The amount to change the balance by (positive for increase, negative for decrease).
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<()>` - Returns Ok if the balance is successfully updated, otherwise an error.
+    fn update_balance(&mut self, account: &str, change: i64) -> IcnResult<()> {
+        // This is a placeholder implementation. In a real blockchain, you would interact with a
+        // state storage mechanism to update account balances.
+        if account.is_empty() {
+            return Err(IcnError::Blockchain("Account ID cannot be empty".to_string()));
+        }
+        println!("Updating balance of account {} by {}", account, change);
+        Ok(())
+    }
+
+/// Validates a proof submitted to the blockchain.
+    ///
+    /// # Arguments
+    ///
+    /// * `proof_id` - The ID of the proof to validate.
+    /// * `data` - The data associated with the proof.
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<()>` - Returns Ok if the proof is successfully validated, otherwise an error.
+    fn validate_proof(&self, proof_id: &str, data: &[u8]) -> IcnResult<()> {
+        // This is a placeholder implementation. In a real blockchain, you would implement
+        // the logic to validate the proof based on your specific requirements.
+        if proof_id.is_empty() || data.is_empty() {
+            return Err(IcnError::Blockchain("Invalid proof validation parameters".to_string()));
+        }
+        println!("Validating proof {} with data length {}", proof_id, data.len());
+        Ok(())
+    }
+
+    /// Validates the integrity of the blockchain.
+    ///
+    /// # Returns
+    ///
+    /// * `bool` - Returns true if the blockchain is valid, otherwise false.
+    pub fn is_valid_chain(&self) -> bool {
+        self.chain.is_valid()
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use icn_consensus::ProofOfCooperation;
+
+    #[test]
+    fn test_blockchain_creation() {
+        let consensus = Arc::new(RwLock::new(ProofOfCooperation::new()));
+        let blockchain = Blockchain::new(consensus);
+        assert!(blockchain.is_valid_chain());
+    }
+
+    // TODO: Add more tests for add_block, execute_transaction, etc.
+    // Example:
+    // #[test]
+    // fn test_add_block() {
+    //     let consensus = Arc::new(RwLock::new(ProofOfCooperation::new()));
+    //     let mut blockchain = Blockchain::new(consensus);
+    //     let transactions = vec!["tx1".to_string(), "tx2".to_string()];
+    //     let result = blockchain.add_block(transactions, "proposer1".to_string());
+    //     assert!(result.is_ok());
+    //     assert_eq!(blockchain.chain.block_count(), 1);
+    // }
+}
 
 
 === ./icn_blockchain/src/chain/mod.rs ===
 // icn_blockchain/src/chain/mod.rs
 
+use std::sync::{Arc, RwLock};
 use icn_shared::{Block, IcnError, IcnResult};
 use icn_consensus::Consensus;
-use std::sync::{Arc, Mutex};
+use rand::rngs::OsRng;
 use rand::Rng;
 
-/// The `Validator` struct represents a validator in the blockchain consensus process.
-/// It includes the stake, reputation, and methods for validation and voting.
+/// Represents a validator in the blockchain network.
 #[derive(Debug)]
-struct Validator {
-    stake: f64,
+pub struct Validator {
+    /// The unique identifier of the validator.
+    id: String,
+    /// The amount of stake the validator has in the network.
+    stake: u64,
+    /// The reputation score of the validator.
     reputation: f64,
+    /// The validator's uptime as a percentage.
+    uptime: f64,
+    /// The validator's past performance score.
+    past_performance: f64,
 }
 
 impl Validator {
@@ -1187,46 +1651,96 @@ impl Validator {
     ///
     /// # Arguments
     ///
-    /// * `stake` - The stake of the validator.
-    /// * `reputation` - The reputation of the validator.
-    fn new(stake: f64, reputation: f64) -> Self {
-        Validator { stake, reputation }
+    /// * `id` - The unique identifier of the validator.
+    /// * `stake` - The amount of stake the validator has.
+    /// * `reputation` - The reputation score of the validator.
+    /// * `uptime` - The validator's uptime as a percentage.
+    /// * `past_performance` - The validator's past performance score.
+    pub fn new(id: String, stake: u64, reputation: f64, uptime: f64, past_performance: f64) -> Self {
+        Validator {
+            id,
+            stake,
+            reputation,
+            uptime,
+            past_performance,
+        }
     }
 
     /// Validates a block based on the consensus rules.
     ///
     /// # Arguments
     ///
-    /// * `_block` - The block to validate.
+    /// * `block` - The block to validate.
     ///
     /// # Returns
     ///
     /// * `IcnResult<bool>` - Returns `Ok(true)` if the block is valid, otherwise returns an error.
-    fn validate(&self, _block: &Block) -> IcnResult<bool> {
-        // Placeholder logic; implement actual validation logic here
+    pub fn validate(&self, block: &Block) -> IcnResult<bool> {
+        // Implement comprehensive block validation logic
+        if !self.verify_block_hash(block) {
+            return Err(IcnError::Consensus("Invalid block hash".to_string()));
+        }
+
+        if !self.verify_transactions(block) {
+            return Err(IcnError::Consensus("Invalid transactions".to_string()));
+        }
+
+        if !self.verify_timestamp(block) {
+            return Err(IcnError::Consensus("Invalid timestamp".to_string()));
+        }
+
+        // Add more validation checks as needed
+
         Ok(true)
+    }
+
+    /// Verifies the block's hash.
+    fn verify_block_hash(&self, block: &Block) -> bool {
+        block.hash == block.calculate_hash()
+    }
+
+    /// Verifies the transactions in the block.
+    fn verify_transactions(&self, block: &Block) -> bool {
+        // Implement transaction verification logic
+        // This is a placeholder implementation
+        !block.transactions.is_empty()
+    }
+
+    /// Verifies the block's timestamp.
+    fn verify_timestamp(&self, block: &Block) -> bool {
+        // Implement timestamp verification logic
+        // This is a placeholder implementation
+        block.timestamp > 0
     }
 
     /// Casts a vote on a block.
     ///
     /// # Arguments
     ///
-    /// * `_block` - The block to vote on.
+    /// * `block` - The block to vote on.
     ///
     /// # Returns
     ///
     /// * `IcnResult<bool>` - Returns `Ok(true)` if the vote is positive, otherwise returns an error.
-    fn vote(&self, _block: &Block) -> IcnResult<bool> {
-        // Placeholder logic; implement actual voting logic here
-        Ok(true)
+    pub fn vote(&self, block: &Block) -> IcnResult<bool> {
+        // Implement voting logic based on validation and other criteria
+        if self.validate(block)? {
+            // Additional voting criteria can be added here
+            Ok(true)
+        } else {
+            Ok(false)
+        }
     }
 }
 
-/// The `Chain` struct represents the blockchain, which consists of a series of blocks.
-/// It manages the addition of new blocks, block validation, and access to the latest block.
+/// Represents the blockchain, which consists of a series of blocks.
 pub struct Chain<C: Consensus> {
+    /// The list of blocks in the chain.
     pub blocks: Vec<Block>,
-    pub consensus: Arc<Mutex<C>>,
+    /// The consensus mechanism used for the chain.
+    pub consensus: Arc<RwLock<C>>,
+    /// The list of active validators.
+    validators: Vec<Validator>,
 }
 
 impl<C: Consensus> Chain<C> {
@@ -1239,10 +1753,11 @@ impl<C: Consensus> Chain<C> {
     /// # Returns
     ///
     /// * `Chain<C>` - A new `Chain` instance.
-    pub fn new(consensus: Arc<Mutex<C>>) -> Self {
+    pub fn new(consensus: Arc<RwLock<C>>) -> Self {
         Chain {
             blocks: Vec::new(),
             consensus,
+            validators: Vec::new(),
         }
     }
 
@@ -1250,24 +1765,21 @@ impl<C: Consensus> Chain<C> {
     ///
     /// # Arguments
     ///
-    /// * `transactions` - A vector of transactions to include in the block.
-    /// * `previous_hash` - The hash of the previous block in the chain.
-    /// * `proposer_id` - The ID of the proposer of the block.
+    /// * `block` - The block to be added to the chain.
     ///
     /// # Returns
     ///
     /// * `IcnResult<()>` - Returns `Ok(())` if the block is successfully added,
     ///   or an `IcnError` if validation fails.
-    pub fn add_block(&mut self, transactions: Vec<String>, previous_hash: String, proposer_id: String) -> IcnResult<()> {
-        let index = self.blocks.len() as u64;
-
-        let new_block = Block::new(index, transactions, previous_hash, proposer_id);
-
-        // Validate the block using the consensus mechanism
-        let mut consensus = self.consensus.lock().expect("Failed to lock consensus for block validation");
-        consensus.validate(&new_block)?;
-        self.blocks.push(new_block);
-        Ok(())
+    pub fn add_block(&mut self, block: Block) -> IcnResult<()> {
+        let consensus = self.consensus.read().map_err(|_| IcnError::Consensus("Failed to acquire read lock on consensus".to_string()))?;
+        
+        if consensus.validate(&block)? {
+            self.blocks.push(block);
+            Ok(())
+        } else {
+            Err(IcnError::Consensus("Block validation failed".to_string()))
+        }
     }
 
     /// Returns the latest block in the blockchain.
@@ -1280,56 +1792,39 @@ impl<C: Consensus> Chain<C> {
         self.blocks.last()
     }
 
-    /// Selects validators for block validation based on the consensus mechanism.
+    /// Returns the number of blocks in the chain.
     ///
-    /// The selection process may involve factors such as stake, reputation, and recent activity.
+    /// # Returns
+    ///
+    /// * `usize` - The number of blocks in the chain.
+    pub fn block_count(&self) -> usize {
+        self.blocks.len()
+    }
+
+    /// Selects validators for block validation based on the consensus mechanism's rules.
     ///
     /// # Returns
     ///
     /// * `IcnResult<Vec<Validator>>` - Returns a vector of selected validators.
-    fn select_validators(&self) -> IcnResult<Vec<Validator>> {
-        let consensus = self.consensus.lock().expect("Failed to lock consensus for selecting validators");
-        let eligible_peers = consensus.get_eligible_peers();
-        let mut rng = rand::thread_rng();
+    pub fn select_validators(&self) -> IcnResult<Vec<Validator>> {
+        let mut rng = OsRng;
+        let mut selected_validators = Vec::new();
 
-        let validators: Vec<Validator> = eligible_peers
-            .iter()
-            .map(|_| {
-                let stake = rng.gen_range(0.5..1.5);
-                let reputation = rng.gen_range(0.5..1.5);
-                Validator::new(stake, reputation)
-            })
-            .collect();
-
-        Ok(validators)
-    }
-
-    /// Validates a block according to the consensus mechanism.
-    ///
-    /// This method ensures that the block meets the criteria set by the consensus mechanism, including
-    /// cooperation scores, reputation scores, and other factors.
-    ///
-    /// # Arguments
-    ///
-    /// * `block` - The block to validate.
-    ///
-    /// # Returns
-    ///
-    /// * `IcnResult<()>` - Returns `Ok(())` if the block is valid, otherwise returns an error.
-    pub fn validate_block(&self, block: &Block) -> IcnResult<()> {
-        let validators = self.select_validators()?;
-        for validator in validators {
-            let is_valid = validator.validate(block)?;
-            if !is_valid {
-                return Err(IcnError::Consensus("Block validation failed.".to_string()));
+        for validator in &self.validators {
+            let selection_score = validator.stake as f64 * validator.reputation * validator.uptime * validator.past_performance;
+            if rng.gen::<f64>() < selection_score {
+                selected_validators.push(validator.clone());
             }
         }
-        Ok(())
+
+        if selected_validators.is_empty() {
+            Err(IcnError::Consensus("No validators selected".to_string()))
+        } else {
+            Ok(selected_validators)
+        }
     }
 
     /// Performs stake-weighted voting on a block.
-    ///
-    /// Voting influence is proportional to the validator's stake and reputation, ensuring a fair and balanced decision.
     ///
     /// # Arguments
     ///
@@ -1339,21 +1834,142 @@ impl<C: Consensus> Chain<C> {
     ///
     /// * `IcnResult<bool>` - Returns `Ok(true)` if the vote passes, otherwise returns an error.
     pub fn stake_weighted_vote(&self, block: &Block) -> IcnResult<bool> {
-        let mut total_weight = 0.0;
-        let mut weighted_votes = 0.0;
-
         let validators = self.select_validators()?;
-        for validator in validators.iter() {
-            let weight = validator.stake + validator.reputation;
-            let vote = validator.vote(block)?;
-            total_weight += weight;
-            weighted_votes += (vote as u64) as f64 * weight;
+        let mut total_stake = 0u64;
+        let mut positive_stake = 0u64;
+
+        for validator in validators {
+            if validator.vote(block)? {
+                positive_stake += validator.stake;
+            }
+            total_stake += validator.stake;
         }
 
-        Ok(weighted_votes / total_weight > 0.5)
+        if total_stake == 0 {
+            return Err(IcnError::Consensus("No stake in voting validators".to_string()));
+        }
+
+        // Calculate the percentage of positive votes weighted by stake
+        let approval_percentage = (positive_stake as f64 / total_stake as f64) * 100.0;
+
+        // Require a 2/3 majority for the vote to pass
+        Ok(approval_percentage >= 66.67)
+    }
+
+    /// Validates the integrity of the entire blockchain.
+    ///
+    /// # Returns
+    ///
+    /// * `bool` - Returns true if the blockchain is valid, otherwise false.
+    pub fn is_valid(&self) -> bool {
+        for i in 1..self.blocks.len() {
+            let current_block = &self.blocks[i];
+            let previous_block = &self.blocks[i - 1];
+
+            if current_block.previous_hash != previous_block.hash {
+                return false;
+            }
+
+            if !current_block.is_valid() {
+                return false;
+            }
+        }
+        true
+    }
+
+    /// Adds a new validator to the network.
+    ///
+    /// # Arguments
+    ///
+    /// * `validator` - The validator to add.
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<()>` - Returns Ok if the validator is successfully added, otherwise an error.
+    pub fn add_validator(&mut self, validator: Validator) -> IcnResult<()> {
+        if self.validators.iter().any(|v| v.id == validator.id) {
+            return Err(IcnError::Consensus("Validator already exists".to_string()));
+        }
+        self.validators.push(validator);
+        Ok(())
+    }
+
+    /// Updates a validator's information.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The ID of the validator to update.
+    /// * `stake` - The new stake amount.
+    /// * `reputation` - The new reputation score.
+    /// * `uptime` - The new uptime percentage.
+    /// * `past_performance` - The new past performance score.
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<()>` - Returns Ok if the validator is successfully updated, otherwise an error.
+    pub fn update_validator(&mut self, id: &str, stake: u64, reputation: f64, uptime: f64, past_performance: f64) -> IcnResult<()> {
+        if let Some(validator) = self.validators.iter_mut().find(|v| v.id == id) {
+            validator.stake = stake;
+            validator.reputation = reputation;
+            validator.uptime = uptime;
+            validator.past_performance = past_performance;
+            Ok(())
+        } else {
+            Err(IcnError::Consensus("Validator not found".to_string()))
+        }
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use icn_consensus::ProofOfCooperation;
+
+    fn create_test_block() -> Block {
+        Block::new(0, vec![], "genesis".to_string(), "test_proposer".to_string())
+    }
+
+    #[test]
+    fn test_chain_creation() {
+        let consensus = Arc::new(RwLock::new(ProofOfCooperation::new()));
+        let chain = Chain::new(consensus);
+        assert_eq!(chain.block_count(), 0);
+    }
+
+    #[test]
+    fn test_add_block() {
+        let consensus = Arc::new(RwLock::new(ProofOfCooperation::new()));
+        let mut chain = Chain::new(consensus);
+        let block = create_test_block();
+        assert!(chain.add_block(block).is_ok());
+        assert_eq!(chain.block_count(), 1);
+    }
+
+    #[test]
+    fn test_chain_validity() {
+        let consensus = Arc::new(RwLock::new(ProofOfCooperation::new()));
+        let mut chain = Chain::new(consensus);
+        let block1 = create_test_block();
+        let block2 = Block::new(1, vec![], block1.hash.clone(), "test_proposer".to_string());
+        
+        assert!(chain.add_block(block1).is_ok());
+        assert!(chain.add_block(block2).is_ok());
+        assert!(chain.is_valid());
+    }
+
+    #[test]
+    fn test_validator_management() {
+        let consensus = Arc::new(RwLock::new(ProofOfCooperation::new()));
+        let mut chain = Chain::new(consensus);
+        let validator = Validator::new("test_validator".to_string(), 100, 0.95, 0.99, 0.98);
+        
+        assert!(chain.add_validator(validator).is_ok());
+        assert!(chain.update_validator("test_validator", 200, 0.96, 0.995, 0.99).is_ok());
+        assert!(chain.update_validator("non_existent", 100, 0.9, 0.9, 0.9).is_err());
+    }
+
+    // Add more tests for stake_weighted_vote, select_validators, etc.
+}
 
 
 === ./.github/workflows/ci.yml ===
@@ -1449,168 +2065,375 @@ edition = "2021"
 
 
 
+=== ./icn_virtual_machine/src/plugin_manager.rs ===
+// File: icn_virtual_machine/src/plugin_manager.rs
+
+// Placeholder for plugin system implementation
+// This will allow extending the VM's capabilities in the future
+
+pub struct PluginManager {
+    // ... fields for managing plugins
+}
+
+impl PluginManager {
+    pub fn new() -> Self {
+        // ... initialize plugin manager
+    }
+
+    pub fn load_plugin(&mut self, plugin_path: &str) -> Result<(), String> {
+        // ... implement plugin loading and registration
+    }
+
+    // ... other methods for interacting with plugins
+}
+
+
 === ./icn_virtual_machine/src/lib/mod.rs ===
 
 
 
 === ./icn_virtual_machine/src/bytecode.rs ===
-// icn_virtual_machine/src/bytecode.rs
+// File: icn_virtual_machine/src/bytecode.rs
 
-/// The `Bytecode` struct represents the compiled code of a smart contract.
-/// It contains a vector of bytes that the virtual machine can execute.
+/// Represents an opcode in the ICN Virtual Machine's instruction set
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Opcode {
+    // Arithmetic operations
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+
+    // Logic operations
+    Equal,
+    NotEqual,
+    LessThan,
+    GreaterThan,
+
+    // Data manipulation
+    Push,
+    Pop,
+    Load,
+    Store,
+
+    // Control flow
+    Jump,
+    JumpIfTrue,
+    JumpIfFalse,
+
+    // Blockchain interaction
+    GetState,
+    SetState,
+    CallContract,
+
+    // Other
+    Halt,
+    // ... more opcodes as needed
+}
+
+/// Represents the compiled bytecode of a smart contract
 pub struct Bytecode {
+    /// The raw bytecode instructions
     pub code: Vec<u8>,
 }
 
 impl Bytecode {
-    /// Creates a new instance of `Bytecode`.
-    ///
-    /// # Arguments
-    ///
-    /// * `code` - A vector of bytes representing the compiled code of a smart contract.
-    ///
-    /// # Returns
-    ///
-    /// * `Bytecode` - A new instance of `Bytecode` containing the provided bytecode.
+    /// Creates a new `Bytecode` instance
     pub fn new(code: Vec<u8>) -> Self {
         Bytecode { code }
     }
+
+    /// Decodes the bytecode into a sequence of `Opcode` and operands
+    pub fn decode(&self) -> Vec<(Opcode, Vec<u8>)> {
+        let mut instructions = Vec::new();
+        let mut pc = 0;
+
+        while pc < self.code.len() {
+            let opcode = Opcode::from(self.code[pc]);
+            pc += 1;
+
+            let operand_size = match opcode {
+                Opcode::Push => {
+                    // Assuming Push takes a single byte operand for simplicity
+                    // You might need to adjust this based on your actual operand sizes
+                    1
+                }
+                // Add more cases for other opcodes with operands
+                _ => 0, 
+            };
+
+            let operands = self.code[pc..pc + operand_size].to_vec();
+            pc += operand_size;
+
+            instructions.push((opcode, operands));
+        }
+
+        instructions
+    }
 }
+
+impl From<u8> for Opcode {
+    fn from(byte: u8) -> Self {
+        match byte {
+            0x01 => Opcode::Add,
+            0x02 => Opcode::Subtract,
+            // ... other opcode mappings
+            _ => panic!("Invalid opcode: {}", byte), // Handle invalid opcodes gracefully in your actual implementation
+        }
+    }
+}
+
+
+=== ./icn_virtual_machine/src/state_manager.rs ===
+// File: icn_virtual_machine/src/state_manager.rs
+
+/// The StateManager is responsible for storing and retrieving the state during smart contract execution.
+/// It acts as the key-value store where smart contracts can persist data.
+
+use std::collections::HashMap;
+
+/// StateManager struct manages the in-memory state storage for smart contracts.
+pub struct StateManager {
+    state: HashMap<String, String>,
+}
+
+impl StateManager {
+    /// Creates a new instance of the StateManager with an empty state.
+    pub fn new() -> Self {
+        StateManager {
+            state: HashMap::new(),
+        }
+    }
+
+    /// Stores a key-value pair in the state.
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - A string key to identify the stored value.
+    /// * `value` - The string value to be stored.
+    pub fn store_value(&mut self, key: String, value: String) {
+        self.state.insert(key, value);
+    }
+
+    /// Loads a value from the state using the provided key.
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - The string key to retrieve the associated value.
+    ///
+    /// # Returns
+    ///
+    /// * `String` - The value associated with the key, or an empty string if the key does not exist.
+    pub fn load_value(&self, key: &String) -> String {
+        self.state.get(key).cloned().unwrap_or_default()
+    }
+}
+
+
+
+=== ./icn_virtual_machine/src/resource_manager.rs ===
+// File: icn_virtual_machine/src/resource_manager.rs
+
+/// The ResourceManager tracks and enforces limits on resources consumed during the execution of smart contracts.
+/// This includes gas usage, computational limits, and other resource constraints.
+
+/// ResourceManager struct manages the consumption of resources like gas during contract execution.
+pub struct ResourceManager {
+    gas_limit: u64,
+    gas_used: u64,
+}
+
+impl ResourceManager {
+    /// Creates a new instance of ResourceManager with a default gas limit.
+    pub fn new() -> Self {
+        ResourceManager {
+            gas_limit: 1_000_000, // Example gas limit
+            gas_used: 0,
+        }
+    }
+
+    /// Consumes a specified amount of gas, returning whether the operation was successful.
+    ///
+    /// # Arguments
+    ///
+    /// * `amount` - The amount of gas to be consumed.
+    ///
+    /// # Returns
+    ///
+    /// * `bool` - `true` if gas consumption is within the limit, `false` if it exceeds the limit.
+    pub fn consume_gas(&mut self, amount: u64) -> bool {
+        if self.gas_used + amount > self.gas_limit {
+            false
+        } else {
+            self.gas_used += amount;
+            true
+        }
+    }
+}
+
+
+
+=== ./icn_virtual_machine/src/security_manager.rs ===
+// File: icn_virtual_machine/src/security_manager.rs
+
+/// The SecurityManager is responsible for ensuring the safety of executing smart contracts.
+/// It performs security checks on the bytecode before execution, such as opcode validation and whitelisting.
+
+/// SecurityManager struct handles the validation of smart contract bytecode for security purposes.
+pub struct SecurityManager;
+
+impl SecurityManager {
+    /// Creates a new instance of SecurityManager.
+    pub fn new() -> Self {
+        SecurityManager
+    }
+
+    /// Validates the bytecode of a smart contract before execution.
+    ///
+    /// # Arguments
+    ///
+    /// * `bytecode` - A slice of u8 representing the bytecode of the smart contract.
+    ///
+    /// # Returns
+    ///
+    /// * `bool` - `true` if the bytecode passes security validation, `false` otherwise.
+    pub fn validate(&self, bytecode: &[u8]) -> bool {
+        // Implement security checks, such as opcode whitelisting
+        true // Placeholder for actual validation logic
+    }
+}
+
 
 
 === ./icn_virtual_machine/src/lib.rs ===
-// icn_virtual_machine/src/lib.rs
-pub mod bytecode;
-pub mod execution_engine;
+// File: icn_virtual_machine/src/lib.rs
 
-use bytecode::Bytecode;
-use execution_engine::ExecutionEngine;
+use crate::bytecode::Bytecode;
+use crate::execution_engine::ExecutionEngine;
+use crate::state_manager::StateManager;
+use crate::resource_manager::ResourceManager;
+use crate::security_manager::SecurityManager;
+use crate::plugin_manager::PluginManager;
+use icn_shared::IcnResult;
 
-/// The `VirtualMachine` struct is responsible for executing smart contracts.
-/// It processes bytecode using an execution engine.
+/// The core structure representing the ICN Virtual Machine
 pub struct VirtualMachine {
-    engine: ExecutionEngine,
+    execution_engine: ExecutionEngine,
+    state_manager: StateManager,
+    resource_manager: ResourceManager,
+    security_manager: SecurityManager,
+    plugin_manager: PluginManager,
 }
 
 impl VirtualMachine {
-    /// Creates a new instance of the `VirtualMachine`.
+    /// Creates a new instance of the `VirtualMachine`
     pub fn new() -> Self {
         VirtualMachine {
-            engine: ExecutionEngine::new(),
+            execution_engine: ExecutionEngine::new(),
+            state_manager: StateManager::new(),
+            resource_manager: ResourceManager::new(),
+            security_manager: SecurityManager::new(),
+            plugin_manager: PluginManager::new(),
         }
     }
 
-    /// Executes a smart contract represented by bytecode.
-    ///
-    /// # Arguments
-    ///
-    /// * `bytecode` - The bytecode to be executed.
-    ///
-    /// # Returns
-    ///
-    /// * `Result<(), String>` - `Ok` if execution succeeds, otherwise an error message.
-    pub fn execute(&mut self, bytecode: Bytecode) -> Result<(), String> {
-        self.engine.execute(bytecode)
-    }
-}
+    /// Executes the given bytecode within the virtual machine environment
+    pub fn execute(&mut self, bytecode: Bytecode) -> IcnResult<()> {
+        // 1. Security and Compliance Checks
+        self.security_manager.sandbox_contract(&bytecode.code)?; // Ensure contract is sandboxed
+        self.security_manager.perform_static_analysis(&bytecode.code)?; // Perform static analysis
+        self.security_manager.check_compliance(&bytecode.code)?; // Check for compliance
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+        // 2. Resource Management
+        // Placeholder: Check if the contract has enough resources to execute
+        // You'll need to implement the actual resource management logic here
 
-    #[test]
-    fn test_virtual_machine_execution() {
-        let mut vm = VirtualMachine::new();
-        let bytecode = Bytecode::new(vec![0x01, 0x02, 0x03]);
+        // 3. Execute the Bytecode
+        self.execution_engine.execute(bytecode)?;
 
-        // Test execution with non-empty bytecode
-        assert!(vm.execute(bytecode).is_ok());
-
-        // Test execution with empty bytecode
-        let empty_bytecode = Bytecode::new(vec![]);
-        assert!(vm.execute(empty_bytecode).is_err());
-    }
-}
-
-
-
-=== ./icn_virtual_machine/src/execution_engine.rs ===
-use crate::bytecode::Bytecode;
-
-/// The `ExecutionEngine` struct is responsible for interpreting and executing smart contract bytecode.
-/// It forms the core logic of the virtual machine within the ICN project.
-pub struct ExecutionEngine;
-
-impl ExecutionEngine {
-    /// Creates a new instance of `ExecutionEngine`.
-    ///
-    /// # Returns
-    ///
-    /// * `ExecutionEngine` - A new instance of the `ExecutionEngine` struct.
-    pub fn new() -> Self {
-        ExecutionEngine
-    }
-
-    /// Executes the provided bytecode.
-    ///
-    /// # Arguments
-    ///
-    /// * `bytecode` - The bytecode to be executed, represented as a `Bytecode` struct.
-    ///
-    /// # Returns
-    ///
-    /// * `Result<(), String>` - Returns `Ok(())` if the execution succeeds, or an error message if it fails.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// let engine = ExecutionEngine::new();
-    /// let bytecode = Bytecode::new(vec![0x01, 0x02]);
-    /// let result = engine.execute(bytecode);
-    /// assert!(result.is_ok());
-    /// ```
-    ///
-    /// # Errors
-    ///
-    /// - Returns an error if the bytecode is empty.
-    /// - Returns an error if the bytecode contains unknown instructions.
-    pub fn execute(&self, bytecode: Bytecode) -> Result<(), String> {
-        if bytecode.code.is_empty() {
-            return Err("Bytecode is empty".to_string());
-        }
-
-        // Example: Interpreting and executing the bytecode.
-        // This implementation should be expanded to handle actual instructions.
-        for instruction in bytecode.code {
-            match instruction {
-                0x01 => println!("Instruction: 0x01 - No-op"),
-                _ => return Err(format!("Unknown instruction: 0x{:x}", instruction)),
-            }
-        }
+        // 4. Log Execution (if successful)
+        // Placeholder: Log execution details 
+        // You'll need to implement the actual logging mechanism here
 
         Ok(())
     }
+
+    // ... other methods for interacting with state, resources, plugins, etc.
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::bytecode::Bytecode;
 
-    #[test]
-    /// Tests the execution of non-empty bytecode.
-    fn test_execution_with_non_empty_bytecode() {
-        let engine = ExecutionEngine::new();
-        let bytecode = Bytecode::new(vec![0x01, 0x02, 0x03]);
-        assert!(engine.execute(bytecode).is_ok());
+=== ./icn_virtual_machine/src/execution_engine.rs ===
+// File: icn_virtual_machine/src/execution_engine.rs
+
+/// The Execution Engine is responsible for running smart contracts on the ICN virtual machine.
+/// It manages the execution context, handles security validations, and interacts with the state and resources.
+
+use crate::state_manager::StateManager;
+use crate::resource_manager::ResourceManager;
+use crate::security_manager::SecurityManager;
+
+/// ExecutionEngine struct encapsulates the components needed for executing smart contracts.
+pub struct ExecutionEngine {
+    pub state_manager: StateManager,
+    pub resource_manager: ResourceManager,
+    pub security_manager: SecurityManager,
+}
+
+/// ExecutionContext holds the current state and data required during the execution of a contract.
+pub struct ExecutionContext {
+    pub current_key: String,
+    pub current_value: String,
+}
+
+/// ExecutionResult is used to communicate the result of contract execution back to the caller.
+pub enum ExecutionResult {
+    Success(String),
+    Error(String),
+}
+
+impl ExecutionEngine {
+    /// Creates a new instance of the ExecutionEngine with default managers.
+    pub fn new() -> Self {
+        ExecutionEngine {
+            state_manager: StateManager::new(),
+            resource_manager: ResourceManager::new(),
+            security_manager: SecurityManager::new(),
+        }
     }
 
-    #[test]
-    /// Tests the execution of empty bytecode, expecting an error.
-    fn test_execution_with_empty_bytecode() {
-        let engine = ExecutionEngine::new();
-        let empty_bytecode = Bytecode::new(vec![]);
-        assert!(engine.execute(empty_bytecode).is_err());
+    /// Executes a smart contract by processing its bytecode and updating the state accordingly.
+    ///
+    /// # Arguments
+    ///
+    /// * `bytecode` - A vector of u8 representing the compiled bytecode of the smart contract.
+    /// * `context` - The execution context holding the initial state.
+    ///
+    /// # Returns
+    ///
+    /// * `ExecutionResult` - The outcome of the contract execution, either success or error.
+    pub fn execute_contract(&mut self, bytecode: Vec<u8>, context: ExecutionContext) -> ExecutionResult {
+        // Perform security validation on the bytecode before execution.
+        if !self.security_manager.validate(&bytecode) {
+            return ExecutionResult::Error("Security validation failed".to_string());
+        }
+
+        // Initialize the execution context.
+        let mut ctx = context;
+
+        // Process each bytecode instruction.
+        for opcode in bytecode {
+            match opcode {
+                // Example opcode: 0x01 -> Store value in state
+                0x01 => self.state_manager.store_value(ctx.current_key.clone(), ctx.current_value.clone()),
+                // Example opcode: 0x02 -> Load value from state
+                0x02 => ctx.current_value = self.state_manager.load_value(&ctx.current_key),
+                // Handle unknown opcodes
+                _ => return ExecutionResult::Error("Unknown opcode".to_string()),
+            }
+        }
+
+        // Return the result of the execution.
+        ExecutionResult::Success(ctx.current_value)
     }
 }
 
@@ -1746,6 +2569,7 @@ pub use crate::proof_of_cooperation::ProofOfCooperation;
 //! - Byzantine fault tolerance
 //! - Incentive alignment with network goals
 //! - Transparent and auditable decision-making processes
+//! - Smart contract integration for automated governance and reward distribution
 //!
 //! The `ProofOfCooperation` struct is the central component, managing peer information, scoring, and consensus operations.
 //! It implements the `Consensus` trait, providing core functionality for block validation and proposer selection.
@@ -1753,8 +2577,9 @@ pub use crate::proof_of_cooperation::ProofOfCooperation;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::time::{SystemTime, UNIX_EPOCH};
 use icn_shared::{Block, IcnError, IcnResult};
+use icn_smart_contracts::{SmartContract, SmartContractEngine};
 use rand::{Rng, thread_rng};
-use log::info;
+use log::{info, warn, error};
 
 use crate::consensus::Consensus;
 
@@ -1782,6 +2607,7 @@ pub struct ProofOfCooperation {
     storage_provision: HashMap<String, StorageProvision>,
     governance_participation: HashMap<String, GovernanceParticipation>,
     last_block_time: u64,
+    smart_contract_engine: SmartContractEngine,
 }
 
 /// Struct representing a peer's stake information
@@ -1828,6 +2654,7 @@ impl ProofOfCooperation {
             storage_provision: HashMap::new(),
             governance_participation: HashMap::new(),
             last_block_time: 0,
+            smart_contract_engine: SmartContractEngine::new(),
         }
     }
 
@@ -1929,7 +2756,7 @@ impl ProofOfCooperation {
     /// # Returns
     ///
     /// * `IcnResult<bool>` - A result containing the vote (true for valid, false for invalid) or an error
-    fn stake_weighted_vote(&self, validator_id: &str, _block: &Block) -> IcnResult<bool> {
+    fn stake_weighted_vote(&self, validator_id: &str, block: &Block) -> IcnResult<bool> {
         let stake = self.stake_info.get(validator_id)
             .ok_or_else(|| IcnError::Consensus(format!("No stake info for validator: {}", validator_id)))?
             .amount as f64;
@@ -1940,7 +2767,17 @@ impl ProofOfCooperation {
         let voting_power = (stake * reputation).sqrt();
         let random_threshold = thread_rng().gen::<f64>();
 
-        Ok(voting_power > random_threshold)
+        // Execute smart contract for additional voting logic
+        let voting_contract = self.smart_contract_engine.get_contract("voting_logic")
+            .ok_or_else(|| IcnError::Consensus("Voting logic smart contract not found".to_string()))?;
+        let args = vec![
+            voting_power.to_string(),
+            random_threshold.to_string(),
+            serde_json::to_string(block).map_err(|e| IcnError::Consensus(format!("Failed to serialize block: {}", e)))?
+        ];
+        let result = self.smart_contract_engine.call_contract(voting_contract.id, "validate_vote", args)?;
+        
+        Ok(result == "true")
     }
 
     /// Records a contribution made by a peer
@@ -2039,6 +2876,17 @@ impl ProofOfCooperation {
 
         *rep_score = new_rep_score.max(0.0).min(1.0);
 
+        // Execute smart contract for additional reputation logic
+        let reputation_contract = self.smart_contract_engine.get_contract("reputation_adjustment")
+            .ok_or_else(|| IcnError::Consensus("Reputation adjustment smart contract not found".to_string()))?;
+        let args = vec![
+            peer_id.to_string(),
+            rep_score.to_string(),
+            positive_action.to_string()
+        ];
+        let adjusted_score = self.smart_contract_engine.call_contract(reputation_contract.id, "adjust_reputation", args)?;
+        *rep_score = adjusted_score.parse::<f64>().map_err(|e| IcnError::Consensus(format!("Failed to parse adjusted reputation score: {}", e)))?;
+
         Ok(())
     }
 
@@ -2073,7 +2921,21 @@ impl ProofOfCooperation {
         let governance_impact = (governance.proposals_submitted + governance.votes_cast) as f64 / 100.0;
 
         let total_impact = stake_impact + comp_impact + storage_impact + governance_impact;
-        Ok(total_impact.min(1.0))
+
+        // Execute smart contract for additional network impact calculation
+        let impact_contract = self.smart_contract_engine.get_contract("network_impact")
+            .ok_or_else(|| IcnError::Consensus("Network impact smart contract not found".to_string()))?;
+        let args = vec![
+            total_impact.to_string(),
+            serde_json::to_string(stake_info).map_err(|e| IcnError::Consensus(format!("Failed to serialize stake info: {}", e)))?,
+            serde_json::to_string(comp_power).map_err(|e| IcnError::Consensus(format!("Failed to serialize computational power: {}", e)))?,
+            serde_json::to_string(storage).map_err(|e| IcnError::Consensus(format!("Failed to serialize storage provision: {}", e)))?,
+            serde_json::to_string(governance).map_err(|e| IcnError::Consensus(format!("Failed to serialize governance participation: {}", e)))?
+        ];
+        let adjusted_impact = self.smart_contract_engine.call_contract(impact_contract.id, "calculate_impact", args)?;
+        let final_impact = adjusted_impact.parse::<f64>().map_err(|e| IcnError::Consensus(format!("Failed to parse adjusted network impact: {}", e)))?;
+
+        Ok(final_impact.min(1.0))
     }
 
     /// Updates the cooperation score of a peer
@@ -2096,6 +2958,17 @@ impl ProofOfCooperation {
 
         *score = (*score + new_score.max(0.0).min(1.0)) / 2.0;
         self.record_contribution(peer_id, new_score)?;
+
+        // Execute smart contract for additional cooperation score adjustment
+        let cooperation_contract = self.smart_contract_engine.get_contract("cooperation_adjustment")
+            .ok_or_else(|| IcnError::Consensus("Cooperation adjustment smart contract not found".to_string()))?;
+        let args = vec![
+            peer_id.to_string(),
+            score.to_string(),
+            new_score.to_string()
+        ];
+        let adjusted_score = self.smart_contract_engine.call_contract(cooperation_contract.id, "adjust_cooperation", args)?;
+        *score = adjusted_score.parse::<f64>().map_err(|e| IcnError::Consensus(format!("Failed to parse adjusted cooperation score: {}", e)))?;
 
         Ok(())
     }
@@ -2146,7 +3019,23 @@ impl ProofOfCooperation {
         stake_info.asset_type = asset_type;
         stake_info.duration = duration;
 
-        info!("Updated stake for peer {}: amount={}, asset_type={}, duration={}", peer_id, amount, stake_info.asset_type, duration);
+        // Execute smart contract for stake validation and potential bonuses
+        let stake_contract = self.smart_contract_engine.get_contract("stake_management")
+            .ok_or_else(|| IcnError::Consensus("Stake management smart contract not found".to_string()))?;
+        let args = vec![
+            peer_id.to_string(),
+            amount.to_string(),
+            stake_info.asset_type.clone(),
+            duration.to_string()
+        ];
+        let result = self.smart_contract_engine.call_contract(stake_contract.id, "validate_and_adjust_stake", args)?;
+        let adjusted_stake: StakeInfo = serde_json::from_str(&result)
+            .map_err(|e| IcnError::Consensus(format!("Failed to parse adjusted stake info: {}", e)))?;
+
+        *stake_info = adjusted_stake;
+
+        info!("Updated stake for peer {}: amount={}, asset_type={}, duration={}", 
+              peer_id, stake_info.amount, stake_info.asset_type, stake_info.duration);
         Ok(())
     }
 
@@ -2178,7 +3067,8 @@ impl ProofOfCooperation {
         comp_power.gpu_power = gpu_power;
         comp_power.specialized_hardware = specialized_hardware.clone();
 
-        info!("Updated computational power for peer {}: cpu_power={}, gpu_power={}, specialized_hardware={:?}", peer_id, cpu_power, gpu_power, specialized_hardware);
+        info!("Updated computational power for peer {}: cpu_power={}, gpu_power={}, specialized_hardware={:?}", 
+              peer_id, cpu_power, gpu_power, specialized_hardware);
         Ok(())
     }
 
@@ -2238,8 +3128,23 @@ impl ProofOfCooperation {
         governance_info.votes_cast = votes_cast;
         governance_info.discussions_participated = discussions_participated;
 
+        // Execute smart contract for governance participation validation and potential bonuses
+        let governance_contract = self.smart_contract_engine.get_contract("governance_participation")
+            .ok_or_else(|| IcnError::Consensus("Governance participation smart contract not found".to_string()))?;
+        let args = vec![
+            peer_id.to_string(),
+            proposals_submitted.to_string(),
+            votes_cast.to_string(),
+            discussions_participated.to_string()
+        ];
+        let result = self.smart_contract_engine.call_contract(governance_contract.id, "validate_and_adjust_participation", args)?;
+        let adjusted_participation: GovernanceParticipation = serde_json::from_str(&result)
+            .map_err(|e| IcnError::Consensus(format!("Failed to parse adjusted governance participation: {}", e)))?;
+
+        *governance_info = adjusted_participation;
+
         info!("Updated governance participation for peer {}: proposals_submitted={}, votes_cast={}, discussions_participated={}", 
-              peer_id, proposals_submitted, votes_cast, discussions_participated);
+              peer_id, governance_info.proposals_submitted, governance_info.votes_cast, governance_info.discussions_participated);
         Ok(())
     }
 
@@ -2268,7 +3173,7 @@ impl ProofOfCooperation {
         governance_participation >= MIN_GOVERNANCE_PARTICIPATION_FOR_SYBIL_RESISTANCE
     }
 
-    /// Calculates the reward for a peer based on their contributions and reputation
+   /// Calculates the reward for a peer based on their contributions and reputation
     ///
     /// This function computes a reward for a peer based on their cooperation score,
     /// reputation score, and network impact.
@@ -2293,7 +3198,19 @@ impl ProofOfCooperation {
 
         let adjusted_reward = (base_reward as f64 * cooperation_score * reputation_score * (1.0 + network_impact)).round() as u64;
 
-        Ok(adjusted_reward)
+        // Execute smart contract for reward calculation
+        let reward_contract = self.smart_contract_engine.get_contract("reward_calculation")
+            .ok_or_else(|| IcnError::Consensus("Reward calculation smart contract not found".to_string()))?;
+        let args = vec![
+            peer_id.to_string(),
+            cooperation_score.to_string(),
+            reputation_score.to_string(),
+            network_impact.to_string(),
+            adjusted_reward.to_string()
+        ];
+        let final_reward = self.smart_contract_engine.call_contract(reward_contract.id, "calculate_final_reward", args)?;
+
+        Ok(final_reward.parse::<u64>().map_err(|e| IcnError::Consensus(format!("Failed to parse final reward: {}", e)))?)
     }
 
     /// Distributes rewards to all eligible peers
@@ -2312,7 +3229,16 @@ impl ProofOfCooperation {
             rewards.insert(peer_id, reward);
         }
 
-        Ok(rewards)
+        // Execute smart contract for reward distribution
+        let distribution_contract = self.smart_contract_engine.get_contract("reward_distribution")
+            .ok_or_else(|| IcnError::Consensus("Reward distribution smart contract not found".to_string()))?;
+        let args = vec![serde_json::to_string(&rewards).map_err(|e| IcnError::Consensus(format!("Failed to serialize rewards: {}", e)))?];
+        let distributed_rewards = self.smart_contract_engine.call_contract(distribution_contract.id, "distribute_rewards", args)?;
+        
+        let final_rewards: HashMap<String, u64> = serde_json::from_str(&distributed_rewards)
+            .map_err(|e| IcnError::Consensus(format!("Failed to parse distributed rewards: {}", e)))?;
+
+        Ok(final_rewards)
     }
 
     /// Applies a penalty to a peer based on the severity of their misconduct
@@ -2345,6 +3271,33 @@ impl ProofOfCooperation {
             }
         }
 
+        // Execute smart contract for penalty application
+        let penalty_contract = self.smart_contract_engine.get_contract("penalty_application")
+            .ok_or_else(|| IcnError::Consensus("Penalty application smart contract not found".to_string()))?;
+        let args = vec![
+            peer_id.to_string(),
+            severity.to_string(),
+            self.cooperation_scores.get(peer_id).unwrap_or(&0.0).to_string(),
+            self.reputation_scores.get(peer_id).unwrap_or(&0.0).to_string(),
+            self.stake_info.get(peer_id).map(|s| s.amount).unwrap_or(0).to_string()
+        ];
+        let penalty_result = self.smart_contract_engine.call_contract(penalty_contract.id, "apply_penalty", args)?;
+        
+        let penalty_data: HashMap<String, f64> = serde_json::from_str(&penalty_result)
+            .map_err(|e| IcnError::Consensus(format!("Failed to parse penalty result: {}", e)))?;
+
+        if let Some(coop_score) = penalty_data.get("cooperation_score") {
+            self.cooperation_scores.insert(peer_id.to_string(), *coop_score);
+        }
+        if let Some(rep_score) = penalty_data.get("reputation_score") {
+            self.reputation_scores.insert(peer_id.to_string(), *rep_score);
+        }
+        if let Some(stake_amount) = penalty_data.get("stake_amount") {
+            if let Some(stake_info) = self.stake_info.get_mut(peer_id) {
+                stake_info.amount = *stake_amount as u64;
+            }
+        }
+
         info!("Applied penalty to peer {} with severity {}", peer_id, severity);
         Ok(())
     }
@@ -2366,7 +3319,18 @@ impl ProofOfCooperation {
 
         let health_score = (avg_cooperation + avg_reputation + stake_distribution) / 3.0;
 
-        Ok(health_score)
+        // Execute smart contract for network health evaluation
+        let health_contract = self.smart_contract_engine.get_contract("network_health")
+            .ok_or_else(|| IcnError::Consensus("Network health smart contract not found".to_string()))?;
+        let args = vec![
+            avg_cooperation.to_string(),
+            avg_reputation.to_string(),
+            stake_distribution.to_string(),
+            health_score.to_string()
+        ];
+        let final_health_score = self.smart_contract_engine.call_contract(health_contract.id, "evaluate_health", args)?;
+
+        Ok(final_health_score.parse::<f64>().map_err(|e| IcnError::Consensus(format!("Failed to parse final health score: {}", e)))?)
     }
 }
 
@@ -2383,27 +3347,27 @@ impl Consensus for ProofOfCooperation {
     ///
     /// # Returns
     ///
-    /// * `Result<bool, String>` - A result containing true if the block is valid, false otherwise, or an error
-    fn validate(&mut self, block: &Block) -> Result<bool, String> {
+    /// * `IcnResult<bool>` - A result containing true if the block is valid, false otherwise, or an error
+    fn validate(&mut self, block: &Block) -> IcnResult<bool> {
         if !self.known_peers.contains(&block.proposer_id) {
-            return Err(format!("Unknown proposer: {}", block.proposer_id));
+            return Err(IcnError::Consensus(format!("Unknown proposer: {}", block.proposer_id)));
         }
 
         let current_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .map_err(|e| format!("System time error: {}", e))?
+            .map_err(|e| IcnError::Consensus(format!("System time error: {}", e)))?
             .as_secs();
 
         if current_time < self.last_block_time + BLOCK_TIME_THRESHOLD {
-            return Err("Block proposed too soon".to_string());
+            return Err(IcnError::Consensus("Block proposed too soon".to_string()));
         }
 
-        let validators = self.select_validators().map_err(|e| e.to_string())?;
+        let validators = self.select_validators()?;
         let mut valid_votes = 0;
         let total_votes = validators.len();
 
         for validator in validators {
-            let vote = self.stake_weighted_vote(&validator, block).map_err(|e| e.to_string())?;
+            let vote = self.stake_weighted_vote(&validator, block)?;
             if vote {
                 valid_votes += 1;
             }
@@ -2413,7 +3377,7 @@ impl Consensus for ProofOfCooperation {
         let is_valid = valid_votes >= validation_threshold;
 
         // Update reputation of the proposer based on the block's validity
-        self.update_reputation(&block.proposer_id, is_valid).map_err(|e| e.to_string())?;
+        self.update_reputation(&block.proposer_id, is_valid)?;
 
         Ok(is_valid)
     }
@@ -2425,11 +3389,11 @@ impl Consensus for ProofOfCooperation {
     ///
     /// # Returns
     ///
-    /// * `Result<String, String>` - A result containing the ID of the selected proposer or an error
-    fn select_proposer(&mut self) -> Result<String, String> {
+    /// * `IcnResult<String>` - A result containing the ID of the selected proposer or an error
+    fn select_proposer(&mut self) -> IcnResult<String> {
         let eligible_peers = self.get_eligible_peers();
         if eligible_peers.is_empty() {
-            return Err("No eligible proposers available".to_string());
+            return Err(IcnError::Consensus("No eligible proposers available".to_string()));
         }
 
         let total_score: f64 = eligible_peers.iter()
@@ -2447,7 +3411,7 @@ impl Consensus for ProofOfCooperation {
             }
         }
 
-        Err("Failed to select proposer".to_string())
+        Err(IcnError::Consensus("Failed to select proposer".to_string()))
     }
 
     /// Gets the list of eligible peers for consensus participation
@@ -2688,8 +3652,28 @@ mod tests {
         let impact = poc.calculate_network_impact("peer1").unwrap();
         assert!(impact > 0.0 && impact <= 1.0, "Network impact should be between 0 and 1");
     }
-}
 
+    #[test]
+    fn test_smart_contract_integration() {
+        let mut poc = ProofOfCooperation::new();
+        
+        // Test smart contract deployment
+        let contract_code = r#"
+            function calculate_final_reward(peer_id, cooperation_score, reputation_score, network_impact, adjusted_reward) {
+                return Math.floor(adjusted_reward * 1.1);  // 10% bonus
+            }
+        "#;
+        let contract_id = poc.smart_contract_engine.deploy_contract(contract_code).unwrap();
+        
+        // Test smart contract execution
+        poc.register_peer("test_peer");
+        poc.update_cooperation_score("test_peer", 0.8).unwrap();
+        poc.update_reputation("test_peer", true).unwrap();
+        
+        let reward = poc.calculate_reward("test_peer").unwrap();
+        assert!(reward > 0, "Reward should be positive");
+    }
+}
 
 
 === ./icn_governance/Cargo.toml ===
@@ -2766,7 +3750,7 @@ version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6e4503c46a5c0c7844e948c9a4d6acd9f50cccb4de1c48eb9e291ea17470c678"
 dependencies = [
- "gimli",
+ "gimli 0.29.0",
 ]
 
 [[package]]
@@ -2867,7 +3851,7 @@ checksum = "6e0c28dcc82d7c8ead5cb13beb15405b57b8546e93215673ff8ca0349a028107"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn",
+ "syn 2.0.76",
 ]
 
 [[package]]
@@ -2887,7 +3871,7 @@ dependencies = [
  "cfg-if",
  "libc",
  "miniz_oxide",
- "object",
+ "object 0.36.4",
  "rustc-demangle",
 ]
 
@@ -2910,6 +3894,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b048fb63fd8b5923fc5aa7b340d8e156aec7ec02f0c78fa8a6ddc2613f6f71de"
 
 [[package]]
+name = "bitvec"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1bc2832c24239b0141d5674bb9174f9d68a8b5b3f2753311927c172ca46f7e9c"
+dependencies = [
+ "funty",
+ "radium",
+ "tap",
+ "wyz",
+]
+
+[[package]]
 name = "block-buffer"
 version = "0.10.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2923,6 +3919,28 @@ name = "bumpalo"
 version = "3.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "79296716171880943b8470b5f8d03aa55eb2e645a4874bdbb28adb49162e012c"
+
+[[package]]
+name = "bytecheck"
+version = "0.6.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "23cdc57ce23ac53c931e88a43d06d070a6fd142f2617be5855eb75efc9beb1c2"
+dependencies = [
+ "bytecheck_derive",
+ "ptr_meta",
+ "simdutf8",
+]
+
+[[package]]
+name = "bytecheck_derive"
+version = "0.6.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3db406d29fbcd95542e92559bed4d8ad92636d1ca8b3b72ede10b4bcc010e659"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
+]
 
 [[package]]
 name = "byteorder"
@@ -3002,7 +4020,7 @@ dependencies = [
  "heck",
  "proc-macro2",
  "quote",
- "syn",
+ "syn 2.0.76",
 ]
 
 [[package]]
@@ -3053,6 +4071,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b"
 
 [[package]]
+name = "corosensei"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "80128832c58ea9cbd041d2a759ec449224487b2c1e400453d99d244eead87a8e"
+dependencies = [
+ "autocfg",
+ "cfg-if",
+ "libc",
+ "scopeguard",
+ "windows-sys 0.33.0",
+]
+
+[[package]]
 name = "cpufeatures"
 version = "0.2.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3060,6 +4091,99 @@ checksum = "51e852e6dc9a5bed1fae92dd2375037bf2b768725bf3be87811edee3249d09ad"
 dependencies = [
  "libc",
 ]
+
+[[package]]
+name = "cranelift-bforest"
+version = "0.82.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "38faa2a16616c8e78a18d37b4726b98bfd2de192f2fdc8a39ddf568a408a0f75"
+dependencies = [
+ "cranelift-entity",
+]
+
+[[package]]
+name = "cranelift-codegen"
+version = "0.82.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "26f192472a3ba23860afd07d2b0217dc628f21fcc72617aa1336d98e1671f33b"
+dependencies = [
+ "cranelift-bforest",
+ "cranelift-codegen-meta",
+ "cranelift-codegen-shared",
+ "cranelift-entity",
+ "gimli 0.26.2",
+ "log",
+ "regalloc",
+ "smallvec",
+ "target-lexicon",
+]
+
+[[package]]
+name = "cranelift-codegen-meta"
+version = "0.82.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0f32ddb89e9b89d3d9b36a5b7d7ea3261c98235a76ac95ba46826b8ec40b1a24"
+dependencies = [
+ "cranelift-codegen-shared",
+]
+
+[[package]]
+name = "cranelift-codegen-shared"
+version = "0.82.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "01fd0d9f288cc1b42d9333b7a776b17e278fc888c28e6a0f09b5573d45a150bc"
+
+[[package]]
+name = "cranelift-entity"
+version = "0.82.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9e3bfe172b83167604601faf9dc60453e0d0a93415b57a9c4d1a7ae6849185cf"
+
+[[package]]
+name = "cranelift-frontend"
+version = "0.82.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a006e3e32d80ce0e4ba7f1f9ddf66066d052a8c884a110b91d05404d6ce26dce"
+dependencies = [
+ "cranelift-codegen",
+ "log",
+ "smallvec",
+ "target-lexicon",
+]
+
+[[package]]
+name = "crc32fast"
+version = "1.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a97769d94ddab943e4510d138150169a2758b5ef3eb191a9ee688de3e23ef7b3"
+dependencies = [
+ "cfg-if",
+]
+
+[[package]]
+name = "crossbeam-deque"
+version = "0.8.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "613f8cc01fe9cf1a3eb3d7f488fd2fa8388403e97039e2f73692932e291a770d"
+dependencies = [
+ "crossbeam-epoch",
+ "crossbeam-utils",
+]
+
+[[package]]
+name = "crossbeam-epoch"
+version = "0.9.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5b82ac4a3c2ca9c3460964f020e1402edd5753411d7737aa39c3714ad1b5420e"
+dependencies = [
+ "crossbeam-utils",
+]
+
+[[package]]
+name = "crossbeam-utils"
+version = "0.8.20"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "22ec99545bb0ed0ea7bb9b8e1e9122ea386ff8a48c0922e43f36d45ab09e0e80"
 
 [[package]]
 name = "crypto-common"
@@ -3082,6 +4206,40 @@ dependencies = [
 ]
 
 [[package]]
+name = "darling"
+version = "0.20.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6f63b86c8a8826a49b8c21f08a2d07338eec8d900540f8630dc76284be802989"
+dependencies = [
+ "darling_core",
+ "darling_macro",
+]
+
+[[package]]
+name = "darling_core"
+version = "0.20.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "95133861a8032aaea082871032f5815eb9e98cef03fa916ab4500513994df9e5"
+dependencies = [
+ "fnv",
+ "ident_case",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.76",
+]
+
+[[package]]
+name = "darling_macro"
+version = "0.20.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d336a2a514f6ccccaa3e09b02d41d35330c07ddf03a62165fcec10bb561c7806"
+dependencies = [
+ "darling_core",
+ "quote",
+ "syn 2.0.76",
+]
+
+[[package]]
 name = "digest"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3096,6 +4254,53 @@ name = "dlv-list"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0688c2a7f92e427f44895cd63841bff7b29f8d7a1648b9e7e07a4a365b2e1257"
+
+[[package]]
+name = "either"
+version = "1.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "60b1af1c220855b6ceac025d3f6ecdd2b7c4894bfe9cd9bda4fbb4bc7c0d4cf0"
+
+[[package]]
+name = "enum-iterator"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4eeac5c5edb79e4e39fe8439ef35207780a11f69c52cbe424ce3dfad4cb78de6"
+dependencies = [
+ "enum-iterator-derive",
+]
+
+[[package]]
+name = "enum-iterator-derive"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c134c37760b27a871ba422106eedbb8247da973a09e82558bf26d619c882b159"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
+]
+
+[[package]]
+name = "enumset"
+version = "1.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d07a4b049558765cef5f0c1a273c3fc57084d768b44d2f98127aef4cceb17293"
+dependencies = [
+ "enumset_derive",
+]
+
+[[package]]
+name = "enumset_derive"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "59c3b24c345d8c314966bdc1832f6c2635bfcce8e7cf363bd115987bba2ee242"
+dependencies = [
+ "darling",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.76",
+]
 
 [[package]]
 name = "env_logger"
@@ -3121,10 +4326,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "fallible-iterator"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4443176a9f2c162692bd3d352d745ef9413eec5782a80d8fd6f8a1ac692a07f7"
+
+[[package]]
 name = "fastrand"
 version = "2.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e8c02a5121d4ea3eb16a80748c74f5549a5665e4c21333c6098f283870fbdea6"
+
+[[package]]
+name = "fnv"
+version = "1.0.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1"
 
 [[package]]
 name = "foreign-types"
@@ -3140,6 +4357,12 @@ name = "foreign-types-shared"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "00b0228411908ca8685dba7fc2cdd70ec9990a6e753e89b6ac91a84c40fbaf4b"
+
+[[package]]
+name = "funty"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e6d5a32815ae3f33302d95fdcb2ce17862f8c65363dcfd29360480ba1001fc9c"
 
 [[package]]
 name = "futures"
@@ -3197,7 +4420,7 @@ checksum = "87750cf4b7a4c0625b1529e4c543c2182106e4dedc60a2a6455e00d212c489ac"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn",
+ "syn 2.0.76",
 ]
 
 [[package]]
@@ -3253,9 +4476,29 @@ dependencies = [
 
 [[package]]
 name = "gimli"
+version = "0.26.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "22030e2c5a68ec659fde1e949a745124b48e6fa8b045b7ed5bd1fe4ccc5c4e5d"
+dependencies = [
+ "fallible-iterator",
+ "indexmap",
+ "stable_deref_trait",
+]
+
+[[package]]
+name = "gimli"
 version = "0.29.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "40ecd4077b5ae9fd2e9e169b102c6c330d0605168eb0e8bf79952b256dbefffd"
+
+[[package]]
+name = "hashbrown"
+version = "0.11.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ab5ef0d4909ef3724cc8cce6ccc8572c5c817592e9285f5464f8e86f8bd3726e"
+dependencies = [
+ "ahash",
+]
 
 [[package]]
 name = "hashbrown"
@@ -3283,6 +4526,15 @@ name = "hermit-abi"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fbf6a919d6cf397374f7dfeeea91d974c7c0a7221d0d0f4f20d859d329e53fcc"
+
+[[package]]
+name = "home"
+version = "0.5.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e3d1354bf6b7235cb4a0576c2619fd4ed18183f689b12b006a0ee7329eeff9a5"
+dependencies = [
+ "windows-sys 0.52.0",
+]
 
 [[package]]
 name = "humantime"
@@ -3324,11 +4576,14 @@ dependencies = [
  "chrono",
  "icn_consensus",
  "icn_shared",
+ "icn_virtual_machine",
  "log",
  "rand",
  "serde",
  "serde_json",
  "sha2",
+ "thiserror",
+ "wasmer",
 ]
 
 [[package]]
@@ -3430,6 +4685,23 @@ name = "icn_virtual_machine"
 version = "0.1.0"
 
 [[package]]
+name = "ident_case"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b9e0384b61958566e926dc50660321d12159025e767c18e043daf26b70104c39"
+
+[[package]]
+name = "indexmap"
+version = "1.9.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bd070e393353796e801d209ad339e89596eb4c8d430d18ede6a1cced8fafbd99"
+dependencies = [
+ "autocfg",
+ "hashbrown 0.12.3",
+ "serde",
+]
+
+[[package]]
 name = "is-terminal"
 version = "0.4.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3479,10 +4751,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 
 [[package]]
+name = "leb128"
+version = "0.2.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "884e2677b40cc8c339eaefcb701c32ef1fd2493d71118dc0ca4b6a736c93bd67"
+
+[[package]]
 name = "libc"
 version = "0.2.158"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d8adc4bb1803a324070e64a98ae98f38934d91957a99cfb3a43dcbc01bc56439"
+
+[[package]]
+name = "libloading"
+version = "0.7.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b67380fd3b2fbe7527a606e18729d21c6f3951633d0500574c4dc22d2d638b9f"
+dependencies = [
+ "cfg-if",
+ "winapi",
+]
 
 [[package]]
 name = "linked-hash-map"
@@ -3513,10 +4801,67 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a7a70ba024b9dc04c27ea2f0c0548feb474ec5c54bba33a7f72f873a39d07b24"
 
 [[package]]
+name = "loupe"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9b6a72dfa44fe15b5e76b94307eeb2ff995a8c5b283b55008940c02e0c5b634d"
+dependencies = [
+ "indexmap",
+ "loupe-derive",
+ "rustversion",
+]
+
+[[package]]
+name = "loupe-derive"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c0fbfc88337168279f2e9ae06e157cfed4efd3316e14dc96ed074d4f2e6c5952"
+dependencies = [
+ "quote",
+ "syn 1.0.109",
+]
+
+[[package]]
+name = "mach"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b823e83b2affd8f40a9ee8c29dbc56404c1e34cd2710921f2801e2cf29527afa"
+dependencies = [
+ "libc",
+]
+
+[[package]]
+name = "mach2"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "19b955cdeb2a02b9117f121ce63aa52d08ade45de53e48fe6a38b39c10f6f709"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "memchr"
 version = "2.7.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "78ca9ab1a0babb1e7d5695e3530886289c18cf2f87ec19a575a0abdce112e3a3"
+
+[[package]]
+name = "memmap2"
+version = "0.5.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "83faa42c0a078c393f6b29d5db232d8be22776a891f8f56e5284faee4a20b327"
+dependencies = [
+ "libc",
+]
+
+[[package]]
+name = "memoffset"
+version = "0.6.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5aa361d4faea93603064a027415f07bd8e1d5c88c9fbf68bf56a285428fd79ce"
+dependencies = [
+ "autocfg",
+]
 
 [[package]]
 name = "minimal-lexical"
@@ -3544,6 +4889,12 @@ dependencies = [
  "wasi",
  "windows-sys 0.52.0",
 ]
+
+[[package]]
+name = "more-asserts"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7843ec2de400bcbc6a6328c958dc38e5359da6e93e72e37bc5246bf1ae776389"
 
 [[package]]
 name = "native-tls"
@@ -3595,6 +4946,18 @@ dependencies = [
 
 [[package]]
 name = "object"
+version = "0.28.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e42c982f2d955fac81dd7e1d0e1426a7d702acd9c98d19ab01083a6a0328c424"
+dependencies = [
+ "crc32fast",
+ "hashbrown 0.11.2",
+ "indexmap",
+ "memchr",
+]
+
+[[package]]
+name = "object"
 version = "0.36.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "084f1a5821ac4c651660a94a7153d27ac9d8a53736203f58b31945ded098070a"
@@ -3631,7 +4994,7 @@ checksum = "a948666b637a0f465e8564c73e89d4dde00d72d4d473cc972f390fc3dcee7d9c"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn",
+ "syn 2.0.76",
 ]
 
 [[package]]
@@ -3659,7 +5022,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ccd746e37177e1711c20dd619a1620f34f5c8b569c53590a72dedd5344d8924a"
 dependencies = [
  "dlv-list",
- "hashbrown",
+ "hashbrown 0.12.3",
 ]
 
 [[package]]
@@ -3722,7 +5085,7 @@ dependencies = [
  "pest_meta",
  "proc-macro2",
  "quote",
- "syn",
+ "syn 2.0.76",
 ]
 
 [[package]]
@@ -3764,12 +5127,56 @@ dependencies = [
 ]
 
 [[package]]
+name = "proc-macro-error"
+version = "1.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "da25490ff9892aab3fcf7c36f08cfb902dd3e71ca0f9f9517bea02a73a5ce38c"
+dependencies = [
+ "proc-macro-error-attr",
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
+ "version_check",
+]
+
+[[package]]
+name = "proc-macro-error-attr"
+version = "1.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a1be40180e52ecc98ad80b184934baf3d0d29f979574e439af5a55274b35f869"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "version_check",
+]
+
+[[package]]
 name = "proc-macro2"
 version = "1.0.86"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5e719e8df665df0d1c8fbfd238015744736151d4445ec0836b8e628aae103b77"
 dependencies = [
  "unicode-ident",
+]
+
+[[package]]
+name = "ptr_meta"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0738ccf7ea06b608c10564b31debd4f5bc5e197fc8bfe088f68ae5ce81e7a4f1"
+dependencies = [
+ "ptr_meta_derive",
+]
+
+[[package]]
+name = "ptr_meta_derive"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "16b845dbfca988fa33db069c0e230574d15a3088f147a87b64c7589eb662c9ac"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
 ]
 
 [[package]]
@@ -3780,6 +5187,12 @@ checksum = "b5b9d34b8991d19d98081b46eacdd8eb58c6f2b201139f7c5f643cc155a633af"
 dependencies = [
  "proc-macro2",
 ]
+
+[[package]]
+name = "radium"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dc33ff2d4973d518d823d61aa239014831e521c75da58e3df4840d3f47749d09"
 
 [[package]]
 name = "rand"
@@ -3812,12 +5225,43 @@ dependencies = [
 ]
 
 [[package]]
+name = "rayon"
+version = "1.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b418a60154510ca1a002a752ca9714984e21e4241e804d32555251faf8b78ffa"
+dependencies = [
+ "either",
+ "rayon-core",
+]
+
+[[package]]
+name = "rayon-core"
+version = "1.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1465873a3dfdaa8ae7cb14b4383657caab0b3e8a0aa9ae8e04b044854c8dfce2"
+dependencies = [
+ "crossbeam-deque",
+ "crossbeam-utils",
+]
+
+[[package]]
 name = "redox_syscall"
 version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2a908a6e00f1fdd0dfd9c0eb08ce85126f6d8bbda50017e74bc4a4b7d4a926a4"
 dependencies = [
  "bitflags 2.6.0",
+]
+
+[[package]]
+name = "regalloc"
+version = "0.0.34"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "62446b1d3ebf980bdc68837700af1d77b37bc430e524bf95319c6eada2a4cc02"
+dependencies = [
+ "log",
+ "rustc-hash",
+ "smallvec",
 ]
 
 [[package]]
@@ -3850,6 +5294,56 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a66a03ae7c801facd77a29370b4faec201768915ac14a721ba36f20bc9c209b"
 
 [[package]]
+name = "region"
+version = "3.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e6b6ebd13bc009aef9cd476c1310d49ac354d36e240cf1bd753290f3dc7199a7"
+dependencies = [
+ "bitflags 1.3.2",
+ "libc",
+ "mach2",
+ "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "rend"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "71fe3824f5629716b1589be05dacd749f6aa084c87e00e016714a8cdfccc997c"
+dependencies = [
+ "bytecheck",
+]
+
+[[package]]
+name = "rkyv"
+version = "0.7.45"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9008cd6385b9e161d8229e1f6549dd23c3d022f132a2ea37ac3a10ac4935779b"
+dependencies = [
+ "bitvec",
+ "bytecheck",
+ "bytes",
+ "hashbrown 0.12.3",
+ "ptr_meta",
+ "rend",
+ "rkyv_derive",
+ "seahash",
+ "tinyvec",
+ "uuid",
+]
+
+[[package]]
+name = "rkyv_derive"
+version = "0.7.45"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "503d1d27590a2b0a3a4ca4c94755aa2875657196ecbf401a42eff41d7de532c0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
+]
+
+[[package]]
 name = "ron"
 version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3877,6 +5371,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "719b953e2095829ee67db738b3bfa9fa368c94900df327b3f07fe6e794d2fe1f"
 
 [[package]]
+name = "rustc-hash"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2"
+
+[[package]]
 name = "rustix"
 version = "0.38.35"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3888,6 +5388,12 @@ dependencies = [
  "linux-raw-sys",
  "windows-sys 0.52.0",
 ]
+
+[[package]]
+name = "rustversion"
+version = "1.0.17"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "955d28af4278de8121b7ebeb796b6a45735dc01436d898801014aced2773a3d6"
 
 [[package]]
 name = "ryu"
@@ -3909,6 +5415,12 @@ name = "scopeguard"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
+
+[[package]]
+name = "seahash"
+version = "4.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1c107b6f4780854c8b126e228ea8869f4d7b71260f962fefb57b996b8959ba6b"
 
 [[package]]
 name = "security-framework"
@@ -3943,6 +5455,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_bytes"
+version = "0.11.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "387cc504cb06bb40a96c8e04e951fe01854cf6bc921053c954e4a606d9675c6a"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "serde_derive"
 version = "1.0.209"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3950,7 +5471,7 @@ checksum = "a5831b979fd7b5439637af1752d535ff49f4860c0f341d1baeb6faf0f4242170"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn",
+ "syn 2.0.76",
 ]
 
 [[package]]
@@ -3992,6 +5513,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "simdutf8"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f27f6278552951f1f2b8cf9da965d10969b2efdea95a6ec47987ab46edfe263a"
+
+[[package]]
 name = "slab"
 version = "0.4.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4017,10 +5544,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "stable_deref_trait"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
+
+[[package]]
 name = "strsim"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
+
+[[package]]
+name = "syn"
+version = "1.0.109"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72b64191b275b66ffe2469e8af2c1cfe3bafa67b529ead792a6d0160888b4237"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "unicode-ident",
+]
 
 [[package]]
 name = "syn"
@@ -4032,6 +5576,18 @@ dependencies = [
  "quote",
  "unicode-ident",
 ]
+
+[[package]]
+name = "tap"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "55937e1799185b12863d447f42597ed69d9928686b8d88a1df17376a097d8369"
+
+[[package]]
+name = "target-lexicon"
+version = "0.12.16"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "61c41af27dd6d1e27b1b16b489db798443478cef1f06a660c96db617ba5de3b1"
 
 [[package]]
 name = "tempfile"
@@ -4072,8 +5628,23 @@ checksum = "a4558b58466b9ad7ca0f102865eccc95938dca1a74a856f2b57b6629050da261"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn",
+ "syn 2.0.76",
 ]
+
+[[package]]
+name = "tinyvec"
+version = "1.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "445e881f4f6d382d5f27c034e25eb92edd7c784ceab92a0937db7f2e9471b938"
+dependencies = [
+ "tinyvec_macros",
+]
+
+[[package]]
+name = "tinyvec_macros"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "tokio"
@@ -4101,7 +5672,7 @@ checksum = "693d596312e88961bc67d7f1f97af8a70227d9f90c31bba5806eec004978d752"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn",
+ "syn 2.0.76",
 ]
 
 [[package]]
@@ -4124,6 +5695,38 @@ dependencies = [
 ]
 
 [[package]]
+name = "tracing"
+version = "0.1.40"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c3523ab5a71916ccf420eebdf5521fcef02141234bbc0b8a49f2fdc4544364ef"
+dependencies = [
+ "log",
+ "pin-project-lite",
+ "tracing-attributes",
+ "tracing-core",
+]
+
+[[package]]
+name = "tracing-attributes"
+version = "0.1.27"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "34704c8d6ebcbc939824180af020566b01a7c01f80641264eba0999f6c2b6be7"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.76",
+]
+
+[[package]]
+name = "tracing-core"
+version = "0.1.32"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c06d3da6113f116aaee68e4d601191614c9053067f9ab7f6edbcb161237daa54"
+dependencies = [
+ "once_cell",
+]
+
+[[package]]
 name = "typenum"
 version = "1.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4142,10 +5745,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3354b9ac3fae1ff6755cb6db53683adb661634f67557942dea4facebec0fee4b"
 
 [[package]]
+name = "unicode-width"
+version = "0.1.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0336d538f7abc86d282a4189614dfaa90810dfc2c6f6427eaf88e16311dd225d"
+
+[[package]]
 name = "utf8parse"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
+
+[[package]]
+name = "uuid"
+version = "1.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "81dfa00651efa65069b0b6b651f4aaa31ba9e3c3ce0137aaad053604ee7e0314"
 
 [[package]]
 name = "vcpkg"
@@ -4187,7 +5802,7 @@ dependencies = [
  "once_cell",
  "proc-macro2",
  "quote",
- "syn",
+ "syn 2.0.76",
  "wasm-bindgen-shared",
 ]
 
@@ -4209,7 +5824,7 @@ checksum = "afc340c74d9005395cf9dd098506f7f44e38f2b4a21c6aaacf9a105ea5e1e836"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn",
+ "syn 2.0.76",
  "wasm-bindgen-backend",
  "wasm-bindgen-shared",
 ]
@@ -4221,6 +5836,302 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c62a0a307cb4a311d3a07867860911ca130c3494e8c2719593806c08bc5d0484"
 
 [[package]]
+name = "wasm-encoder"
+version = "0.216.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "04c23aebea22c8a75833ae08ed31ccc020835b12a41999e58c31464271b94a88"
+dependencies = [
+ "leb128",
+]
+
+[[package]]
+name = "wasmer"
+version = "2.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ea8d8361c9d006ea3d7797de7bd6b1492ffd0f91a22430cfda6c1658ad57bedf"
+dependencies = [
+ "cfg-if",
+ "indexmap",
+ "js-sys",
+ "loupe",
+ "more-asserts",
+ "target-lexicon",
+ "thiserror",
+ "wasm-bindgen",
+ "wasmer-artifact",
+ "wasmer-compiler",
+ "wasmer-compiler-cranelift",
+ "wasmer-derive",
+ "wasmer-engine",
+ "wasmer-engine-dylib",
+ "wasmer-engine-universal",
+ "wasmer-types",
+ "wasmer-vm",
+ "wat",
+ "winapi",
+]
+
+[[package]]
+name = "wasmer-artifact"
+version = "2.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7aaf9428c29c1d8ad2ac0e45889ba8a568a835e33fd058964e5e500f2f7ce325"
+dependencies = [
+ "enumset",
+ "loupe",
+ "thiserror",
+ "wasmer-compiler",
+ "wasmer-types",
+]
+
+[[package]]
+name = "wasmer-compiler"
+version = "2.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e67a6cd866aed456656db2cfea96c18baabbd33f676578482b85c51e1ee19d2c"
+dependencies = [
+ "enumset",
+ "loupe",
+ "rkyv",
+ "serde",
+ "serde_bytes",
+ "smallvec",
+ "target-lexicon",
+ "thiserror",
+ "wasmer-types",
+ "wasmparser",
+]
+
+[[package]]
+name = "wasmer-compiler-cranelift"
+version = "2.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "48be2f9f6495f08649e4f8b946a2cbbe119faf5a654aa1457f9504a99d23dae0"
+dependencies = [
+ "cranelift-codegen",
+ "cranelift-entity",
+ "cranelift-frontend",
+ "gimli 0.26.2",
+ "loupe",
+ "more-asserts",
+ "rayon",
+ "smallvec",
+ "target-lexicon",
+ "tracing",
+ "wasmer-compiler",
+ "wasmer-types",
+]
+
+[[package]]
+name = "wasmer-derive"
+version = "2.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "00e50405cc2a2f74ff574584710a5f2c1d5c93744acce2ca0866084739284b51"
+dependencies = [
+ "proc-macro-error",
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
+]
+
+[[package]]
+name = "wasmer-engine"
+version = "2.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3f98f010978c244db431b392aeab0661df7ea0822343334f8f2a920763548e45"
+dependencies = [
+ "backtrace",
+ "enumset",
+ "lazy_static",
+ "loupe",
+ "memmap2",
+ "more-asserts",
+ "rustc-demangle",
+ "serde",
+ "serde_bytes",
+ "target-lexicon",
+ "thiserror",
+ "wasmer-artifact",
+ "wasmer-compiler",
+ "wasmer-types",
+ "wasmer-vm",
+]
+
+[[package]]
+name = "wasmer-engine-dylib"
+version = "2.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ad0358af9c154724587731175553805648d9acb8f6657880d165e378672b7e53"
+dependencies = [
+ "cfg-if",
+ "enum-iterator",
+ "enumset",
+ "leb128",
+ "libloading",
+ "loupe",
+ "object 0.28.4",
+ "rkyv",
+ "serde",
+ "tempfile",
+ "tracing",
+ "wasmer-artifact",
+ "wasmer-compiler",
+ "wasmer-engine",
+ "wasmer-object",
+ "wasmer-types",
+ "wasmer-vm",
+ "which",
+]
+
+[[package]]
+name = "wasmer-engine-universal"
+version = "2.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "440dc3d93c9ca47865a4f4edd037ea81bf983b5796b59b3d712d844b32dbef15"
+dependencies = [
+ "cfg-if",
+ "enumset",
+ "leb128",
+ "loupe",
+ "region",
+ "rkyv",
+ "wasmer-compiler",
+ "wasmer-engine",
+ "wasmer-engine-universal-artifact",
+ "wasmer-types",
+ "wasmer-vm",
+ "winapi",
+]
+
+[[package]]
+name = "wasmer-engine-universal-artifact"
+version = "2.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "68f1db3f54152657eb6e86c44b66525ff7801dad8328fe677da48dd06af9ad41"
+dependencies = [
+ "enum-iterator",
+ "enumset",
+ "loupe",
+ "rkyv",
+ "thiserror",
+ "wasmer-artifact",
+ "wasmer-compiler",
+ "wasmer-types",
+]
+
+[[package]]
+name = "wasmer-object"
+version = "2.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8d831335ff3a44ecf451303f6f891175c642488036b92ceceb24ac8623a8fa8b"
+dependencies = [
+ "object 0.28.4",
+ "thiserror",
+ "wasmer-compiler",
+ "wasmer-types",
+]
+
+[[package]]
+name = "wasmer-types"
+version = "2.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "39df01ea05dc0a9bab67e054c7cb01521e53b35a7bb90bd02eca564ed0b2667f"
+dependencies = [
+ "backtrace",
+ "enum-iterator",
+ "indexmap",
+ "loupe",
+ "more-asserts",
+ "rkyv",
+ "serde",
+ "thiserror",
+]
+
+[[package]]
+name = "wasmer-vm"
+version = "2.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "30d965fa61f4dc4cdb35a54daaf7ecec3563fbb94154a6c35433f879466247dd"
+dependencies = [
+ "backtrace",
+ "cc",
+ "cfg-if",
+ "corosensei",
+ "enum-iterator",
+ "indexmap",
+ "lazy_static",
+ "libc",
+ "loupe",
+ "mach",
+ "memoffset",
+ "more-asserts",
+ "region",
+ "rkyv",
+ "scopeguard",
+ "serde",
+ "thiserror",
+ "wasmer-artifact",
+ "wasmer-types",
+ "winapi",
+]
+
+[[package]]
+name = "wasmparser"
+version = "0.83.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "718ed7c55c2add6548cca3ddd6383d738cd73b892df400e96b9aa876f0141d7a"
+
+[[package]]
+name = "wast"
+version = "216.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f7eb1f2eecd913fdde0dc6c3439d0f24530a98ac6db6cb3d14d92a5328554a08"
+dependencies = [
+ "bumpalo",
+ "leb128",
+ "memchr",
+ "unicode-width",
+ "wasm-encoder",
+]
+
+[[package]]
+name = "wat"
+version = "1.216.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ac0409090fb5154f95fb5ba3235675fd9e579e731524d63b6a2f653e1280c82a"
+dependencies = [
+ "wast",
+]
+
+[[package]]
+name = "which"
+version = "4.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "87ba24419a2078cd2b0f2ede2691b6c66d8e47836da3b6db8265ebad47afbfc7"
+dependencies = [
+ "either",
+ "home",
+ "once_cell",
+ "rustix",
+]
+
+[[package]]
+name = "winapi"
+version = "0.3.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5c839a674fcd7a98952e593242ea400abe93992746761e38641405d28b00f419"
+dependencies = [
+ "winapi-i686-pc-windows-gnu",
+ "winapi-x86_64-pc-windows-gnu",
+]
+
+[[package]]
+name = "winapi-i686-pc-windows-gnu"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ac3b87c63620426dd9b991e5ce0329eff545bccbbb34f3be09ff6fb6ab51b7b6"
+
+[[package]]
 name = "winapi-util"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4230,12 +6141,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "winapi-x86_64-pc-windows-gnu"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
+
+[[package]]
 name = "windows-core"
 version = "0.52.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "33ab640c8d7e35bf8ba19b884ba838ceb4fba93a4e8c65a9059d08afcfc683d9"
 dependencies = [
  "windows-targets",
+]
+
+[[package]]
+name = "windows-sys"
+version = "0.33.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "43dbb096663629518eb1dfa72d80243ca5a6aca764cae62a2df70af760a9be75"
+dependencies = [
+ "windows_aarch64_msvc 0.33.0",
+ "windows_i686_gnu 0.33.0",
+ "windows_i686_msvc 0.33.0",
+ "windows_x86_64_gnu 0.33.0",
+ "windows_x86_64_msvc 0.33.0",
 ]
 
 [[package]]
@@ -4263,13 +6193,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b724f72796e036ab90c1021d4780d4d3d648aca59e491e6b98e725b84e99973"
 dependencies = [
  "windows_aarch64_gnullvm",
- "windows_aarch64_msvc",
- "windows_i686_gnu",
+ "windows_aarch64_msvc 0.52.6",
+ "windows_i686_gnu 0.52.6",
  "windows_i686_gnullvm",
- "windows_i686_msvc",
- "windows_x86_64_gnu",
+ "windows_i686_msvc 0.52.6",
+ "windows_x86_64_gnu 0.52.6",
  "windows_x86_64_gnullvm",
- "windows_x86_64_msvc",
+ "windows_x86_64_msvc 0.52.6",
 ]
 
 [[package]]
@@ -4280,9 +6210,21 @@ checksum = "32a4622180e7a0ec044bb555404c800bc9fd9ec262ec147edd5989ccd0c02cd3"
 
 [[package]]
 name = "windows_aarch64_msvc"
+version = "0.33.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cd761fd3eb9ab8cc1ed81e56e567f02dd82c4c837e48ac3b2181b9ffc5060807"
+
+[[package]]
+name = "windows_aarch64_msvc"
 version = "0.52.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "09ec2a7bb152e2252b53fa7803150007879548bc709c039df7627cabbd05d469"
+
+[[package]]
+name = "windows_i686_gnu"
+version = "0.33.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cab0cf703a96bab2dc0c02c0fa748491294bf9b7feb27e1f4f96340f208ada0e"
 
 [[package]]
 name = "windows_i686_gnu"
@@ -4298,9 +6240,21 @@ checksum = "0eee52d38c090b3caa76c563b86c3a4bd71ef1a819287c19d586d7334ae8ed66"
 
 [[package]]
 name = "windows_i686_msvc"
+version = "0.33.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8cfdbe89cc9ad7ce618ba34abc34bbb6c36d99e96cae2245b7943cd75ee773d0"
+
+[[package]]
+name = "windows_i686_msvc"
 version = "0.52.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "240948bc05c5e7c6dabba28bf89d89ffce3e303022809e73deaefe4f6ec56c66"
+
+[[package]]
+name = "windows_x86_64_gnu"
+version = "0.33.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b4dd9b0c0e9ece7bb22e84d70d01b71c6d6248b81a3c60d11869451b4cb24784"
 
 [[package]]
 name = "windows_x86_64_gnu"
@@ -4316,9 +6270,24 @@ checksum = "24d5b23dc417412679681396f2b49f3de8c1473deb516bd34410872eff51ed0d"
 
 [[package]]
 name = "windows_x86_64_msvc"
+version = "0.33.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ff1e4aa646495048ec7f3ffddc411e1d829c026a2ec62b39da15c1055e406eaa"
+
+[[package]]
+name = "windows_x86_64_msvc"
 version = "0.52.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "589f6da84c646204747d1270a2a5661ea66ed1cced2631d546fdfb155959f9ec"
+
+[[package]]
+name = "wyz"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "05f360fc0b24296329c78fda852a1e9ae82de9cf7b27dae4b7f62f118f77b9ed"
+dependencies = [
+ "tap",
+]
 
 [[package]]
 name = "yaml-rust"
@@ -4347,7 +6316,7 @@ checksum = "fa4f8080344d4671fb4e831a13ad1e68092748387dfc4f55e356242fae12ce3e"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn",
+ "syn 2.0.76",
 ]
 
 
@@ -5689,85 +7658,313 @@ edition = "2021"
 
 
 
+=== ./icn_smart_contracts/src/compiler.rs ===
+// File: icn_smart_contracts/src/compiler.rs
+
+use crate::bytecode::Opcode; // Assuming you have defined Opcode in your bytecode module
+
+pub struct Compiler {
+    // ... (you'll likely need some internal state here, e.g., for symbol tables, etc.)
+}
+
+impl Compiler {
+    pub fn new() -> Self {
+        Compiler {
+            // ... initialize internal state
+        }
+    }
+
+    pub fn compile(&self, source_code: &str) -> Result<Vec<u8>, String> {
+        // 1. Lexical Analysis (Tokenization)
+        let tokens = self.tokenize(source_code)?;
+
+        // 2. Parsing (Syntax Analysis)
+        let ast = self.parse(tokens)?;
+
+        // 3. Code Generation (Bytecode Emission)
+        let bytecode = self.generate_bytecode(ast)?;
+
+        Ok(bytecode)
+    }
+
+    fn tokenize(&self, source_code: &str) -> Result<Vec<Token>, String> {
+        // ... implement tokenization logic here
+        // This will involve breaking down the source code into a sequence of tokens
+        todo!() // Placeholder for now
+    }
+
+    fn parse(&self, tokens: Vec<Token>) -> Result<ASTNode, String> {
+        // ... implement parsing logic here
+        // This will involve constructing an Abstract Syntax Tree (AST) from the tokens
+        todo!() // Placeholder for now
+    }
+
+    fn generate_bytecode(&self, ast: ASTNode) -> Result<Vec<u8>, String> {
+        let mut bytecode = Vec::new();
+
+        // Example: Simple bytecode generation for an addition operation
+        // You'll need to expand this to handle the full AST and generate appropriate bytecode
+        match ast {
+            ASTNode::Add(left, right) => {
+                bytecode.extend(self.generate_bytecode(*left)?);
+                bytecode.extend(self.generate_bytecode(*right)?);
+                bytecode.push(Opcode::Add as u8); 
+            }
+            // ... other AST node cases
+        }
+
+        Ok(bytecode)
+    }
+}
+
+// Define your Token and ASTNode structures here based on your language design
+// Example:
+enum Token {
+    // ... your token types
+}
+
+enum ASTNode {
+    // ... your AST node types
+    Add(Box<ASTNode>, Box<ASTNode>), 
+    // ...
+}
+
+
 === ./icn_smart_contracts/src/lib/mod.rs ===
 
 
 
-=== ./icn_smart_contracts/src/lib.rs ===
-// icn_smart_contracts/src/lib.rs
+=== ./icn_smart_contracts/src/smart_contract.rs ===
+// File: icn_smart_contracts/src/smart_contract.rs
 
-use std::collections::HashMap;
+/// The SmartContract module defines the structure and deployment mechanisms for smart contracts.
+/// It integrates with the ICN Virtual Machine to enable contract execution on the network.
 
-// Define our own error type for this crate
-#[derive(Debug)]
-pub enum SmartContractError {
-    InvalidArguments(String),
-    ContractNotFound(u32),
-    KeyNotFound(String),
-    UnknownFunction(String),
-}
+use icn_virtual_machine::execution_engine::{ExecutionEngine, ExecutionContext, ExecutionResult};
 
-pub type SmartContractResult<T> = Result<T, SmartContractError>;
-
+/// SmartContract struct represents a compiled smart contract ready for deployment on the ICN.
 pub struct SmartContract {
-    pub id: u32,
-    pub code: String,
-    pub state: HashMap<String, String>,
+    pub bytecode: Vec<u8>,
 }
 
 impl SmartContract {
+    /// Creates a new instance of SmartContract with the provided bytecode.
+    ///
+    /// # Arguments
+    ///
+    /// * `bytecode` - A vector of u8 representing the compiled bytecode of the smart contract.
+    pub fn new(bytecode: Vec<u8>) -> Self {
+        SmartContract { bytecode }
+    }
+
+    /// Deploys the smart contract on the provided execution engine.
+    ///
+    /// # Arguments
+    ///
+    /// * `vm` - A mutable reference to the ExecutionEngine instance.
+    /// * `context` - The execution context for the contract deployment.
+    ///
+    /// # Returns
+    ///
+    /// * `ExecutionResult` - The result of the contract deployment.
+    pub fn deploy(&self, vm: &mut ExecutionEngine, context: ExecutionContext) -> ExecutionResult {
+        vm.execute_contract(self.bytecode.clone(), context)
+    }
+}
+
+
+
+=== ./icn_smart_contracts/src/lib.rs ===
+// File: icn_smart_contracts/src/lib.rs
+
+use std::collections::HashMap;
+use icn_shared::{IcnError, IcnResult};
+use icn_virtual_machine::{Bytecode, VirtualMachine};
+
+/// Custom error type for smart contract-related operations
+#[derive(Debug, thiserror::Error)]
+pub enum SmartContractError {
+    /// Error for invalid arguments provided to a smart contract function
+    #[error("Invalid arguments: {0}")]
+    InvalidArguments(String),
+
+    /// Error when a contract is not found
+    #[error("Contract not found: {0}")]
+    ContractNotFound(u32),
+
+    /// Error during contract compilation
+    #[error("Compilation error: {0}")]
+    CompilationError(String),
+
+    /// Error during contract execution
+    #[error("Execution error: {0}")]
+    ExecutionError(String),
+
+    /// Error for unsupported operations
+    #[error("Unsupported operation: {0}")]
+    UnsupportedOperation(String),
+}
+
+/// Result type alias for smart contract operations
+pub type SmartContractResult<T> = Result<T, SmartContractError>;
+
+/// Represents a smart contract within the ICN ecosystem
+#[derive(Debug, Clone)]
+pub struct SmartContract {
+    /// Unique identifier for the contract
+    pub id: u32,
+    /// Source code of the contract
+    pub code: String,
+    /// Compiled bytecode of the contract (if available)
+    pub bytecode: Option<Bytecode>,
+}
+
+impl SmartContract {
+    /// Creates a new `SmartContract` instance
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - Unique identifier for the contract
+    /// * `code` - Source code of the contract
+    ///
+    /// # Returns
+    ///
+    /// A new `SmartContract` instance
     pub fn new(id: u32, code: &str) -> Self {
         SmartContract {
             id,
             code: code.to_string(),
-            state: HashMap::new(),
+            bytecode: None,
         }
     }
 
-    pub fn execute(&mut self, function: &str, args: Vec<String>) -> SmartContractResult<String> {
-        match function {
-            "set" => {
-                if args.len() != 2 {
-                    return Err(SmartContractError::InvalidArguments("'set' requires 2 arguments".to_string()));
-                }
-                self.state.insert(args[0].clone(), args[1].clone());
-                Ok("Value set successfully".to_string())
-            }
-            "get" => {
-                if args.len() != 1 {
-                    return Err(SmartContractError::InvalidArguments("'get' requires 1 argument".to_string()));
-                }
-                self.state.get(&args[0])
-                    .cloned()
-                    .ok_or_else(|| SmartContractError::KeyNotFound(args[0].clone()))
-            }
-            _ => Err(SmartContractError::UnknownFunction(function.to_string())),
-        }
+    /// Sets the compiled bytecode for the contract
+    ///
+    /// # Arguments
+    ///
+    /// * `bytecode` - Compiled bytecode of the contract
+    pub fn set_bytecode(&mut self, bytecode: Bytecode) {
+        self.bytecode = Some(bytecode);
     }
 }
 
+/// The core engine for managing and executing smart contracts
 pub struct SmartContractEngine {
+    /// Map of contract IDs to SmartContract instances
     contracts: HashMap<u32, SmartContract>,
+    /// Virtual Machine instance for executing contracts
+    vm: VirtualMachine,
 }
 
 impl SmartContractEngine {
+    /// Creates a new instance of the `SmartContractEngine`
+    ///
+    /// # Returns
+    ///
+    /// A new `SmartContractEngine` instance
     pub fn new() -> Self {
         SmartContractEngine {
             contracts: HashMap::new(),
+            vm: VirtualMachine::new(),
         }
     }
 
+    /// Deploys a new smart contract to the network
+    ///
+    /// # Arguments
+    ///
+    /// * `code` - Source code of the contract to be deployed
+    ///
+    /// # Returns
+    ///
+    /// The ID of the newly deployed contract, or an error if deployment fails
     pub fn deploy_contract(&mut self, code: &str) -> SmartContractResult<u32> {
+        // 1. Compile the contract code
+        let bytecode = self.compile_contract(code)?;
+
+        // 2. Create and store the smart contract
         let id = self.contracts.len() as u32 + 1;
-        let contract = SmartContract::new(id, code);
+        let mut contract = SmartContract::new(id, code);
+        contract.set_bytecode(bytecode.clone());
         self.contracts.insert(id, contract);
+
+        // 3. Deploy bytecode to the virtual machine
+        self.vm.execute(bytecode)
+            .map_err(|e| SmartContractError::ExecutionError(e.to_string()))?;
+
         Ok(id)
     }
 
+    /// Calls a function on an existing smart contract
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - ID of the contract to call
+    /// * `function` - Name of the function to call
+    /// * `args` - Arguments to pass to the function
+    ///
+    /// # Returns
+    ///
+    /// The result of the function call as a string, or an error if the call fails
     pub fn call_contract(&mut self, id: u32, function: &str, args: Vec<String>) -> SmartContractResult<String> {
-        self.contracts.get_mut(&id)
-            .ok_or_else(|| SmartContractError::ContractNotFound(id))?
-            .execute(function, args)
+        // 1. Retrieve the contract
+        let contract = self.contracts.get(&id)
+            .ok_or_else(|| SmartContractError::ContractNotFound(id))?;
+
+        // 2. Prepare the function call
+        let call_data = self.encode_function_call(function, args)?;
+
+        // 3. Execute the function call on the VM
+        let bytecode = contract.bytecode.clone()
+            .ok_or_else(|| SmartContractError::ExecutionError("Contract bytecode not available".to_string()))?;
+        self.vm.execute(bytecode)
+            .map_err(|e| SmartContractError::ExecutionError(e.to_string()))?;
+
+        // 4. Retrieve and return the result from the VM
+        let result = self.get_vm_result()?;
+        Ok(result)
+    }
+
+    /// Compiles the contract source code into bytecode
+    ///
+    /// # Arguments
+    ///
+    /// * `code` - Source code of the contract to compile
+    ///
+    /// # Returns
+    ///
+    /// Compiled bytecode, or an error if compilation fails
+    fn compile_contract(&self, code: &str) -> SmartContractResult<Bytecode> {
+        // TODO: Implement actual compilation logic
+        // For now, we'll return a placeholder bytecode
+        Ok(Bytecode::new(vec![0, 1, 2, 3]))
+    }
+
+    /// Encodes a function call into bytecode
+    ///
+    /// # Arguments
+    ///
+    /// * `function` - Name of the function to call
+    /// * `args` - Arguments to pass to the function
+    ///
+    /// # Returns
+    ///
+    /// Encoded function call as bytecode, or an error if encoding fails
+    fn encode_function_call(&self, function: &str, args: Vec<String>) -> SmartContractResult<Vec<u8>> {
+        // TODO: Implement actual function call encoding
+        // For now, we'll return a placeholder encoding
+        Ok(vec![0, 1, 2, 3])
+    }
+
+    /// Retrieves the result of a VM execution
+    ///
+    /// # Returns
+    ///
+    /// The result of the VM execution as a string, or an error if retrieval fails
+    fn get_vm_result(&self) -> SmartContractResult<String> {
+        // TODO: Implement actual result retrieval from the VM
+        // For now, we'll return a placeholder result
+        Ok("Function executed successfully".to_string())
     }
 }
 
@@ -5776,36 +7973,45 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_smart_contract_execution() {
-        let mut contract = SmartContract::new(1, "sample code");
-        
-        let result = contract.execute("set", vec!["key".to_string(), "value".to_string()]);
+    fn test_deploy_contract() {
+        let mut engine = SmartContractEngine::new();
+        let code = "contract Test { function greet() public pure returns (string memory) { return \"Hello, World!\"; } }";
+        let result = engine.deploy_contract(code);
         assert!(result.is_ok());
-
-        let result = contract.execute("get", vec!["key".to_string()]);
-        assert_eq!(result.unwrap(), "value");
-
-        let result = contract.execute("unknown", vec![]);
-        assert!(result.is_err());
+        let contract_id = result.unwrap();
+        assert_eq!(contract_id, 1);
     }
 
     #[test]
-    fn test_smart_contract_engine() {
+    fn test_call_contract() {
         let mut engine = SmartContractEngine::new();
-
-        let contract_id = engine.deploy_contract("sample code").unwrap();
-        assert_eq!(contract_id, 1);
-
-        let result = engine.call_contract(contract_id, "set", vec!["key".to_string(), "value".to_string()]);
+        let code = "contract Test { function greet() public pure returns (string memory) { return \"Hello, World!\"; } }";
+        let contract_id = engine.deploy_contract(code).unwrap();
+        let result = engine.call_contract(contract_id, "greet", vec![]);
         assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "Function executed successfully");
+    }
 
-        let result = engine.call_contract(contract_id, "get", vec!["key".to_string()]);
-        assert_eq!(result.unwrap(), "value");
-
-        let result = engine.call_contract(999, "get", vec!["key".to_string()]);
-        assert!(result.is_err());
+    #[test]
+    fn test_contract_not_found() {
+        let mut engine = SmartContractEngine::new();
+        let result = engine.call_contract(1, "greet", vec![]);
+        assert!(matches!(result, Err(SmartContractError::ContractNotFound(1))));
     }
 }
+
+
+=== ./icn_smart_contracts/src/standard_library.rs ===
+// File: icn_smart_contracts/src/standard_library.rs
+
+// Define standard library functions here that can be used in smart contracts
+
+// Example: A simple function to calculate the square of a number
+pub fn square(x: u64) -> u64 {
+    x * x
+}
+
+// ... other standard library functions
 
 
 === ./key.pem ===

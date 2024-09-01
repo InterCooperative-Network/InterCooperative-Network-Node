@@ -14,6 +14,7 @@
 //! - Byzantine fault tolerance
 //! - Incentive alignment with network goals
 //! - Transparent and auditable decision-making processes
+//! - Smart contract integration for automated governance and reward distribution
 //!
 //! The `ProofOfCooperation` struct is the central component, managing peer information, scoring, and consensus operations.
 //! It implements the `Consensus` trait, providing core functionality for block validation and proposer selection.
@@ -21,8 +22,9 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::time::{SystemTime, UNIX_EPOCH};
 use icn_shared::{Block, IcnError, IcnResult};
+use icn_smart_contracts::{SmartContract, SmartContractEngine};
 use rand::{Rng, thread_rng};
-use log::info;
+use log::{info, warn, error};
 
 use crate::consensus::Consensus;
 
@@ -50,6 +52,7 @@ pub struct ProofOfCooperation {
     storage_provision: HashMap<String, StorageProvision>,
     governance_participation: HashMap<String, GovernanceParticipation>,
     last_block_time: u64,
+    smart_contract_engine: SmartContractEngine,
 }
 
 /// Struct representing a peer's stake information
@@ -96,6 +99,7 @@ impl ProofOfCooperation {
             storage_provision: HashMap::new(),
             governance_participation: HashMap::new(),
             last_block_time: 0,
+            smart_contract_engine: SmartContractEngine::new(),
         }
     }
 
@@ -197,7 +201,7 @@ impl ProofOfCooperation {
     /// # Returns
     ///
     /// * `IcnResult<bool>` - A result containing the vote (true for valid, false for invalid) or an error
-    fn stake_weighted_vote(&self, validator_id: &str, _block: &Block) -> IcnResult<bool> {
+    fn stake_weighted_vote(&self, validator_id: &str, block: &Block) -> IcnResult<bool> {
         let stake = self.stake_info.get(validator_id)
             .ok_or_else(|| IcnError::Consensus(format!("No stake info for validator: {}", validator_id)))?
             .amount as f64;
@@ -208,7 +212,17 @@ impl ProofOfCooperation {
         let voting_power = (stake * reputation).sqrt();
         let random_threshold = thread_rng().gen::<f64>();
 
-        Ok(voting_power > random_threshold)
+        // Execute smart contract for additional voting logic
+        let voting_contract = self.smart_contract_engine.get_contract("voting_logic")
+            .ok_or_else(|| IcnError::Consensus("Voting logic smart contract not found".to_string()))?;
+        let args = vec![
+            voting_power.to_string(),
+            random_threshold.to_string(),
+            serde_json::to_string(block).map_err(|e| IcnError::Consensus(format!("Failed to serialize block: {}", e)))?
+        ];
+        let result = self.smart_contract_engine.call_contract(voting_contract.id, "validate_vote", args)?;
+        
+        Ok(result == "true")
     }
 
     /// Records a contribution made by a peer
@@ -307,6 +321,17 @@ impl ProofOfCooperation {
 
         *rep_score = new_rep_score.max(0.0).min(1.0);
 
+        // Execute smart contract for additional reputation logic
+        let reputation_contract = self.smart_contract_engine.get_contract("reputation_adjustment")
+            .ok_or_else(|| IcnError::Consensus("Reputation adjustment smart contract not found".to_string()))?;
+        let args = vec![
+            peer_id.to_string(),
+            rep_score.to_string(),
+            positive_action.to_string()
+        ];
+        let adjusted_score = self.smart_contract_engine.call_contract(reputation_contract.id, "adjust_reputation", args)?;
+        *rep_score = adjusted_score.parse::<f64>().map_err(|e| IcnError::Consensus(format!("Failed to parse adjusted reputation score: {}", e)))?;
+
         Ok(())
     }
 
@@ -341,7 +366,21 @@ impl ProofOfCooperation {
         let governance_impact = (governance.proposals_submitted + governance.votes_cast) as f64 / 100.0;
 
         let total_impact = stake_impact + comp_impact + storage_impact + governance_impact;
-        Ok(total_impact.min(1.0))
+
+        // Execute smart contract for additional network impact calculation
+        let impact_contract = self.smart_contract_engine.get_contract("network_impact")
+            .ok_or_else(|| IcnError::Consensus("Network impact smart contract not found".to_string()))?;
+        let args = vec![
+            total_impact.to_string(),
+            serde_json::to_string(stake_info).map_err(|e| IcnError::Consensus(format!("Failed to serialize stake info: {}", e)))?,
+            serde_json::to_string(comp_power).map_err(|e| IcnError::Consensus(format!("Failed to serialize computational power: {}", e)))?,
+            serde_json::to_string(storage).map_err(|e| IcnError::Consensus(format!("Failed to serialize storage provision: {}", e)))?,
+            serde_json::to_string(governance).map_err(|e| IcnError::Consensus(format!("Failed to serialize governance participation: {}", e)))?
+        ];
+        let adjusted_impact = self.smart_contract_engine.call_contract(impact_contract.id, "calculate_impact", args)?;
+        let final_impact = adjusted_impact.parse::<f64>().map_err(|e| IcnError::Consensus(format!("Failed to parse adjusted network impact: {}", e)))?;
+
+        Ok(final_impact.min(1.0))
     }
 
     /// Updates the cooperation score of a peer
@@ -364,6 +403,17 @@ impl ProofOfCooperation {
 
         *score = (*score + new_score.max(0.0).min(1.0)) / 2.0;
         self.record_contribution(peer_id, new_score)?;
+
+        // Execute smart contract for additional cooperation score adjustment
+        let cooperation_contract = self.smart_contract_engine.get_contract("cooperation_adjustment")
+            .ok_or_else(|| IcnError::Consensus("Cooperation adjustment smart contract not found".to_string()))?;
+        let args = vec![
+            peer_id.to_string(),
+            score.to_string(),
+            new_score.to_string()
+        ];
+        let adjusted_score = self.smart_contract_engine.call_contract(cooperation_contract.id, "adjust_cooperation", args)?;
+        *score = adjusted_score.parse::<f64>().map_err(|e| IcnError::Consensus(format!("Failed to parse adjusted cooperation score: {}", e)))?;
 
         Ok(())
     }
@@ -414,7 +464,23 @@ impl ProofOfCooperation {
         stake_info.asset_type = asset_type;
         stake_info.duration = duration;
 
-        info!("Updated stake for peer {}: amount={}, asset_type={}, duration={}", peer_id, amount, stake_info.asset_type, duration);
+        // Execute smart contract for stake validation and potential bonuses
+        let stake_contract = self.smart_contract_engine.get_contract("stake_management")
+            .ok_or_else(|| IcnError::Consensus("Stake management smart contract not found".to_string()))?;
+        let args = vec![
+            peer_id.to_string(),
+            amount.to_string(),
+            stake_info.asset_type.clone(),
+            duration.to_string()
+        ];
+        let result = self.smart_contract_engine.call_contract(stake_contract.id, "validate_and_adjust_stake", args)?;
+        let adjusted_stake: StakeInfo = serde_json::from_str(&result)
+            .map_err(|e| IcnError::Consensus(format!("Failed to parse adjusted stake info: {}", e)))?;
+
+        *stake_info = adjusted_stake;
+
+        info!("Updated stake for peer {}: amount={}, asset_type={}, duration={}", 
+              peer_id, stake_info.amount, stake_info.asset_type, stake_info.duration);
         Ok(())
     }
 
@@ -446,7 +512,8 @@ impl ProofOfCooperation {
         comp_power.gpu_power = gpu_power;
         comp_power.specialized_hardware = specialized_hardware.clone();
 
-        info!("Updated computational power for peer {}: cpu_power={}, gpu_power={}, specialized_hardware={:?}", peer_id, cpu_power, gpu_power, specialized_hardware);
+        info!("Updated computational power for peer {}: cpu_power={}, gpu_power={}, specialized_hardware={:?}", 
+              peer_id, cpu_power, gpu_power, specialized_hardware);
         Ok(())
     }
 
@@ -506,8 +573,23 @@ impl ProofOfCooperation {
         governance_info.votes_cast = votes_cast;
         governance_info.discussions_participated = discussions_participated;
 
+        // Execute smart contract for governance participation validation and potential bonuses
+        let governance_contract = self.smart_contract_engine.get_contract("governance_participation")
+            .ok_or_else(|| IcnError::Consensus("Governance participation smart contract not found".to_string()))?;
+        let args = vec![
+            peer_id.to_string(),
+            proposals_submitted.to_string(),
+            votes_cast.to_string(),
+            discussions_participated.to_string()
+        ];
+        let result = self.smart_contract_engine.call_contract(governance_contract.id, "validate_and_adjust_participation", args)?;
+        let adjusted_participation: GovernanceParticipation = serde_json::from_str(&result)
+            .map_err(|e| IcnError::Consensus(format!("Failed to parse adjusted governance participation: {}", e)))?;
+
+        *governance_info = adjusted_participation;
+
         info!("Updated governance participation for peer {}: proposals_submitted={}, votes_cast={}, discussions_participated={}", 
-              peer_id, proposals_submitted, votes_cast, discussions_participated);
+              peer_id, governance_info.proposals_submitted, governance_info.votes_cast, governance_info.discussions_participated);
         Ok(())
     }
 
@@ -536,7 +618,7 @@ impl ProofOfCooperation {
         governance_participation >= MIN_GOVERNANCE_PARTICIPATION_FOR_SYBIL_RESISTANCE
     }
 
-    /// Calculates the reward for a peer based on their contributions and reputation
+   /// Calculates the reward for a peer based on their contributions and reputation
     ///
     /// This function computes a reward for a peer based on their cooperation score,
     /// reputation score, and network impact.
@@ -561,7 +643,19 @@ impl ProofOfCooperation {
 
         let adjusted_reward = (base_reward as f64 * cooperation_score * reputation_score * (1.0 + network_impact)).round() as u64;
 
-        Ok(adjusted_reward)
+        // Execute smart contract for reward calculation
+        let reward_contract = self.smart_contract_engine.get_contract("reward_calculation")
+            .ok_or_else(|| IcnError::Consensus("Reward calculation smart contract not found".to_string()))?;
+        let args = vec![
+            peer_id.to_string(),
+            cooperation_score.to_string(),
+            reputation_score.to_string(),
+            network_impact.to_string(),
+            adjusted_reward.to_string()
+        ];
+        let final_reward = self.smart_contract_engine.call_contract(reward_contract.id, "calculate_final_reward", args)?;
+
+        Ok(final_reward.parse::<u64>().map_err(|e| IcnError::Consensus(format!("Failed to parse final reward: {}", e)))?)
     }
 
     /// Distributes rewards to all eligible peers
@@ -580,7 +674,16 @@ impl ProofOfCooperation {
             rewards.insert(peer_id, reward);
         }
 
-        Ok(rewards)
+        // Execute smart contract for reward distribution
+        let distribution_contract = self.smart_contract_engine.get_contract("reward_distribution")
+            .ok_or_else(|| IcnError::Consensus("Reward distribution smart contract not found".to_string()))?;
+        let args = vec![serde_json::to_string(&rewards).map_err(|e| IcnError::Consensus(format!("Failed to serialize rewards: {}", e)))?];
+        let distributed_rewards = self.smart_contract_engine.call_contract(distribution_contract.id, "distribute_rewards", args)?;
+        
+        let final_rewards: HashMap<String, u64> = serde_json::from_str(&distributed_rewards)
+            .map_err(|e| IcnError::Consensus(format!("Failed to parse distributed rewards: {}", e)))?;
+
+        Ok(final_rewards)
     }
 
     /// Applies a penalty to a peer based on the severity of their misconduct
@@ -613,6 +716,33 @@ impl ProofOfCooperation {
             }
         }
 
+        // Execute smart contract for penalty application
+        let penalty_contract = self.smart_contract_engine.get_contract("penalty_application")
+            .ok_or_else(|| IcnError::Consensus("Penalty application smart contract not found".to_string()))?;
+        let args = vec![
+            peer_id.to_string(),
+            severity.to_string(),
+            self.cooperation_scores.get(peer_id).unwrap_or(&0.0).to_string(),
+            self.reputation_scores.get(peer_id).unwrap_or(&0.0).to_string(),
+            self.stake_info.get(peer_id).map(|s| s.amount).unwrap_or(0).to_string()
+        ];
+        let penalty_result = self.smart_contract_engine.call_contract(penalty_contract.id, "apply_penalty", args)?;
+        
+        let penalty_data: HashMap<String, f64> = serde_json::from_str(&penalty_result)
+            .map_err(|e| IcnError::Consensus(format!("Failed to parse penalty result: {}", e)))?;
+
+        if let Some(coop_score) = penalty_data.get("cooperation_score") {
+            self.cooperation_scores.insert(peer_id.to_string(), *coop_score);
+        }
+        if let Some(rep_score) = penalty_data.get("reputation_score") {
+            self.reputation_scores.insert(peer_id.to_string(), *rep_score);
+        }
+        if let Some(stake_amount) = penalty_data.get("stake_amount") {
+            if let Some(stake_info) = self.stake_info.get_mut(peer_id) {
+                stake_info.amount = *stake_amount as u64;
+            }
+        }
+
         info!("Applied penalty to peer {} with severity {}", peer_id, severity);
         Ok(())
     }
@@ -634,7 +764,18 @@ impl ProofOfCooperation {
 
         let health_score = (avg_cooperation + avg_reputation + stake_distribution) / 3.0;
 
-        Ok(health_score)
+        // Execute smart contract for network health evaluation
+        let health_contract = self.smart_contract_engine.get_contract("network_health")
+            .ok_or_else(|| IcnError::Consensus("Network health smart contract not found".to_string()))?;
+        let args = vec![
+            avg_cooperation.to_string(),
+            avg_reputation.to_string(),
+            stake_distribution.to_string(),
+            health_score.to_string()
+        ];
+        let final_health_score = self.smart_contract_engine.call_contract(health_contract.id, "evaluate_health", args)?;
+
+        Ok(final_health_score.parse::<f64>().map_err(|e| IcnError::Consensus(format!("Failed to parse final health score: {}", e)))?)
     }
 }
 
@@ -651,27 +792,27 @@ impl Consensus for ProofOfCooperation {
     ///
     /// # Returns
     ///
-    /// * `Result<bool, String>` - A result containing true if the block is valid, false otherwise, or an error
-    fn validate(&mut self, block: &Block) -> Result<bool, String> {
+    /// * `IcnResult<bool>` - A result containing true if the block is valid, false otherwise, or an error
+    fn validate(&mut self, block: &Block) -> IcnResult<bool> {
         if !self.known_peers.contains(&block.proposer_id) {
-            return Err(format!("Unknown proposer: {}", block.proposer_id));
+            return Err(IcnError::Consensus(format!("Unknown proposer: {}", block.proposer_id)));
         }
 
         let current_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .map_err(|e| format!("System time error: {}", e))?
+            .map_err(|e| IcnError::Consensus(format!("System time error: {}", e)))?
             .as_secs();
 
         if current_time < self.last_block_time + BLOCK_TIME_THRESHOLD {
-            return Err("Block proposed too soon".to_string());
+            return Err(IcnError::Consensus("Block proposed too soon".to_string()));
         }
 
-        let validators = self.select_validators().map_err(|e| e.to_string())?;
+        let validators = self.select_validators()?;
         let mut valid_votes = 0;
         let total_votes = validators.len();
 
         for validator in validators {
-            let vote = self.stake_weighted_vote(&validator, block).map_err(|e| e.to_string())?;
+            let vote = self.stake_weighted_vote(&validator, block)?;
             if vote {
                 valid_votes += 1;
             }
@@ -681,7 +822,7 @@ impl Consensus for ProofOfCooperation {
         let is_valid = valid_votes >= validation_threshold;
 
         // Update reputation of the proposer based on the block's validity
-        self.update_reputation(&block.proposer_id, is_valid).map_err(|e| e.to_string())?;
+        self.update_reputation(&block.proposer_id, is_valid)?;
 
         Ok(is_valid)
     }
@@ -693,11 +834,11 @@ impl Consensus for ProofOfCooperation {
     ///
     /// # Returns
     ///
-    /// * `Result<String, String>` - A result containing the ID of the selected proposer or an error
-    fn select_proposer(&mut self) -> Result<String, String> {
+    /// * `IcnResult<String>` - A result containing the ID of the selected proposer or an error
+    fn select_proposer(&mut self) -> IcnResult<String> {
         let eligible_peers = self.get_eligible_peers();
         if eligible_peers.is_empty() {
-            return Err("No eligible proposers available".to_string());
+            return Err(IcnError::Consensus("No eligible proposers available".to_string()));
         }
 
         let total_score: f64 = eligible_peers.iter()
@@ -715,7 +856,7 @@ impl Consensus for ProofOfCooperation {
             }
         }
 
-        Err("Failed to select proposer".to_string())
+        Err(IcnError::Consensus("Failed to select proposer".to_string()))
     }
 
     /// Gets the list of eligible peers for consensus participation
@@ -955,5 +1096,26 @@ mod tests {
 
         let impact = poc.calculate_network_impact("peer1").unwrap();
         assert!(impact > 0.0 && impact <= 1.0, "Network impact should be between 0 and 1");
+    }
+
+    #[test]
+    fn test_smart_contract_integration() {
+        let mut poc = ProofOfCooperation::new();
+        
+        // Test smart contract deployment
+        let contract_code = r#"
+            function calculate_final_reward(peer_id, cooperation_score, reputation_score, network_impact, adjusted_reward) {
+                return Math.floor(adjusted_reward * 1.1);  // 10% bonus
+            }
+        "#;
+        let contract_id = poc.smart_contract_engine.deploy_contract(contract_code).unwrap();
+        
+        // Test smart contract execution
+        poc.register_peer("test_peer");
+        poc.update_cooperation_score("test_peer", 0.8).unwrap();
+        poc.update_reputation("test_peer", true).unwrap();
+        
+        let reward = poc.calculate_reward("test_peer").unwrap();
+        assert!(reward > 0, "Reward should be positive");
     }
 }
