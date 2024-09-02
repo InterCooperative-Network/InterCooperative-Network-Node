@@ -588,6 +588,14 @@ pub enum IcnError {
     #[error("Network error: {0}")]
     Network(String),
 
+    /// An error related to transaction operations.
+    #[error("Transaction error: {0}")]
+    Transaction(String),
+
+    /// An error related to blockchain operations.
+    #[error("Blockchain error: {0}")]
+    Blockchain(String),
+
     /// A generic error for any other type of failure.
     #[error("Generic error: {0}")]
     Generic(String),
@@ -604,7 +612,6 @@ impl From<serde_json::Error> for IcnError {
 }
 
 // You can add more conversion implementations here if needed for other error types.
-
 
 
 === ./icn_shared/src/block.rs ===
@@ -1047,6 +1054,8 @@ pub use transaction::{Transaction, TransactionType};
 
 
 === ./icn_blockchain/src/transaction/transaction.rs ===
+// File: icn_blockchain/src/transaction/transaction.rs
+
 use serde::{Serialize, Deserialize};
 use icn_shared::{IcnError, IcnResult};
 
@@ -1367,7 +1376,6 @@ mod tests {
         assert!(invalid_proof_validation.validate().is_err());
     }
 }
-
 
 
 === ./icn_blockchain/src/transaction/transaction_type.rs ===

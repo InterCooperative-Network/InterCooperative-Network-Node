@@ -1,3 +1,5 @@
+// File: icn_blockchain/src/transaction/transaction.rs
+
 use serde::{Serialize, Deserialize};
 use icn_shared::{IcnError, IcnResult};
 

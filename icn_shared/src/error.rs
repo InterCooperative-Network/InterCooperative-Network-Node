@@ -25,6 +25,14 @@ pub enum IcnError {
     #[error("Network error: {0}")]
     Network(String),
 
+    /// An error related to transaction operations.
+    #[error("Transaction error: {0}")]
+    Transaction(String),
+
+    /// An error related to blockchain operations.
+    #[error("Blockchain error: {0}")]
+    Blockchain(String),
+
     /// A generic error for any other type of failure.
     #[error("Generic error: {0}")]
     Generic(String),
