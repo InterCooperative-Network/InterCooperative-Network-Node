@@ -1,6 +1,6 @@
 // File: icn_blockchain/src/chain/mod.rs
 // Description: This file defines the Chain structure for the blockchain, 
-//              including functions to manage blocks, validators, and consensus.
+// including functions to manage blocks, validators, and consensus.
 
 use std::sync::{Arc, RwLock};
 use icn_shared::{Block, IcnError, IcnResult};
@@ -53,7 +53,6 @@ impl Validator {
     ///
     /// * `IcnResult<bool>` - Returns `Ok(true)` if the block is valid, otherwise returns an error.
     pub fn validate(&self, block: &Block) -> IcnResult<bool> {
-        // Implement comprehensive block validation logic
         if !self.verify_block_hash(block) {
             return Err(IcnError::Consensus("Invalid block hash".to_string()));
         }
@@ -66,7 +65,7 @@ impl Validator {
             return Err(IcnError::Consensus("Invalid timestamp".to_string()));
         }
 
-        // Add more validation checks as needed
+        // Additional validation checks can be added here
 
         Ok(true)
     }
@@ -78,15 +77,13 @@ impl Validator {
 
     /// Verifies the transactions in the block.
     fn verify_transactions(&self, block: &Block) -> bool {
-        // Implement transaction verification logic
-        // This is a placeholder implementation
+        // TODO: Implement comprehensive transaction verification logic
         !block.transactions.is_empty()
     }
 
     /// Verifies the block's timestamp.
     fn verify_timestamp(&self, block: &Block) -> bool {
-        // Implement timestamp verification logic
-        // This is a placeholder implementation
+        // TODO: Implement proper timestamp verification logic
         block.timestamp > 0
     }
 
@@ -98,15 +95,9 @@ impl Validator {
     ///
     /// # Returns
     ///
-    /// * `IcnResult<bool>` - Returns `Ok(true)` if the vote is positive, otherwise returns an error.
+    /// * `IcnResult<bool>` - Returns `Ok(true)` if the vote is positive, otherwise returns `Ok(false)`.
     pub fn vote(&self, block: &Block) -> IcnResult<bool> {
-        // Implement voting logic based on validation and other criteria
-        if self.validate(block)? {
-            // Additional voting criteria can be added here
-            Ok(true)
-        } else {
-            Ok(false)
-        }
+        self.validate(block)
     }
 }
 
@@ -149,10 +140,13 @@ impl<C: Consensus> Chain<C> {
     /// * `IcnResult<()>` - Returns `Ok(())` if the block is successfully added,
     ///   or an `IcnError` if validation fails.
     pub fn add_block(&mut self, block: Block) -> IcnResult<()> {
-        let consensus = self.consensus.read().map_err(|_| IcnError::Consensus("Failed to acquire read lock on consensus".to_string()))?;
+        let mut consensus = self.consensus.write().map_err(|_| {
+            IcnError::Consensus("Failed to acquire write lock on consensus".to_string())
+        })?;
         
         if consensus.validate(&block)? {
             self.blocks.push(block);
+            consensus.update_state(self)?;
             Ok(())
         } else {
             Err(IcnError::Consensus("Block validation failed".to_string()))
@@ -197,7 +191,7 @@ impl<C: Consensus> Chain<C> {
         if selected_validators.is_empty() {
             Err(IcnError::Consensus("No validators selected".to_string()))
         } else {
-            Ok(selected_validators.into_iter().collect())
+            Ok(selected_validators)
         }
     }
 
@@ -209,7 +203,7 @@ impl<C: Consensus> Chain<C> {
     ///
     /// # Returns
     ///
-    /// * `IcnResult<bool>` - Returns `Ok(true)` if the vote passes, otherwise returns an error.
+    /// * `IcnResult<bool>` - Returns `Ok(true)` if the vote passes, otherwise returns `Ok(false)`.
     pub fn stake_weighted_vote(&self, block: &Block) -> IcnResult<bool> {
         let validators = self.select_validators()?;
         let mut total_stake = 0u64;
@@ -345,5 +339,35 @@ mod tests {
         assert!(chain.update_validator("non_existent", 100, 0.9, 0.9, 0.9).is_err());
     }
 
-    // Additional tests for stake_weighted_vote, select_validators, etc.
+    #[test]
+    fn test_stake_weighted_vote() {
+        let consensus = Arc::new(RwLock::new(ProofOfCooperation::new()));
+        let mut chain = Chain::new(consensus);
+        
+        // Add validators with different stakes
+        chain.add_validator(Validator::new("validator1".to_string(), 100, 1.0, 1.0, 1.0)).unwrap();
+        chain.add_validator(Validator::new("validator2".to_string(), 200, 1.0, 1.0, 1.0)).unwrap();
+        chain.add_validator(Validator::new("validator3".to_string(), 300, 1.0, 1.0, 1.0)).unwrap();
+
+        let block = create_test_block();
+        
+        // Perform stake-weighted vote
+        let vote_result = chain.stake_weighted_vote(&block);
+        assert!(vote_result.is_ok());
+    }
+
+    #[test]
+    fn test_select_validators() {
+        let consensus = Arc::new(RwLock::new(ProofOfCooperation::new()));
+        let mut chain = Chain::new(consensus);
+        
+        // Add validators
+        chain.add_validator(Validator::new("validator1".to_string(), 100, 1.0, 1.0, 1.0)).unwrap();
+        chain.add_validator(Validator::new("validator2".to_string(), 200, 1.0, 1.0, 1.0)).unwrap();
+        
+        // Select validators
+        let selected_validators = chain.select_validators();
+        assert!(selected_validators.is_ok());
+        assert!(!selected_validators.unwrap().is_empty());
+    }
 }
