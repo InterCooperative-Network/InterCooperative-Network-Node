@@ -1505,7 +1505,7 @@ impl<C: Consensus> Blockchain<C> {
             self.chain.add_block(new_block)?;
             
             // Update the consensus state if necessary
-            consensus_write.update_state(&self.chain)?;
+            (*consensus_write).update_state(&self.chain)?;
             Ok(())
         } else {
             Err(IcnError::Blockchain("Invalid block".to_string()))
@@ -1529,13 +1529,12 @@ impl<C: Consensus> Blockchain<C> {
                 Ok(())
             }
             TransactionType::DeployContract { code, .. } => {
-                let bytecode = self.vm.compile(code)?;
-                self.vm.execute(bytecode)?;
+                let bytecode = self.vm.compile_contract(code)?;
+                self.vm.deploy_contract(bytecode)?;
                 Ok(())
             }
             TransactionType::SmartContractExecution { contract_id, method, params } => {
-                let bytecode = self.vm.prepare_execution(contract_id, method, params)?;
-                self.vm.execute(bytecode)?;
+                self.vm.execute_contract(contract_id, method, params)?;
                 Ok(())
             }
             TransactionType::ProofValidation { proof_id, data } => {
@@ -1659,6 +1658,52 @@ mod tests {
         let invalid_transactions = vec![];
         let result = blockchain.add_block(invalid_transactions, "proposer1".to_string());
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_deploy_contract() {
+        let mut blockchain = setup_blockchain();
+        let transaction = Transaction::new(
+            "2".to_string(),
+            TransactionType::DeployContract {
+                code: "contract code".to_string(),
+                initial_state: "{}".to_string(),
+            },
+            None,
+            None,
+        );
+        assert!(blockchain.execute_transaction(transaction).is_ok());
+    }
+
+    #[test]
+    fn test_smart_contract_execution() {
+        let mut blockchain = setup_blockchain();
+        let transaction = Transaction::new(
+            "3".to_string(),
+            TransactionType::SmartContractExecution {
+                contract_id: "contract1".to_string(),
+                method: "transfer".to_string(),
+                params: vec!["recipient".to_string(), "100".to_string()],
+            },
+            None,
+            None,
+        );
+        assert!(blockchain.execute_transaction(transaction).is_ok());
+    }
+
+    #[test]
+    fn test_proof_validation() {
+        let mut blockchain = setup_blockchain();
+        let transaction = Transaction::new(
+            "4".to_string(),
+            TransactionType::ProofValidation {
+                proof_id: "proof1".to_string(),
+                data: vec![1, 2, 3, 4, 5],
+            },
+            None,
+            None,
+        );
+        assert!(blockchain.execute_transaction(transaction).is_ok());
     }
 }
 
