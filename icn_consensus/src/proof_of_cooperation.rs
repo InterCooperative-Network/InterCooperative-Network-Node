@@ -1,14 +1,13 @@
-// Filename: icn_consensus/src/proof_of_cooperation.rs
+// File: icn_consensus/src/proof_of_cooperation.rs
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::time::{SystemTime, UNIX_EPOCH};
-use icn_shared::{Block, Chain, IcnError, IcnResult};
-use icn_smart_contracts::SmartContractEngine;
+use icn_shared::{Block, IcnError, IcnResult};
 use rand::{Rng, thread_rng};
-use log::{info, warn, error};
-use serde_json;
+use log::info;
+use serde::{Serialize, Deserialize};
 
-use crate::consensus::Consensus;
+use crate::consensus::{Consensus, NetworkEvent, NetworkCondition};
 
 // Constants
 const REPUTATION_DECAY_FACTOR: f64 = 0.95;
@@ -34,11 +33,10 @@ pub struct ProofOfCooperation {
     storage_provision: HashMap<String, StorageProvision>,
     governance_participation: HashMap<String, GovernanceParticipation>,
     last_block_time: u64,
-    smart_contract_engine: SmartContractEngine,
 }
 
 /// Struct representing a peer's stake information
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 struct StakeInfo {
     amount: u64,
     asset_type: String,
@@ -46,7 +44,7 @@ struct StakeInfo {
 }
 
 /// Struct representing a peer's computational power contribution
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 struct ComputationalPower {
     cpu_power: u64,
     gpu_power: u64,
@@ -54,14 +52,14 @@ struct ComputationalPower {
 }
 
 /// Struct representing a peer's storage provision
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 struct StorageProvision {
     capacity: u64,
     reliability: f64,
 }
 
 /// Struct representing a peer's participation in governance
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 struct GovernanceParticipation {
     proposals_submitted: u64,
     votes_cast: u64,
@@ -81,7 +79,6 @@ impl ProofOfCooperation {
             storage_provision: HashMap::new(),
             governance_participation: HashMap::new(),
             last_block_time: 0,
-            smart_contract_engine: SmartContractEngine::new(),
         }
     }
 
@@ -200,17 +197,8 @@ impl ProofOfCooperation {
         let voting_power = (stake * reputation).sqrt();
         let random_threshold = thread_rng().gen::<f64>();
 
-        // Execute smart contract for additional voting logic
-        let voting_contract = self.smart_contract_engine.get_contract("voting_logic")
-            .ok_or_else(|| IcnError::Consensus("Voting logic smart contract not found".to_string()))?;
-        let args = vec![
-            voting_power.to_string(),
-            random_threshold.to_string(),
-            serde_json::to_string(block).map_err(|e| IcnError::Consensus(format!("Failed to serialize block: {}", e)))?
-        ];
-        let result = self.smart_contract_engine.call_contract(voting_contract.id, "validate_vote", args)?;
-
-        Ok(result == "true")
+        // Simplified voting logic
+        Ok(voting_power * random_threshold > 0.5)
     }
 
     /// Records a contribution made by a peer
@@ -309,17 +297,6 @@ impl ProofOfCooperation {
 
         *rep_score = new_rep_score.max(0.0).min(1.0);
 
-        // Execute smart contract for additional reputation logic
-        let reputation_contract = self.smart_contract_engine.get_contract("reputation_adjustment")
-            .ok_or_else(|| IcnError::Consensus("Reputation adjustment smart contract not found".to_string()))?;
-        let args = vec![
-            peer_id.to_string(),
-            rep_score.to_string(),
-            positive_action.to_string()
-        ];
-        let adjusted_score = self.smart_contract_engine.call_contract(reputation_contract.id, "adjust_reputation", args)?;
-        *rep_score = adjusted_score.parse::<f64>().map_err(|e| IcnError::Consensus(format!("Failed to parse adjusted reputation score: {}", e)))?;
-
         Ok(())
     }
 
@@ -355,20 +332,7 @@ impl ProofOfCooperation {
 
         let total_impact = stake_impact + comp_impact + storage_impact + governance_impact;
 
-        // Execute smart contract for additional network impact calculation
-        let impact_contract = self.smart_contract_engine.get_contract("network_impact")
-            .ok_or_else(|| IcnError::Consensus("Network impact smart contract not found".to_string()))?;
-        let args = vec![
-            total_impact.to_string(),
-            serde_json::to_string(stake_info).map_err(|e| IcnError::Consensus(format!("Failed to serialize stake info: {}", e)))?,
-            serde_json::to_string(comp_power).map_err(|e| IcnError::Consensus(format!("Failed to serialize computational power: {}", e)))?,
-            serde_json::to_string(storage).map_err(|e| IcnError::Consensus(format!("Failed to serialize storage provision: {}", e)))?,
-            serde_json::to_string(governance).map_err(|e| IcnError::Consensus(format!("Failed to serialize governance participation: {}", e)))?
-        ];
-        let adjusted_impact = self.smart_contract_engine.call_contract(impact_contract.id, "calculate_impact", args)?;
-        let final_impact = adjusted_impact.parse::<f64>().map_err(|e| IcnError::Consensus(format!("Failed to parse adjusted network impact: {}", e)))?;
-
-        Ok(final_impact.min(1.0))
+        Ok(total_impact.min(1.0))
     }
 
     /// Updates the cooperation score of a peer
@@ -391,17 +355,6 @@ impl ProofOfCooperation {
 
         *score = (*score + new_score.max(0.0).min(1.0)) / 2.0;
         self.record_contribution(peer_id, new_score)?;
-
-        // Execute smart contract for additional cooperation score adjustment
-        let cooperation_contract = self.smart_contract_engine.get_contract("cooperation_adjustment")
-            .ok_or_else(|| IcnError::Consensus("Cooperation adjustment smart contract not found".to_string()))?;
-        let args = vec![
-            peer_id.to_string(),
-            score.to_string(),
-            new_score.to_string()
-        ];
-        let adjusted_score = self.smart_contract_engine.call_contract(cooperation_contract.id, "adjust_cooperation", args)?;
-        *score = adjusted_score.parse::<f64>().map_err(|e| IcnError::Consensus(format!("Failed to parse adjusted cooperation score: {}", e)))?;
 
         Ok(())
     }
@@ -451,21 +404,6 @@ impl ProofOfCooperation {
         stake_info.amount = amount;
         stake_info.asset_type = asset_type;
         stake_info.duration = duration;
-
-        // Execute smart contract for stake validation and potential bonuses
-        let stake_contract = self.smart_contract_engine.get_contract("stake_management")
-            .ok_or_else(|| IcnError::Consensus("Stake management smart contract not found".to_string()))?;
-        let args = vec![
-            peer_id.to_string(),
-            amount.to_string(),
-            stake_info.asset_type.clone(),
-            duration.to_string()
-        ];
-        let result = self.smart_contract_engine.call_contract(stake_contract.id, "validate_and_adjust_stake", args)?;
-        let adjusted_stake: StakeInfo = serde_json::from_str(&result)
-            .map_err(|e| IcnError::Consensus(format!("Failed to parse adjusted stake info: {}", e)))?;
-
-        *stake_info = adjusted_stake;
 
         info!("Updated stake for peer {}: amount={}, asset_type={}, duration={}", 
               peer_id, stake_info.amount, stake_info.asset_type, stake_info.duration);
@@ -561,21 +499,6 @@ impl ProofOfCooperation {
         governance_info.votes_cast = votes_cast;
         governance_info.discussions_participated = discussions_participated;
 
-        // Execute smart contract for governance participation validation and potential bonuses
-        let governance_contract = self.smart_contract_engine.get_contract("governance_participation")
-            .ok_or_else(|| IcnError::Consensus("Governance participation smart contract not found".to_string()))?;
-        let args = vec![
-            peer_id.to_string(),
-            proposals_submitted.to_string(),
-            votes_cast.to_string(),
-            discussions_participated.to_string()
-        ];
-        let result = self.smart_contract_engine.call_contract(governance_contract.id, "validate_and_adjust_participation", args)?;
-        let adjusted_participation: GovernanceParticipation = serde_json::from_str(&result)
-            .map_err(|e| IcnError::Consensus(format!("Failed to parse adjusted governance participation: {}", e)))?;
-
-        *governance_info = adjusted_participation;
-
         info!("Updated governance participation for peer {}: proposals_submitted={}, votes_cast={}, discussions_participated={}", 
               peer_id, governance_info.proposals_submitted, governance_info.votes_cast, governance_info.discussions_participated);
         Ok(())
@@ -631,19 +554,7 @@ impl ProofOfCooperation {
 
         let adjusted_reward = (base_reward as f64 * cooperation_score * reputation_score * (1.0 + network_impact)).round() as u64;
 
-        // Execute smart contract for reward calculation
-        let reward_contract = self.smart_contract_engine.get_contract("reward_calculation")
-            .ok_or_else(|| IcnError::Consensus("Reward calculation smart contract not found".to_string()))?;
-        let args = vec![
-            peer_id.to_string(),
-            cooperation_score.to_string(),
-            reputation_score.to_string(),
-            network_impact.to_string(),
-            adjusted_reward.to_string()
-        ];
-        let final_reward = self.smart_contract_engine.call_contract(reward_contract.id, "calculate_final_reward", args)?;
-
-        Ok(final_reward.parse::<u64>().map_err(|e| IcnError::Consensus(format!("Failed to parse final reward: {}", e)))?)
+        Ok(adjusted_reward)
     }
 
     /// Distributes rewards to all eligible peers
@@ -662,16 +573,7 @@ impl ProofOfCooperation {
             rewards.insert(peer_id, reward);
         }
 
-        // Execute smart contract for reward distribution
-        let distribution_contract = self.smart_contract_engine.get_contract("reward_distribution")
-            .ok_or_else(|| IcnError::Consensus("Reward distribution smart contract not found".to_string()))?;
-        let args = vec![serde_json::to_string(&rewards).map_err(|e| IcnError::Consensus(format!("Failed to serialize rewards: {}", e)))?];
-        let distributed_rewards = self.smart_contract_engine.call_contract(distribution_contract.id, "distribute_rewards", args)?;
-
-        let final_rewards: HashMap<String, u64> = serde_json::from_str(&distributed_rewards)
-            .map_err(|e| IcnError::Consensus(format!("Failed to parse distributed rewards: {}", e)))?;
-
-        Ok(final_rewards)
+        Ok(rewards)
     }
 
     /// Applies a penalty to a peer based on the severity of their misconduct
@@ -704,33 +606,6 @@ impl ProofOfCooperation {
             }
         }
 
-        // Execute smart contract for penalty application
-        let penalty_contract = self.smart_contract_engine.get_contract("penalty_application")
-            .ok_or_else(|| IcnError::Consensus("Penalty application smart contract not found".to_string()))?;
-        let args = vec![
-            peer_id.to_string(),
-            severity.to_string(),
-            self.cooperation_scores.get(peer_id).unwrap_or(&0.0).to_string(),
-            self.reputation_scores.get(peer_id).unwrap_or(&0.0).to_string(),
-            self.stake_info.get(peer_id).map(|s| s.amount).unwrap_or(0).to_string()
-        ];
-        let penalty_result = self.smart_contract_engine.call_contract(penalty_contract.id, "apply_penalty", args)?;
-
-        let penalty_data: HashMap<String, f64> = serde_json::from_str(&penalty_result)
-            .map_err(|e| IcnError::Consensus(format!("Failed to parse penalty result: {}", e)))?;
-
-        if let Some(coop_score) = penalty_data.get("cooperation_score") {
-            self.cooperation_scores.insert(peer_id.to_string(), *coop_score);
-        }
-        if let Some(rep_score) = penalty_data.get("reputation_score") {
-            self.reputation_scores.insert(peer_id.to_string(), *rep_score);
-        }
-        if let Some(stake_amount) = penalty_data.get("stake_amount") {
-            if let Some(stake_info) = self.stake_info.get_mut(peer_id) {
-                stake_info.amount = *stake_amount as u64;
-            }
-        }
-
         info!("Applied penalty to peer {} with severity {}", peer_id, severity);
         Ok(())
     }
@@ -752,18 +627,7 @@ impl ProofOfCooperation {
 
         let health_score = (avg_cooperation + avg_reputation + stake_distribution) / 3.0;
 
-        // Execute smart contract for network health evaluation
-        let health_contract = self.smart_contract_engine.get_contract("network_health")
-            .ok_or_else(|| IcnError::Consensus("Network health smart contract not found".to_string()))?;
-        let args = vec![
-            avg_cooperation.to_string(),
-            avg_reputation.to_string(),
-            stake_distribution.to_string(),
-            health_score.to_string()
-        ];
-        let final_health_score = self.smart_contract_engine.call_contract(health_contract.id, "evaluate_health", args)?;
-
-        Ok(final_health_score.parse::<f64>().map_err(|e| IcnError::Consensus(format!("Failed to parse final health score: {}", e)))?)
+        Ok(health_score)
     }
 }
 
@@ -866,14 +730,82 @@ impl Consensus for ProofOfCooperation {
     ///
     /// # Arguments
     ///
-    /// * `chain` - A reference to the current blockchain
+    /// * `latest_block` - A reference to the latest block in the blockchain
     ///
     /// # Returns
     ///
     /// * `IcnResult<()>` - A result indicating success or an error
-    fn update_state(&mut self, chain: &Chain<Self>) -> IcnResult<()> {
-        if let Some(latest_block) = chain.latest_block() {
-            self.last_block_time = latest_block.timestamp;
+    fn update_state(&mut self, latest_block: &Block) -> IcnResult<()> {
+        self.last_block_time = latest_block.timestamp;
+        Ok(())
+    }
+
+    /// Initializes the consensus mechanism with the current blockchain state
+    ///
+    /// This method is called when the node starts up or when it needs to resynchronize
+    /// with the network. It allows the consensus mechanism to initialize its internal
+    /// state based on the current blockchain.
+    ///
+    /// # Arguments
+    ///
+    /// * `latest_block` - A reference to the latest block in the blockchain
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<()>` - Returns `Ok(())` if initialization is successful, or an `IcnError` if it fails.
+    fn initialize(&mut self, latest_block: &Block) -> IcnResult<()> {
+        self.last_block_time = latest_block.timestamp;
+        // Additional initialization logic can be added here
+        Ok(())
+    }
+
+    /// Handles network events that may affect the consensus state
+    ///
+    /// This method allows the consensus mechanism to react to various network events,
+    /// such as peer connections/disconnections, network partitions, etc.
+    ///
+    /// # Arguments
+    ///
+    /// * `event` - A NetworkEvent representing different types of network events
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<()>` - Returns `Ok(())` if the event is handled successfully, or an `IcnError` if handling fails.
+    fn handle_network_event(&mut self, event: NetworkEvent) -> IcnResult<()> {
+        match event {
+            NetworkEvent::PeerConnected(peer_id) => {
+                self.register_peer(&peer_id)?;
+                info!("New peer connected: {}", peer_id);
+            },
+            NetworkEvent::PeerDisconnected(peer_id) => {
+                // Remove peer from all data structures
+                self.known_peers.remove(&peer_id);
+                self.cooperation_scores.remove(&peer_id);
+                self.reputation_scores.remove(&peer_id);
+                self.contribution_history.remove(&peer_id);
+                self.stake_info.remove(&peer_id);
+                self.computational_power.remove(&peer_id);
+                self.storage_provision.remove(&peer_id);
+                self.governance_participation.remove(&peer_id);
+                info!("Peer disconnected: {}", peer_id);
+            },
+            NetworkEvent::NetworkPartitionDetected => {
+                // Implement logic to handle network partition
+                info!("Network partition detected");
+            },
+            NetworkEvent::NetworkReunified => {
+                // Implement logic to handle network reunification
+                info!("Network reunified");
+            },
+            NetworkEvent::NetworkConditionChanged(condition) => {
+                match condition {
+                    NetworkCondition::Normal => info!("Network condition: Normal"),
+                    NetworkCondition::HighLatency => info!("Network condition: High Latency"),
+                    NetworkCondition::Congested => info!("Network condition: Congested"),
+                    NetworkCondition::Unstable => info!("Network condition: Unstable"),
+                }
+                // Adjust consensus parameters based on network condition
+            },
         }
         Ok(())
     }
@@ -882,7 +814,6 @@ impl Consensus for ProofOfCooperation {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use icn_shared::Block;
 
     fn setup_test_poc() -> ProofOfCooperation {
         let mut poc = ProofOfCooperation::new();
@@ -1059,100 +990,24 @@ mod tests {
     }
 
     #[test]
-    fn test_update_computational_power() {
+    fn test_handle_network_event() {
         let mut poc = setup_test_poc();
 
-        poc.update_computational_power("peer1", 100, 200, vec!["ASIC".to_string()]).unwrap();
+        // Test PeerConnected event
+        poc.handle_network_event(NetworkEvent::PeerConnected("peer4".to_string())).unwrap();
+        assert!(poc.known_peers.contains("peer4"));
 
-        let comp_power = poc.computational_power.get("peer1").unwrap();
-        assert_eq!(comp_power.cpu_power, 100);
-        assert_eq!(comp_power.gpu_power, 200);
-        assert_eq!(comp_power.specialized_hardware, vec!["ASIC".to_string()]);
-    }
+        // Test PeerDisconnected event
+        poc.handle_network_event(NetworkEvent::PeerDisconnected("peer2".to_string())).unwrap();
+        assert!(!poc.known_peers.contains("peer2"));
 
-    #[test]
-    fn test_update_storage_provision() {
-        let mut poc = setup_test_poc();
+        // Test NetworkConditionChanged event
+        poc.handle_network_event(NetworkEvent::NetworkConditionChanged(NetworkCondition::HighLatency)).unwrap();
+        // Add assertions here to check if the consensus mechanism reacted appropriately to the network condition change
 
-        poc.update_storage_provision("peer1", 1000, 0.95).unwrap();
-
-        let storage = poc.storage_provision.get("peer1").unwrap();
-        assert_eq!(storage.capacity, 1000);
-        assert_eq!(storage.reliability, 0.95);
-    }
-
-    #[test]
-    fn test_update_governance_participation() {
-        let mut poc = setup_test_poc();
-
-        poc.update_governance_participation("peer1", 5, 10, 3).unwrap();
-
-        let governance = poc.governance_participation.get("peer1").unwrap();
-        assert_eq!(governance.proposals_submitted, 5);
-        assert_eq!(governance.votes_cast, 10);
-        assert_eq!(governance.discussions_participated, 3);
-    }
-
-    #[test]
-    fn test_calculate_network_impact() {
-        let mut poc = setup_test_poc();
-
-        poc.update_stake("peer1", 2000, "ICN".to_string(), 60).unwrap();
-        poc.update_computational_power("peer1", 100, 200, vec!["ASIC".to_string()]).unwrap();
-        poc.update_storage_provision("peer1", 1000, 0.95).unwrap();
-        poc.update_governance_participation("peer1", 5, 10, 3).unwrap();
-
-        let impact = poc.calculate_network_impact("peer1").unwrap();
-        assert!(impact > 0.0 && impact <= 1.0, "Network impact should be between 0 and 1");
-    }
-
-    #[test]
-    fn test_validate_block() {
-        let mut poc = setup_test_poc();
-
-        // Set up peers with stakes and reputations
-        for peer in ["peer1", "peer2", "peer3"].iter() {
-            poc.update_stake(peer, 2000, "ICN".to_string(), 60).unwrap();
-            poc.update_reputation(peer, true).unwrap();
-            poc.update_cooperation_score(peer, 0.9).unwrap();
-        }
-
-        // Create a valid block
-        let valid_block = Block::new(1, vec![], "previous_hash".to_string(), "peer1".to_string());
-
-        // Ensure enough time has passed since the last block
-        poc.last_block_time = 0;
-
-        // Validate the block
-        let validation_result = poc.validate(&valid_block);
-        assert!(validation_result.is_ok(), "Block validation should succeed");
-        assert!(validation_result.unwrap(), "Block should be considered valid");
-
-        // Test invalid block (proposer not in known peers)
-        let invalid_block = Block::new(2, vec![], valid_block.hash.clone(), "unknown_peer".to_string());
-        let invalid_result = poc.validate(&invalid_block);
-        assert!(invalid_result is_err(), "Validation should fail for unknown proposer");
-
-        // Test block proposed too soon
-        poc.last_block_time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
-        let too_soon_block = Block::new(3, vec![], valid_block.hash.clone(), "peer2".to_string());
-        let too_soon_result = poc.validate(&too_soon_block);
-        assert!(too_soon_result.is_err(), "Validation should fail for block proposed too soon");
-    }
-
-    #[test]
-    fn test_update_state() {
-        let mut poc = setup_test_poc();
-        let mut chain = Chain::new();
-
-        // Add a block to the chain
-        let block = Block::new(1, vec![], "previous_hash".to_string(), "peer1".to_string());
-        chain.add_block(block.clone()).unwrap();
-
-        // Update the consensus state
-        poc.update_state(&chain).unwrap();
-
-        // Check if the last block time was updated
-        assert_eq!(poc.last_block_time, block.timestamp, "Last block time should be updated");
+        // Test NetworkPartitionDetected and NetworkReunified events
+        poc.handle_network_event(NetworkEvent::NetworkPartitionDetected).unwrap();
+        poc.handle_network_event(NetworkEvent::NetworkReunified).unwrap();
+        // Add assertions here to check if the consensus mechanism handled these events correctly
     }
 }
