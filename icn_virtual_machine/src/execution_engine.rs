@@ -6,6 +6,7 @@
 use crate::state_manager::StateManager;
 use crate::resource_manager::ResourceManager;
 use crate::security_manager::SecurityManager;
+use std::error::Error;
 
 /// ExecutionEngine struct encapsulates the components needed for executing smart contracts.
 pub struct ExecutionEngine {
@@ -18,6 +19,16 @@ pub struct ExecutionEngine {
 pub struct ExecutionContext {
     pub current_key: String,
     pub current_value: String,
+}
+
+impl ExecutionContext {
+    /// Creates a new instance of ExecutionContext with initial empty values.
+    pub fn new() -> Self {
+        ExecutionContext {
+            current_key: String::new(),
+            current_value: String::new(),
+        }
+    }
 }
 
 /// ExecutionResult is used to communicate the result of contract execution back to the caller.
@@ -40,34 +51,33 @@ impl ExecutionEngine {
     ///
     /// # Arguments
     ///
-    /// * `bytecode` - A vector of u8 representing the compiled bytecode of the smart contract.
-    /// * `context` - The execution context holding the initial state.
+    /// * `bytecode` - A reference to a vector of u8 representing the compiled bytecode of the smart contract.
+    /// * `context` - A mutable reference to the execution context holding the initial state.
     ///
     /// # Returns
     ///
-    /// * `ExecutionResult` - The outcome of the contract execution, either success or error.
-    pub fn execute_contract(&mut self, bytecode: Vec<u8>, context: ExecutionContext) -> ExecutionResult {
+    /// * `Result<(), Box<dyn Error>>` - Returns Ok(()) if execution is successful, otherwise returns an error.
+    pub fn execute(&mut self, bytecode: &[u8], context: &mut ExecutionContext) -> Result<(), Box<dyn Error>> {
         // Perform security validation on the bytecode before execution.
-        if !self.security_manager.validate(&bytecode) {
-            return ExecutionResult::Error("Security validation failed".to_string());
+        if !self.security_manager.validate(bytecode) {
+            return Err(Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, "Security validation failed")));
         }
-
-        // Initialize the execution context.
-        let mut ctx = context;
 
         // Process each bytecode instruction.
         for opcode in bytecode {
             match opcode {
                 // Example opcode: 0x01 -> Store value in state
-                0x01 => self.state_manager.store_value(ctx.current_key.clone(), ctx.current_value.clone()),
+                0x01 => self.state_manager.store_value(context.current_key.clone(), context.current_value.clone()),
+
                 // Example opcode: 0x02 -> Load value from state
-                0x02 => ctx.current_value = self.state_manager.load_value(&ctx.current_key),
+                0x02 => context.current_value = self.state_manager.load_value(&context.current_key),
+
                 // Handle unknown opcodes
-                _ => return ExecutionResult::Error("Unknown opcode".to_string()),
+                _ => return Err(Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, "Unknown opcode"))),
             }
         }
 
-        // Return the result of the execution.
-        ExecutionResult::Success(ctx.current_value)
+        // Execution successful
+        Ok(())
     }
 }

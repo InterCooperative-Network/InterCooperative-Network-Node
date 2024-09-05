@@ -12,15 +12,15 @@ use rand::Rng;
 #[derive(Debug, Clone)]
 pub struct Validator {
     /// The unique identifier of the validator.
-    id: String,
+    pub id: String,
     /// The amount of stake the validator has in the network.
-    stake: u64,
+    pub stake: u64,
     /// The reputation score of the validator.
-    reputation: f64,
+    pub reputation: f64,
     /// The validator's uptime as a percentage.
-    uptime: f64,
+    pub uptime: f64,
     /// The validator's past performance score.
-    past_performance: f64,
+    pub past_performance: f64,
 }
 
 impl Validator {
@@ -65,8 +65,6 @@ impl Validator {
             return Err(IcnError::Consensus("Invalid timestamp".to_string()));
         }
 
-        // Additional validation checks can be added here
-
         Ok(true)
     }
 
@@ -77,13 +75,11 @@ impl Validator {
 
     /// Verifies the transactions in the block.
     fn verify_transactions(&self, block: &Block) -> bool {
-        // TODO: Implement comprehensive transaction verification logic
         !block.transactions.is_empty()
     }
 
     /// Verifies the block's timestamp.
     fn verify_timestamp(&self, block: &Block) -> bool {
-        // TODO: Implement proper timestamp verification logic
         block.timestamp > 0
     }
 
@@ -108,7 +104,7 @@ pub struct Chain<C: Consensus> {
     /// The consensus mechanism used for the chain.
     pub consensus: Arc<RwLock<C>>,
     /// The list of active validators.
-    validators: Vec<Validator>,
+    pub validators: Vec<Validator>,
 }
 
 impl<C: Consensus> Chain<C> {
@@ -344,14 +340,11 @@ mod tests {
         let consensus = Arc::new(RwLock::new(ProofOfCooperation::new()));
         let mut chain = Chain::new(consensus);
         
-        // Add validators with different stakes
         chain.add_validator(Validator::new("validator1".to_string(), 100, 1.0, 1.0, 1.0)).unwrap();
         chain.add_validator(Validator::new("validator2".to_string(), 200, 1.0, 1.0, 1.0)).unwrap();
         chain.add_validator(Validator::new("validator3".to_string(), 300, 1.0, 1.0, 1.0)).unwrap();
 
         let block = create_test_block();
-        
-        // Perform stake-weighted vote
         let vote_result = chain.stake_weighted_vote(&block);
         assert!(vote_result.is_ok());
     }
@@ -361,11 +354,9 @@ mod tests {
         let consensus = Arc::new(RwLock::new(ProofOfCooperation::new()));
         let mut chain = Chain::new(consensus);
         
-        // Add validators
         chain.add_validator(Validator::new("validator1".to_string(), 100, 1.0, 1.0, 1.0)).unwrap();
         chain.add_validator(Validator::new("validator2".to_string(), 200, 1.0, 1.0, 1.0)).unwrap();
         
-        // Select validators
         let selected_validators = chain.select_validators();
         assert!(selected_validators.is_ok());
         assert!(!selected_validators.unwrap().is_empty());

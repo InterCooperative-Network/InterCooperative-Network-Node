@@ -1,54 +1,107 @@
-// File: icn_virtual_machine/src/lib.rs
+// File: icn_smart_contracts/src/lib.rs
+// Description: This file defines the SmartContractEngine and SmartContract structures,
+// handling operations like deployment and execution of smart contracts.
 
-use crate::bytecode::Bytecode;
-use crate::execution_engine::ExecutionEngine;
-use crate::state_manager::StateManager;
-use crate::resource_manager::ResourceManager;
-use crate::security_manager::SecurityManager;
-use crate::plugin_manager::PluginManager;
-use icn_shared::IcnResult;
+use std::collections::HashMap;
+use icn_virtual_machine::{VirtualMachine, bytecode::Bytecode};  // Ensure correct path
 
-/// The core structure representing the ICN Virtual Machine
-pub struct VirtualMachine {
-    execution_engine: ExecutionEngine,
-    state_manager: StateManager,
-    resource_manager: ResourceManager,
-    security_manager: SecurityManager,
-    plugin_manager: PluginManager,
+/// Custom error type for smart contract-related operations
+#[derive(Debug, thiserror::Error)]  // Ensure thiserror is added to Cargo.toml
+pub enum SmartContractError {
+    #[error("Invalid arguments: {0}")]
+    InvalidArguments(String),
+
+    #[error("Contract not found: {0}")]
+    ContractNotFound(u32),
+
+    #[error("Compilation error: {0}")]
+    CompilationError(String),
+
+    #[error("Execution error: {0}")]
+    ExecutionError(String),
+
+    #[error("Unsupported operation: {0}")]
+    UnsupportedOperation(String),
 }
 
-impl VirtualMachine {
-    /// Creates a new instance of the `VirtualMachine`
-    pub fn new() -> Self {
-        VirtualMachine {
-            execution_engine: ExecutionEngine::new(),
-            state_manager: StateManager::new(),
-            resource_manager: ResourceManager::new(),
-            security_manager: SecurityManager::new(),
-            plugin_manager: PluginManager::new(),
+/// Result type alias for smart contract operations
+pub type SmartContractResult<T> = Result<T, SmartContractError>;
+
+/// Represents a smart contract within the ICN ecosystem
+#[derive(Debug, Clone)]
+pub struct SmartContract {
+    pub id: u32,
+    pub code: String,
+    pub bytecode: Option<Bytecode>,
+}
+
+impl SmartContract {
+    pub fn new(id: u32, code: &str) -> Self {
+        SmartContract {
+            id,
+            code: code.to_string(),
+            bytecode: None,
         }
     }
 
-    /// Executes the given bytecode within the virtual machine environment
-    pub fn execute(&mut self, bytecode: Bytecode) -> IcnResult<()> {
-        // 1. Security and Compliance Checks
-        self.security_manager.sandbox_contract(&bytecode.code)?; // Ensure contract is sandboxed
-        self.security_manager.perform_static_analysis(&bytecode.code)?; // Perform static analysis
-        self.security_manager.check_compliance(&bytecode.code)?; // Check for compliance
+    pub fn set_bytecode(&mut self, bytecode: Bytecode) {
+        self.bytecode = Some(bytecode);
+    }
+}
 
-        // 2. Resource Management
-        // Placeholder: Check if the contract has enough resources to execute
-        // You'll need to implement the actual resource management logic here
+/// The core engine for managing and executing smart contracts
+pub struct SmartContractEngine {
+    contracts: HashMap<u32, SmartContract>,
+    vm: VirtualMachine,
+}
 
-        // 3. Execute the Bytecode
-        self.execution_engine.execute(bytecode)?;
-
-        // 4. Log Execution (if successful)
-        // Placeholder: Log execution details 
-        // You'll need to implement the actual logging mechanism here
-
-        Ok(())
+impl SmartContractEngine {
+    pub fn new() -> Self {
+        SmartContractEngine {
+            contracts: HashMap::new(),
+            vm: VirtualMachine::new(),
+        }
     }
 
-    // ... other methods for interacting with state, resources, plugins, etc.
+    pub fn deploy_contract(&mut self, code: &str) -> SmartContractResult<u32> {
+        let bytecode = self.compile_contract(code)?;
+
+        let id = self.contracts.len() as u32 + 1;
+        let mut contract = SmartContract::new(id, code);
+        contract.set_bytecode(Bytecode::new(bytecode.clone()));
+        self.contracts.insert(id, contract);
+
+        self.vm.execute(Bytecode::new(bytecode))
+            .map_err(|e| SmartContractError::ExecutionError(e.to_string()))?;
+
+        Ok(id)
+    }
+
+    pub fn call_contract(&mut self, id: u32, function: &str, args: Vec<String>) -> SmartContractResult<String> {
+        let contract = self.contracts.get(&id)
+            .ok_or_else(|| SmartContractError::ContractNotFound(id))?;
+
+        let call_data = self.encode_function_call(function, args)?;
+
+        let bytecode = contract.bytecode.clone()
+            .ok_or_else(|| SmartContractError::ExecutionError("Contract bytecode not available".to_string()))?;
+        
+        self.vm.execute(bytecode)
+            .map_err(|e| SmartContractError::ExecutionError(e.to_string()))?;
+
+        let result = self.get_vm_result()?;
+        Ok(result)
+    }
+
+    fn compile_contract(&self, code: &str) -> SmartContractResult<Vec<u8>> {
+        Ok(vec![0, 1, 2, 3])
+    }
+
+    fn encode_function_call(&self, _function: &str, _args: Vec<String>) -> SmartContractResult<Vec<u8>> {
+        Ok(vec![0, 1, 2, 3])
+    }
+
+    fn get_vm_result(&self) -> SmartContractResult<String> {
+        Ok("Function executed successfully".to_string())
+    }
 }

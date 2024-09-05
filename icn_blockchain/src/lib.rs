@@ -3,6 +3,7 @@
 // executing transactions, and interacting with the virtual machine.
 
 use std::sync::{Arc, RwLock};
+use std::collections::HashMap;
 use icn_shared::{Block, IcnError, IcnResult};
 use icn_consensus::Consensus;
 use icn_virtual_machine::VirtualMachine;
@@ -21,6 +22,8 @@ pub struct Blockchain<C: Consensus> {
     pub consensus: Arc<RwLock<C>>,
     /// The virtual machine for executing smart contracts.
     pub vm: VirtualMachine,
+    /// The state of the blockchain (e.g., account balances)
+    state: RwLock<HashMap<String, i64>>,
 }
 
 impl<C: Consensus> Blockchain<C> {
@@ -38,6 +41,7 @@ impl<C: Consensus> Blockchain<C> {
             chain: Chain::new(consensus.clone()),
             consensus,
             vm: VirtualMachine::new(),
+            state: RwLock::new(HashMap::new()),
         }
     }
 
@@ -62,19 +66,27 @@ impl<C: Consensus> Blockchain<C> {
         );
 
         // Validate the block using the consensus mechanism
-        let consensus_read = self.consensus.read()
+        let consensus = self.consensus.read()
             .map_err(|_| IcnError::Consensus("Failed to acquire read lock on consensus".to_string()))?;
         
-        if consensus_read.validate(&new_block)? {
-            // If validation is successful, acquire a write lock to modify the chain
-            drop(consensus_read); // Release the read lock before acquiring the write lock
-            let mut consensus_write = self.consensus.write()
+        if consensus.validate(&new_block)? {
+            drop(consensus); // Release the read lock before acquiring the write lock
+            
+            // Execute all transactions in the block
+            for tx in &new_block.transactions {
+                let transaction: Transaction = serde_json::from_str(tx)
+                    .map_err(|e| IcnError::Blockchain(format!("Failed to deserialize transaction: {}", e)))?;
+                self.execute_transaction(transaction)?;
+            }
+
+            // Add the block to the chain
+            self.chain.add_block(new_block.clone())?;
+            
+            // Update the consensus state
+            let mut consensus = self.consensus.write()
                 .map_err(|_| IcnError::Consensus("Failed to acquire write lock on consensus".to_string()))?;
+            consensus.update_state(&new_block)?;
             
-            self.chain.add_block(new_block)?;
-            
-            // Update the consensus state if necessary
-            (*consensus_write).update_state(&self.chain)?;
             Ok(())
         } else {
             Err(IcnError::Blockchain("Invalid block".to_string()))
@@ -90,7 +102,7 @@ impl<C: Consensus> Blockchain<C> {
     /// # Returns
     ///
     /// * `IcnResult<()>` - Returns Ok if the transaction is successfully executed, otherwise an error.
-    pub fn execute_transaction(&mut self, transaction: Transaction) -> IcnResult<()> {
+    pub fn execute_transaction(&self, transaction: Transaction) -> IcnResult<()> {
         match &transaction.transaction_type {
             TransactionType::Transfer { from, to, amount } => {
                 self.update_balance(from, -(*amount as i64))?;
@@ -123,12 +135,17 @@ impl<C: Consensus> Blockchain<C> {
     /// # Returns
     ///
     /// * `IcnResult<()>` - Returns Ok if the balance is successfully updated, otherwise an error.
-    fn update_balance(&mut self, account: &str, change: i64) -> IcnResult<()> {
+    fn update_balance(&self, account: &str, change: i64) -> IcnResult<()> {
         if account.is_empty() {
             return Err(IcnError::Blockchain("Account ID cannot be empty".to_string()));
         }
-        // TODO: Implement actual balance update logic
-        println!("Updating balance of account {} by {}", account, change);
+        let mut state = self.state.write()
+            .map_err(|_| IcnError::Blockchain("Failed to acquire write lock on state".to_string()))?;
+        let balance = state.entry(account.to_string()).or_insert(0);
+        *balance += change;
+        if *balance < 0 {
+            return Err(IcnError::Blockchain(format!("Insufficient balance for account {}", account)));
+        }
         Ok(())
     }
 
@@ -147,8 +164,12 @@ impl<C: Consensus> Blockchain<C> {
             return Err(IcnError::Blockchain("Invalid proof validation parameters".to_string()));
         }
         // TODO: Implement actual proof validation logic
-        println!("Validating proof {} with data length {}", proof_id, data.len());
-        Ok(())
+        // For now, we'll just check if the data is not empty
+        if data.len() > 0 {
+            Ok(())
+        } else {
+            Err(IcnError::Blockchain("Invalid proof data".to_string()))
+        }
     }
 
     /// Validates the integrity of the blockchain.
@@ -177,6 +198,23 @@ impl<C: Consensus> Blockchain<C> {
     pub fn latest_block(&self) -> Option<&Block> {
         self.chain.latest_block()
     }
+
+    /// Gets the balance of an account.
+    ///
+    /// # Arguments
+    ///
+    /// * `account` - The account ID to query.
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<i64>` - The balance of the account, or an error if the account doesn't exist.
+    pub fn get_balance(&self, account: &str) -> IcnResult<i64> {
+        let state = self.state.read()
+            .map_err(|_| IcnError::Blockchain("Failed to acquire read lock on state".to_string()))?;
+        state.get(account)
+            .cloned()
+            .ok_or_else(|| IcnError::Blockchain(format!("Account {} not found", account)))
+    }
 }
 
 #[cfg(test)]
@@ -199,7 +237,18 @@ mod tests {
     #[test]
     fn test_add_block() {
         let mut blockchain = setup_blockchain();
-        let transactions = vec!["tx1".to_string(), "tx2".to_string()];
+        let transactions = vec![
+            serde_json::to_string(&Transaction::new(
+                "1".to_string(),
+                TransactionType::Transfer {
+                    from: "account1".to_string(),
+                    to: "account2".to_string(),
+                    amount: 100,
+                },
+                None,
+                None,
+            )).unwrap(),
+        ];
         let result = blockchain.add_block(transactions, "proposer1".to_string());
         assert!(result.is_ok());
         assert_eq!(blockchain.block_count(), 1);
@@ -207,7 +256,7 @@ mod tests {
 
     #[test]
     fn test_execute_transaction() {
-        let mut blockchain = setup_blockchain();
+        let blockchain = setup_blockchain();
         let transaction = Transaction::new(
             "1".to_string(),
             TransactionType::Transfer {
@@ -219,6 +268,8 @@ mod tests {
             None,
         );
         assert!(blockchain.execute_transaction(transaction).is_ok());
+        assert_eq!(blockchain.get_balance("from_account").unwrap(), -100);
+        assert_eq!(blockchain.get_balance("to_account").unwrap(), 100);
     }
 
     #[test]
@@ -231,7 +282,7 @@ mod tests {
 
     #[test]
     fn test_deploy_contract() {
-        let mut blockchain = setup_blockchain();
+        let blockchain = setup_blockchain();
         let transaction = Transaction::new(
             "2".to_string(),
             TransactionType::DeployContract {
@@ -246,7 +297,7 @@ mod tests {
 
     #[test]
     fn test_smart_contract_execution() {
-        let mut blockchain = setup_blockchain();
+        let blockchain = setup_blockchain();
         let transaction = Transaction::new(
             "3".to_string(),
             TransactionType::SmartContractExecution {
@@ -262,7 +313,7 @@ mod tests {
 
     #[test]
     fn test_proof_validation() {
-        let mut blockchain = setup_blockchain();
+        let blockchain = setup_blockchain();
         let transaction = Transaction::new(
             "4".to_string(),
             TransactionType::ProofValidation {
@@ -273,5 +324,21 @@ mod tests {
             None,
         );
         assert!(blockchain.execute_transaction(transaction).is_ok());
+    }
+
+    #[test]
+    fn test_insufficient_balance() {
+        let blockchain = setup_blockchain();
+        let transaction = Transaction::new(
+            "5".to_string(),
+            TransactionType::Transfer {
+                from: "empty_account".to_string(),
+                to: "any_account".to_string(),
+                amount: 100,
+            },
+            None,
+            None,
+        );
+        assert!(blockchain.execute_transaction(transaction).is_err());
     }
 }
