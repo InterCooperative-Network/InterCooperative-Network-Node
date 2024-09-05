@@ -591,7 +591,78 @@ impl From<serde_json::Error> for IcnError {
     }
 }
 
-// You can add more conversion implementations here if needed for other error types.
+// Implement conversion from std::io::Error for I/O-related issues.
+impl From<std::io::Error> for IcnError {
+    fn from(err: std::io::Error) -> Self {
+        IcnError::Network(err.to_string())
+    }
+}
+
+// Implement conversion from a generic String for other errors.
+impl From<String> for IcnError {
+    fn from(err: String) -> Self {
+        IcnError::Generic(err)
+    }
+}
+
+// Implement conversion for any other types of errors you might want to handle later.
+// Additional conversions can be implemented here as needed.
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_serialization_error() {
+        let invalid_json = "{ invalid_json: true }";
+        let result: Result<serde_json::Value, IcnError> = serde_json::from_str(invalid_json).map_err(IcnError::from);
+        assert!(matches!(result, Err(IcnError::Serialization(_))));
+    }
+
+    #[test]
+    fn test_storage_error() {
+        let error = IcnError::Storage("Failed to access storage".to_string());
+        assert_eq!(format!("{}", error), "Storage error: Failed to access storage");
+    }
+
+    #[test]
+    fn test_consensus_error() {
+        let error = IcnError::Consensus("Failed consensus check".to_string());
+        assert_eq!(format!("{}", error), "Consensus error: Failed consensus check");
+    }
+
+    #[test]
+    fn test_network_error() {
+        let error = IcnError::Network("Connection failed".to_string());
+        assert_eq!(format!("{}", error), "Network error: Connection failed");
+    }
+
+    #[test]
+    fn test_transaction_error() {
+        let error = IcnError::Transaction("Invalid transaction".to_string());
+        assert_eq!(format!("{}", error), "Transaction error: Invalid transaction");
+    }
+
+    #[test]
+    fn test_blockchain_error() {
+        let error = IcnError::Blockchain("Invalid block".to_string());
+        assert_eq!(format!("{}", error), "Blockchain error: Invalid block");
+    }
+
+    #[test]
+    fn test_virtual_machine_error() {
+        let error = IcnError::VirtualMachine("VM execution failed".to_string());
+        assert_eq!(format!("{}", error), "Virtual Machine error: VM execution failed");
+    }
+
+    #[test]
+    fn test_generic_error() {
+        let error = IcnError::Generic("Some generic error".to_string());
+        assert_eq!(format!("{}", error), "Generic error: Some generic error");
+    }
+}
+
 
 
 === ./icn_shared/src/block.rs ===
