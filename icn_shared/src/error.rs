@@ -33,6 +33,10 @@ pub enum IcnError {
     #[error("Blockchain error: {0}")]
     Blockchain(String),
 
+    /// An error related to virtual machine operations.
+    #[error("Virtual Machine error: {0}")]
+    VirtualMachine(String),
+
     /// A generic error for any other type of failure.
     #[error("Generic error: {0}")]
     Generic(String),

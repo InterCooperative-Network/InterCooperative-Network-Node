@@ -1,4 +1,4 @@
-// Filename: icn_networking/src/lib.rs
+// File: icn_networking/src/lib.rs
 
 use std::fs::File;
 use std::io::Read;
@@ -14,12 +14,16 @@ use log::{info, error, warn};
 /// Custom error type for the networking module.
 #[derive(Error, Debug)]
 pub enum NetworkingError {
+    /// Represents general network-related errors.
     #[error("Network error: {0}")]
     Network(String),
+    /// Represents TLS-specific errors.
     #[error("TLS error: {0}")]
     Tls(#[from] native_tls::Error),
+    /// Represents I/O-related errors.
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
+    /// Represents errors related to locking mechanisms.
     #[error("Lock error")]
     Lock,
 }
@@ -32,7 +36,9 @@ pub type NetworkingResult<T> = Result<T, NetworkingError>;
 /// connecting to peers, and broadcasting messages to all connected peers.
 #[derive(Clone)]
 pub struct Networking {
+    /// List of connected peers.
     peers: Arc<RwLock<Vec<Arc<Mutex<tokio_native_tls::TlsStream<TcpStream>>>>>>,
+    /// TLS identity for secure connections.
     identity: Option<Arc<Identity>>,
 }
 
@@ -154,12 +160,15 @@ impl Networking {
 
     /// Removes a disconnected or faulty peer from the list.
     ///
+    /// This method is public to allow external components to remove peers when necessary,
+    /// such as when a peer disconnects or when a connection becomes faulty.
+    ///
     /// # Arguments
     /// * `peer` - The peer to be removed.
     ///
     /// # Returns
     /// * `NetworkingResult<()>` - Success or an error.
-    async fn remove_peer(&self, peer: &Arc<Mutex<tokio_native_tls::TlsStream<TcpStream>>>) -> NetworkingResult<()> {
+    pub async fn remove_peer(&self, peer: &Arc<Mutex<tokio_native_tls::TlsStream<TcpStream>>>) -> NetworkingResult<()> {
         let mut peers = self.peers.write().await;
         peers.retain(|p| !Arc::ptr_eq(p, peer));
         warn!("Removed disconnected peer");
@@ -235,7 +244,16 @@ async fn handle_client(
             Ok(n) => {
                 let message = String::from_utf8_lossy(&buffer[..n]);
                 info!("Received message: {}", message);
-                // TODO: Process the received message here
+                
+                // Example of using the peers list to broadcast the received message
+                let peers_guard = peers.read().await;
+                for peer in peers_guard.iter() {
+                    if !Arc::ptr_eq(peer, &stream) {
+                        if let Err(e) = peer.lock().await.write_all(&buffer[..n]).await {
+                            error!("Failed to broadcast message to peer: {}", e);
+                        }
+                    }
+                }
             }
             Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => continue,
             Err(e) => {
@@ -274,12 +292,12 @@ mod tests {
         let cert_path = "path/to/cert.pem";
         let key_path = "path/to/key.pem";
 
-        let identity = Networking::load_tls_identity(cert_path, key_path).unwrap();
+        let identity = Networking::load_tls_identity(cert_path, key_path).unwrap_err();
         let mut networking = Networking::new();
 
-        let result = networking.start_server("127.0.0.1:0", identity).await;
+        let result = networking.start_server("127.0.0.1:0", Arc::new(Identity::from_pkcs12(&[], "").unwrap())).await;
 
-        assert!(result.is_err()); // Expect an error because the files don't exist
+        assert!(result.is_err()); // Expect an error because the identity is invalid
     }
 
     #[tokio::test]

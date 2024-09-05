@@ -1,107 +1,256 @@
-// File: icn_smart_contracts/src/lib.rs
-// Description: This file defines the SmartContractEngine and SmartContract structures,
-// handling operations like deployment and execution of smart contracts.
+// File: icn_virtual_machine/src/lib.rs
 
 use std::collections::HashMap;
-use icn_virtual_machine::{VirtualMachine, bytecode::Bytecode};  // Ensure correct path
+pub mod bytecode;
+use self::bytecode::Bytecode;
+use icn_shared::{IcnResult, IcnError};
 
-/// Custom error type for smart contract-related operations
-#[derive(Debug, thiserror::Error)]  // Ensure thiserror is added to Cargo.toml
-pub enum SmartContractError {
-    #[error("Invalid arguments: {0}")]
-    InvalidArguments(String),
-
-    #[error("Contract not found: {0}")]
-    ContractNotFound(u32),
-
-    #[error("Compilation error: {0}")]
-    CompilationError(String),
-
-    #[error("Execution error: {0}")]
-    ExecutionError(String),
-
-    #[error("Unsupported operation: {0}")]
-    UnsupportedOperation(String),
+/// Represents the Virtual Machine for executing smart contracts
+pub struct VirtualMachine {
+    /// Memory space for the virtual machine (64KB)
+    memory: Vec<u8>,
+    /// Stack for operation execution
+    stack: Vec<i64>,
+    /// Current instruction pointer
+    program_counter: usize,
+    /// Remaining gas for execution
+    gas_remaining: u64,
 }
 
-/// Result type alias for smart contract operations
-pub type SmartContractResult<T> = Result<T, SmartContractError>;
-
-/// Represents a smart contract within the ICN ecosystem
-#[derive(Debug, Clone)]
-pub struct SmartContract {
-    pub id: u32,
-    pub code: String,
-    pub bytecode: Option<Bytecode>,
-}
-
-impl SmartContract {
-    pub fn new(id: u32, code: &str) -> Self {
-        SmartContract {
-            id,
-            code: code.to_string(),
-            bytecode: None,
-        }
-    }
-
-    pub fn set_bytecode(&mut self, bytecode: Bytecode) {
-        self.bytecode = Some(bytecode);
-    }
-}
-
-/// The core engine for managing and executing smart contracts
-pub struct SmartContractEngine {
-    contracts: HashMap<u32, SmartContract>,
-    vm: VirtualMachine,
-}
-
-impl SmartContractEngine {
+impl VirtualMachine {
+    /// Creates a new instance of the Virtual Machine
+    ///
+    /// # Returns
+    ///
+    /// * `Self` - A new VirtualMachine instance with initialized memory and empty stack
     pub fn new() -> Self {
-        SmartContractEngine {
-            contracts: HashMap::new(),
-            vm: VirtualMachine::new(),
+        VirtualMachine {
+            memory: vec![0; 65536], // 64KB of memory
+            stack: Vec::new(),
+            program_counter: 0,
+            gas_remaining: 0,
         }
     }
 
-    pub fn deploy_contract(&mut self, code: &str) -> SmartContractResult<u32> {
-        let bytecode = self.compile_contract(code)?;
+    /// Executes the given bytecode
+    ///
+    /// # Arguments
+    ///
+    /// * `bytecode` - The bytecode to execute
+    /// * `gas_limit` - The maximum amount of gas that can be used for execution
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<()>` - Ok if execution was successful, Err otherwise
+    pub fn execute(&mut self, bytecode: Bytecode, gas_limit: u64) -> IcnResult<()> {
+        self.gas_remaining = gas_limit;
+        self.program_counter = 0;
+        self.stack.clear();
 
-        let id = self.contracts.len() as u32 + 1;
-        let mut contract = SmartContract::new(id, code);
-        contract.set_bytecode(Bytecode::new(bytecode.clone()));
-        self.contracts.insert(id, contract);
+        while self.program_counter < bytecode.code.len() {
+            if self.gas_remaining == 0 {
+                return Err(IcnError::VirtualMachine("Out of gas".to_string()));
+            }
 
-        self.vm.execute(Bytecode::new(bytecode))
-            .map_err(|e| SmartContractError::ExecutionError(e.to_string()))?;
+            let opcode = bytecode.code[self.program_counter];
+            self.program_counter += 1;
 
-        Ok(id)
+            match opcode {
+                0x01 => self.op_add()?,
+                0x02 => self.op_sub()?,
+                0x03 => self.op_mul()?,
+                0x04 => self.op_div()?,
+                0x10 => self.op_push()?,
+                0x11 => self.op_pop()?,
+                0x20 => self.op_jump()?,
+                0x21 => self.op_jumpi()?,
+                0xFF => break, // HALT
+                _ => return Err(IcnError::VirtualMachine(format!("Invalid opcode: {}", opcode))),
+            }
+        }
+
+        Ok(())
     }
 
-    pub fn call_contract(&mut self, id: u32, function: &str, args: Vec<String>) -> SmartContractResult<String> {
-        let contract = self.contracts.get(&id)
-            .ok_or_else(|| SmartContractError::ContractNotFound(id))?;
+    /// Executes the given bytecode with a specific state
+    ///
+    /// # Arguments
+    ///
+    /// * `bytecode` - The bytecode to execute
+    /// * `call_data` - Input data for the execution
+    /// * `state` - The current state of the contract
+    /// * `gas_limit` - The maximum amount of gas that can be used for execution
+    ///
+    /// # Returns
+    ///
+    /// * `IcnResult<(Vec<u8>, u64)>` - The execution result and gas used, or an error
+    pub fn execute_with_state(&mut self, bytecode: Bytecode, call_data: Vec<u8>, state: &mut HashMap<String, Vec<u8>>, gas_limit: u64) -> IcnResult<(Vec<u8>, u64)> {
+        self.gas_remaining = gas_limit;
+        self.program_counter = 0;
+        self.stack.clear();
 
-        let call_data = self.encode_function_call(function, args)?;
+        // Load call data into memory
+        for (i, &byte) in call_data.iter().enumerate() {
+            if i >= self.memory.len() {
+                return Err(IcnError::VirtualMachine("Call data exceeds memory size".to_string()));
+            }
+            self.memory[i] = byte;
+        }
 
-        let bytecode = contract.bytecode.clone()
-            .ok_or_else(|| SmartContractError::ExecutionError("Contract bytecode not available".to_string()))?;
-        
-        self.vm.execute(bytecode)
-            .map_err(|e| SmartContractError::ExecutionError(e.to_string()))?;
+        self.execute(bytecode, gas_limit)?;
 
-        let result = self.get_vm_result()?;
-        Ok(result)
+        let gas_used = gas_limit - self.gas_remaining;
+        let result = self.memory[0..32].to_vec(); // Assume result is in first 32 bytes of memory
+
+        Ok((result, gas_used))
     }
 
-    fn compile_contract(&self, code: &str) -> SmartContractResult<Vec<u8>> {
-        Ok(vec![0, 1, 2, 3])
+    /// Performs addition operation
+    fn op_add(&mut self) -> IcnResult<()> {
+        if self.stack.len() < 2 {
+            return Err(IcnError::VirtualMachine("Stack underflow".to_string()));
+        }
+        let b = self.stack.pop().unwrap();
+        let a = self.stack.pop().unwrap();
+        self.stack.push(a.wrapping_add(b));
+        self.gas_remaining = self.gas_remaining.saturating_sub(3);
+        Ok(())
     }
 
-    fn encode_function_call(&self, _function: &str, _args: Vec<String>) -> SmartContractResult<Vec<u8>> {
-        Ok(vec![0, 1, 2, 3])
+    /// Performs subtraction operation
+    fn op_sub(&mut self) -> IcnResult<()> {
+        if self.stack.len() < 2 {
+            return Err(IcnError::VirtualMachine("Stack underflow".to_string()));
+        }
+        let b = self.stack.pop().unwrap();
+        let a = self.stack.pop().unwrap();
+        self.stack.push(a.wrapping_sub(b));
+        self.gas_remaining = self.gas_remaining.saturating_sub(3);
+        Ok(())
     }
 
-    fn get_vm_result(&self) -> SmartContractResult<String> {
-        Ok("Function executed successfully".to_string())
+    /// Performs multiplication operation
+    fn op_mul(&mut self) -> IcnResult<()> {
+        if self.stack.len() < 2 {
+            return Err(IcnError::VirtualMachine("Stack underflow".to_string()));
+        }
+        let b = self.stack.pop().unwrap();
+        let a = self.stack.pop().unwrap();
+        self.stack.push(a.wrapping_mul(b));
+        self.gas_remaining = self.gas_remaining.saturating_sub(5);
+        Ok(())
+    }
+
+    /// Performs division operation
+    fn op_div(&mut self) -> IcnResult<()> {
+        if self.stack.len() < 2 {
+            return Err(IcnError::VirtualMachine("Stack underflow".to_string()));
+        }
+        let b = self.stack.pop().unwrap();
+        let a = self.stack.pop().unwrap();
+        if b == 0 {
+            return Err(IcnError::VirtualMachine("Division by zero".to_string()));
+        }
+        self.stack.push(a.wrapping_div(b));
+        self.gas_remaining = self.gas_remaining.saturating_sub(5);
+        Ok(())
+    }
+
+    /// Pushes a value onto the stack
+    fn op_push(&mut self) -> IcnResult<()> {
+        if self.program_counter >= self.memory.len() {
+            return Err(IcnError::VirtualMachine("Out of bounds memory access".to_string()));
+        }
+        let value = self.memory[self.program_counter] as i64;
+        self.program_counter += 1;
+        self.stack.push(value);
+        self.gas_remaining = self.gas_remaining.saturating_sub(3);
+        Ok(())
+    }
+
+    /// Pops a value from the stack
+    fn op_pop(&mut self) -> IcnResult<()> {
+        if self.stack.is_empty() {
+            return Err(IcnError::VirtualMachine("Stack underflow".to_string()));
+        }
+        self.stack.pop();
+        self.gas_remaining = self.gas_remaining.saturating_sub(2);
+        Ok(())
+    }
+
+    /// Performs an unconditional jump
+    fn op_jump(&mut self) -> IcnResult<()> {
+        if self.stack.is_empty() {
+            return Err(IcnError::VirtualMachine("Stack underflow".to_string()));
+        }
+        let dest = self.stack.pop().unwrap() as usize;
+        if dest >= self.memory.len() {
+            return Err(IcnError::VirtualMachine("Invalid jump destination".to_string()));
+        }
+        self.program_counter = dest;
+        self.gas_remaining = self.gas_remaining.saturating_sub(8);
+        Ok(())
+    }
+
+    /// Performs a conditional jump
+    fn op_jumpi(&mut self) -> IcnResult<()> {
+        if self.stack.len() < 2 {
+            return Err(IcnError::VirtualMachine("Stack underflow".to_string()));
+        }
+        let condition = self.stack.pop().unwrap();
+        let dest = self.stack.pop().unwrap() as usize;
+        if condition != 0 {
+            if dest >= self.memory.len() {
+                return Err(IcnError::VirtualMachine("Invalid jump destination".to_string()));
+            }
+            self.program_counter = dest;
+        }
+        self.gas_remaining = self.gas_remaining.saturating_sub(10);
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_basic_execution() {
+        let mut vm = VirtualMachine::new();
+        let bytecode = Bytecode::new(vec![0x10, 5, 0x10, 3, 0x01, 0xFF]); // PUSH 5, PUSH 3, ADD, HALT
+        assert!(vm.execute(bytecode, 1000).is_ok());
+        assert_eq!(vm.stack, vec![8]);
+    }
+
+    #[test]
+    fn test_out_of_gas() {
+        let mut vm = VirtualMachine::new();
+        let bytecode = Bytecode::new(vec![0x10, 5, 0x10, 3, 0x01, 0xFF]); // PUSH 5, PUSH 3, ADD, HALT
+        let result = vm.execute(bytecode, 5); // Not enough gas
+        assert!(matches!(result, Err(IcnError::VirtualMachine(msg)) if msg == "Out of gas"));
+    }
+
+    #[test]
+    fn test_invalid_opcode() {
+        let mut vm = VirtualMachine::new();
+        let bytecode = Bytecode::new(vec![0xFF, 0xAA]); // HALT, Invalid opcode
+        let result = vm.execute(bytecode, 1000);
+        assert!(matches!(result, Err(IcnError::VirtualMachine(msg)) if msg.starts_with("Invalid opcode")));
+    }
+
+    #[test]
+    fn test_stack_underflow() {
+        let mut vm = VirtualMachine::new();
+        let bytecode = Bytecode::new(vec![0x01, 0xFF]); // ADD (with empty stack), HALT
+        let result = vm.execute(bytecode, 1000);
+        assert!(matches!(result, Err(IcnError::VirtualMachine(msg)) if msg == "Stack underflow"));
+    }
+
+    #[test]
+    fn test_division_by_zero() {
+        let mut vm = VirtualMachine::new();
+        let bytecode = Bytecode::new(vec![0x10, 5, 0x10, 0, 0x04, 0xFF]); // PUSH 5, PUSH 0, DIV, HALT
+        let result = vm.execute(bytecode, 1000);
+        assert!(matches!(result, Err(IcnError::VirtualMachine(msg)) if msg == "Division by zero"));
     }
 }
