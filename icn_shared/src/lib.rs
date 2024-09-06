@@ -3,8 +3,6 @@
 //! This module defines the core structures and error handling for the InterCooperative Network (ICN) project.
 //! It includes custom error types, the `Block` struct representing a blockchain block, and utility functions.
 
-use std::error::Error;
-use std::fmt;
 use serde::{Serialize, Deserialize};
 use sha2::{Sha256, Digest};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -37,10 +35,14 @@ pub enum IcnError {
     /// I/O-related errors.
     #[error("I/O error: {0}")]
     Io(String),
+    /// Virtual Machine-related errors (add this variant).
+    #[error("Virtual Machine error: {0}")]
+    VirtualMachine(String),
     /// Other miscellaneous errors.
     #[error("Other error: {0}")]
     Other(String),
 }
+
 
 impl From<std::io::Error> for IcnError {
     fn from(err: std::io::Error) -> Self {

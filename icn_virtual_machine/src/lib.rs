@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 pub mod bytecode;
 use self::bytecode::Bytecode;
-use icn_shared::{IcnResult, IcnError};
+use icn_shared::{IcnError, IcnResult};
 
 /// Represents the Virtual Machine for executing smart contracts
 pub struct VirtualMachine {
@@ -49,7 +49,7 @@ impl VirtualMachine {
 
         while self.program_counter < bytecode.code.len() {
             if self.gas_remaining == 0 {
-                return Err(IcnError::VirtualMachine("Out of gas".to_string()));
+                return Err(IcnError::a("Execution halted: Out of gas".to_string()));
             }
 
             let opcode = bytecode.code[self.program_counter];
@@ -65,7 +65,7 @@ impl VirtualMachine {
                 0x20 => self.op_jump()?,
                 0x21 => self.op_jumpi()?,
                 0xFF => break, // HALT
-                _ => return Err(IcnError::VirtualMachine(format!("Invalid opcode: {}", opcode))),
+                _ => return Err(IcnError::VirtualMachine(format!("Execution error: Invalid opcode 0x{:02X}", opcode))),
             }
         }
 
@@ -84,7 +84,13 @@ impl VirtualMachine {
     /// # Returns
     ///
     /// * `IcnResult<(Vec<u8>, u64)>` - The execution result and gas used, or an error
-    pub fn execute_with_state(&mut self, bytecode: Bytecode, call_data: Vec<u8>, state: &mut HashMap<String, Vec<u8>>, gas_limit: u64) -> IcnResult<(Vec<u8>, u64)> {
+    pub fn execute_with_state(
+        &mut self,
+        bytecode: Bytecode,
+        call_data: Vec<u8>,
+        state: &mut HashMap<String, Vec<u8>>,
+        gas_limit: u64,
+    ) -> IcnResult<(Vec<u8>, u64)> {
         self.gas_remaining = gas_limit;
         self.program_counter = 0;
         self.stack.clear();
@@ -92,7 +98,7 @@ impl VirtualMachine {
         // Load call data into memory
         for (i, &byte) in call_data.iter().enumerate() {
             if i >= self.memory.len() {
-                return Err(IcnError::VirtualMachine("Call data exceeds memory size".to_string()));
+                return Err(IcnError::VirtualMachine("Memory access error: Call data exceeds memory size".to_string()));
             }
             self.memory[i] = byte;
         }
@@ -100,7 +106,7 @@ impl VirtualMachine {
         self.execute(bytecode, gas_limit)?;
 
         let gas_used = gas_limit - self.gas_remaining;
-        let result = self.memory[0..32].to_vec(); // Assume result is in first 32 bytes of memory
+        let result = self.memory[0..32].to_vec(); // Assume result is in the first 32 bytes of memory
 
         Ok((result, gas_used))
     }
@@ -108,7 +114,7 @@ impl VirtualMachine {
     /// Performs addition operation
     fn op_add(&mut self) -> IcnResult<()> {
         if self.stack.len() < 2 {
-            return Err(IcnError::VirtualMachine("Stack underflow".to_string()));
+            return Err(IcnError::VirtualMachine("Execution error: Stack underflow in ADD".to_string()));
         }
         let b = self.stack.pop().unwrap();
         let a = self.stack.pop().unwrap();
@@ -120,7 +126,7 @@ impl VirtualMachine {
     /// Performs subtraction operation
     fn op_sub(&mut self) -> IcnResult<()> {
         if self.stack.len() < 2 {
-            return Err(IcnError::VirtualMachine("Stack underflow".to_string()));
+            return Err(IcnError::VirtualMachine("Execution error: Stack underflow in SUB".to_string()));
         }
         let b = self.stack.pop().unwrap();
         let a = self.stack.pop().unwrap();
@@ -132,7 +138,7 @@ impl VirtualMachine {
     /// Performs multiplication operation
     fn op_mul(&mut self) -> IcnResult<()> {
         if self.stack.len() < 2 {
-            return Err(IcnError::VirtualMachine("Stack underflow".to_string()));
+            return Err(IcnError::VirtualMachine("Execution error: Stack underflow in MUL".to_string()));
         }
         let b = self.stack.pop().unwrap();
         let a = self.stack.pop().unwrap();
@@ -144,12 +150,12 @@ impl VirtualMachine {
     /// Performs division operation
     fn op_div(&mut self) -> IcnResult<()> {
         if self.stack.len() < 2 {
-            return Err(IcnError::VirtualMachine("Stack underflow".to_string()));
+            return Err(IcnError::VirtualMachine("Execution error: Stack underflow in DIV".to_string()));
         }
         let b = self.stack.pop().unwrap();
         let a = self.stack.pop().unwrap();
         if b == 0 {
-            return Err(IcnError::VirtualMachine("Division by zero".to_string()));
+            return Err(IcnError::VirtualMachine("Execution error: Division by zero".to_string()));
         }
         self.stack.push(a.wrapping_div(b));
         self.gas_remaining = self.gas_remaining.saturating_sub(5);
@@ -159,7 +165,7 @@ impl VirtualMachine {
     /// Pushes a value onto the stack
     fn op_push(&mut self) -> IcnResult<()> {
         if self.program_counter >= self.memory.len() {
-            return Err(IcnError::VirtualMachine("Out of bounds memory access".to_string()));
+            return Err(IcnError::VirtualMachine("Memory access error: Out of bounds memory access".to_string()));
         }
         let value = self.memory[self.program_counter] as i64;
         self.program_counter += 1;
@@ -171,7 +177,7 @@ impl VirtualMachine {
     /// Pops a value from the stack
     fn op_pop(&mut self) -> IcnResult<()> {
         if self.stack.is_empty() {
-            return Err(IcnError::VirtualMachine("Stack underflow".to_string()));
+            return Err(IcnError::VirtualMachine("Execution error: Stack underflow in POP".to_string()));
         }
         self.stack.pop();
         self.gas_remaining = self.gas_remaining.saturating_sub(2);
@@ -181,11 +187,11 @@ impl VirtualMachine {
     /// Performs an unconditional jump
     fn op_jump(&mut self) -> IcnResult<()> {
         if self.stack.is_empty() {
-            return Err(IcnError::VirtualMachine("Stack underflow".to_string()));
+            return Err(IcnError::VirtualMachine("Execution error: Stack underflow in JUMP".to_string()));
         }
         let dest = self.stack.pop().unwrap() as usize;
         if dest >= self.memory.len() {
-            return Err(IcnError::VirtualMachine("Invalid jump destination".to_string()));
+            return Err(IcnError::VirtualMachine("Execution error: Invalid jump destination".to_string()));
         }
         self.program_counter = dest;
         self.gas_remaining = self.gas_remaining.saturating_sub(8);
@@ -195,13 +201,13 @@ impl VirtualMachine {
     /// Performs a conditional jump
     fn op_jumpi(&mut self) -> IcnResult<()> {
         if self.stack.len() < 2 {
-            return Err(IcnError::VirtualMachine("Stack underflow".to_string()));
+            return Err(IcnError::VirtualMachine("Execution error: Stack underflow in JUMPI".to_string()));
         }
         let condition = self.stack.pop().unwrap();
         let dest = self.stack.pop().unwrap() as usize;
         if condition != 0 {
             if dest >= self.memory.len() {
-                return Err(IcnError::VirtualMachine("Invalid jump destination".to_string()));
+                return Err(IcnError::VirtualMachine("Execution error: Invalid jump destination".to_string()));
             }
             self.program_counter = dest;
         }
@@ -227,7 +233,7 @@ mod tests {
         let mut vm = VirtualMachine::new();
         let bytecode = Bytecode::new(vec![0x10, 5, 0x10, 3, 0x01, 0xFF]); // PUSH 5, PUSH 3, ADD, HALT
         let result = vm.execute(bytecode, 5); // Not enough gas
-        assert!(matches!(result, Err(IcnError::VirtualMachine(msg)) if msg == "Out of gas"));
+        assert!(matches!(result, Err(IcnError::VirtualMachine(ref msg)) if msg == "Execution halted: Out of gas"));
     }
 
     #[test]
@@ -235,15 +241,15 @@ mod tests {
         let mut vm = VirtualMachine::new();
         let bytecode = Bytecode::new(vec![0xFF, 0xAA]); // HALT, Invalid opcode
         let result = vm.execute(bytecode, 1000);
-        assert!(matches!(result, Err(IcnError::VirtualMachine(msg)) if msg.starts_with("Invalid opcode")));
+        assert!(matches!(result, Err(IcnError::VirtualMachine(ref msg)) if msg.starts_with("Execution error: Invalid opcode")));
     }
 
     #[test]
-    fn test_stack_underflow() {
+    fn test_stack_underflow_add() {
         let mut vm = VirtualMachine::new();
         let bytecode = Bytecode::new(vec![0x01, 0xFF]); // ADD (with empty stack), HALT
         let result = vm.execute(bytecode, 1000);
-        assert!(matches!(result, Err(IcnError::VirtualMachine(msg)) if msg == "Stack underflow"));
+        assert!(matches!(result, Err(IcnError::VirtualMachine(ref msg)) if msg == "Execution error: Stack underflow in ADD"));
     }
 
     #[test]
@@ -251,6 +257,6 @@ mod tests {
         let mut vm = VirtualMachine::new();
         let bytecode = Bytecode::new(vec![0x10, 5, 0x10, 0, 0x04, 0xFF]); // PUSH 5, PUSH 0, DIV, HALT
         let result = vm.execute(bytecode, 1000);
-        assert!(matches!(result, Err(IcnError::VirtualMachine(msg)) if msg == "Division by zero"));
+        assert!(matches!(result, Err(IcnError::VirtualMachine(ref msg)) if msg == "Execution error: Division by zero"));
     }
 }

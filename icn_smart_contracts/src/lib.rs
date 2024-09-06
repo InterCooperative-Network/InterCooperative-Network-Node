@@ -1,50 +1,68 @@
-// File: icn_smart_contracts/src/lib.rs
-// Description: This file defines the SmartContractEngine and SmartContract structures,
-// handling operations like deployment and execution of smart contracts.
+/// File: icn_smart_contracts/src/lib.rs
+/// Description: This file defines the SmartContractEngine and SmartContract structures,
+/// responsible for handling the deployment, execution, and management of smart contracts.
+/// This implementation uses a simple virtual machine (VM) for contract execution,
+/// supports state management, and handles error propagation.
 
 use std::collections::HashMap;
 use icn_virtual_machine::{VirtualMachine, bytecode::Bytecode};
 use sha2::{Sha256, Digest};
 
 /// Custom error type for smart contract-related operations
+/// Provides detailed error types to handle various failure modes
 #[derive(Debug, thiserror::Error)]
 pub enum SmartContractError {
+    /// Error for invalid arguments passed to the contract
     #[error("Invalid arguments: {0}")]
     InvalidArguments(String),
 
+    /// Error when a contract is not found by ID
     #[error("Contract not found: {0}")]
     ContractNotFound(u32),
 
+    /// Error encountered during contract compilation
     #[error("Compilation error: {0}")]
     CompilationError(String),
 
+    /// Error encountered during contract execution in the VM
     #[error("Execution error: {0}")]
     ExecutionError(String),
 
+    /// Error for unsupported operations in the VM or contract
     #[error("Unsupported operation: {0}")]
     UnsupportedOperation(String),
 
+    /// Error when a contract runs out of gas
     #[error("Out of gas")]
     OutOfGas,
 
+    /// Error related to contract state manipulation
     #[error("State error: {0}")]
     StateError(String),
 }
 
-/// Result type alias for smart contract operations
+/// Result type alias for operations in the smart contract engine
 pub type SmartContractResult<T> = Result<T, SmartContractError>;
 
 /// Represents a smart contract within the ICN ecosystem
+/// A smart contract consists of an ID, source code, compiled bytecode, and a state map.
 #[derive(Debug, Clone)]
 pub struct SmartContract {
-    pub id: u32,
-    pub code: String,
-    pub bytecode: Option<Bytecode>,
-    pub state: HashMap<String, Vec<u8>>,
+    pub id: u32,                            // Unique contract ID
+    pub code: String,                       // Source code of the contract
+    pub bytecode: Option<Bytecode>,         // Optional compiled bytecode
+    pub state: HashMap<String, Vec<u8>>,    // Contract's internal state
 }
 
 impl SmartContract {
-    /// Create a new instance of a SmartContract
+    /// Creates a new instance of a SmartContract
+    ///
+    /// # Arguments
+    /// * `id` - Unique ID for the contract
+    /// * `code` - The source code of the contract
+    ///
+    /// # Returns
+    /// * A new instance of `SmartContract`
     pub fn new(id: u32, code: &str) -> Self {
         SmartContract {
             id,
@@ -54,30 +72,47 @@ impl SmartContract {
         }
     }
 
-    /// Set the bytecode for the contract after compilation
+    /// Sets the bytecode for the contract after successful compilation
+    ///
+    /// # Arguments
+    /// * `bytecode` - Compiled bytecode for the contract
     pub fn set_bytecode(&mut self, bytecode: Bytecode) {
         self.bytecode = Some(bytecode);
     }
 
-    /// Update the state of the contract
+    /// Updates the state of the contract with a given key-value pair
+    ///
+    /// # Arguments
+    /// * `key` - Key for the state entry
+    /// * `value` - Value to be stored in the contract's state
     pub fn update_state(&mut self, key: &str, value: Vec<u8>) {
         self.state.insert(key.to_string(), value);
     }
 
-    /// Get a value from the contract's state
+    /// Retrieves a value from the contract's state
+    ///
+    /// # Arguments
+    /// * `key` - Key for the state entry to retrieve
+    ///
+    /// # Returns
+    /// * An optional reference to the value if it exists
     pub fn get_state(&self, key: &str) -> Option<&Vec<u8>> {
         self.state.get(key)
     }
 }
 
 /// The engine responsible for managing and executing smart contracts
+/// Handles contract deployment, execution, and gas management.
 pub struct SmartContractEngine {
-    contracts: HashMap<u32, SmartContract>,
-    vm: VirtualMachine,
+    contracts: HashMap<u32, SmartContract>,  // Map of deployed contracts by ID
+    vm: VirtualMachine,                      // Virtual machine for executing contract bytecode
 }
 
 impl SmartContractEngine {
-    /// Create a new SmartContractEngine
+    /// Creates a new instance of the SmartContractEngine
+    ///
+    /// # Returns
+    /// * A new `SmartContractEngine`
     pub fn new() -> Self {
         SmartContractEngine {
             contracts: HashMap::new(),
@@ -85,7 +120,13 @@ impl SmartContractEngine {
         }
     }
 
-    /// Deploy a smart contract and execute its bytecode on the virtual machine
+    /// Deploys a smart contract and executes its bytecode on the virtual machine
+    ///
+    /// # Arguments
+    /// * `code` - The source code of the contract to be deployed
+    ///
+    /// # Returns
+    /// * The unique contract ID if successful, or an error if deployment fails
     pub fn deploy_contract(&mut self, code: &str) -> SmartContractResult<u32> {
         let bytecode = self.compile_contract(code)?;
 
@@ -94,13 +135,22 @@ impl SmartContractEngine {
         contract.set_bytecode(Bytecode::new(bytecode.clone()));
         self.contracts.insert(id, contract);
 
-        self.vm.execute(Bytecode::new(bytecode), 1000000) // Set a gas limit for deployment
+        // Execute the contract's bytecode in the VM with a gas limit
+        self.vm.execute(Bytecode::new(bytecode), 1000000)
             .map_err(|e| SmartContractError::ExecutionError(e.to_string()))?;
 
         Ok(id)
     }
 
-    /// Call a deployed contract by invoking a specific function with arguments
+    /// Calls a deployed contract by invoking a function with arguments
+    ///
+    /// # Arguments
+    /// * `id` - The contract ID to call
+    /// * `function` - The function to invoke in the contract
+    /// * `args` - Arguments to pass to the function
+    ///
+    /// # Returns
+    /// * The result of the function call, or an error if the call fails
     pub fn call_contract(&mut self, id: u32, function: &str, args: Vec<String>) -> SmartContractResult<String> {
         let contract = self.contracts.get_mut(&id)
             .ok_or_else(|| SmartContractError::ContractNotFound(id))?;
@@ -118,26 +168,45 @@ impl SmartContractEngine {
         self.get_vm_result(result)
     }
 
-    /// Compile the source code of a smart contract into bytecode
+    /// Compiles the source code of a smart contract into bytecode
+    /// Uses SHA-256 hashing as a simplified compilation mechanism.
+    ///
+    /// # Arguments
+    /// * `code` - The source code to compile
+    ///
+    /// # Returns
+    /// * The compiled bytecode, or an error if compilation fails
     fn compile_contract(&self, code: &str) -> SmartContractResult<Vec<u8>> {
-        // Basic compilation logic (this is a simplified example)
         let mut hasher = Sha256::new();
         hasher.update(code.as_bytes());
         let result = hasher.finalize();
         Ok(result.to_vec())
     }
 
-    /// Encode a function call with the provided arguments into bytecode
+    /// Encodes a function call with arguments into bytecode
+    ///
+    /// # Arguments
+    /// * `function` - The function name to call
+    /// * `args` - The arguments to encode
+    ///
+    /// # Returns
+    /// * Encoded bytecode representing the function call and arguments
     fn encode_function_call(&self, function: &str, args: Vec<String>) -> SmartContractResult<Vec<u8>> {
         let mut encoded = function.as_bytes().to_vec();
         for arg in args {
-            encoded.extend_from_slice(&[0]); // Argument separator
+            encoded.extend_from_slice(&[0]); // Simple argument separator
             encoded.extend_from_slice(arg.as_bytes());
         }
         Ok(encoded)
     }
 
-    /// Retrieve the result from the virtual machine after executing bytecode
+    /// Retrieves and processes the result from the virtual machine
+    ///
+    /// # Arguments
+    /// * `result` - The raw result from the VM as a byte vector
+    ///
+    /// # Returns
+    /// * The processed result as a UTF-8 string, or an error if parsing fails
     fn get_vm_result(&self, result: Vec<u8>) -> SmartContractResult<String> {
         String::from_utf8(result)
             .map_err(|e| SmartContractError::ExecutionError(format!("Failed to parse VM result: {}", e)))
