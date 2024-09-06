@@ -62,14 +62,14 @@ pub type SmartContractResult<T> = Result<T, SmartContractError>;
 /// A `SmartContract` encapsulates all the necessary information for a deployable
 /// and executable contract, including its source code, compiled bytecode, and
 /// current state.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct SmartContract {
     /// Unique identifier for the contract
     pub id: u32,
     /// Source code of the contract
     pub code: String,
     /// Optional compiled bytecode of the contract
-    pub bytecode: Option<Bytecode>,
+    pub bytecode: Option<Vec<u8>>,
     /// Contract's internal state, mapping keys to byte arrays
     pub state: HashMap<String, Vec<u8>>,
 }
@@ -99,7 +99,7 @@ impl SmartContract {
     /// # Arguments
     ///
     /// * `bytecode` - Compiled bytecode for the contract
-    pub fn set_bytecode(&mut self, bytecode: Bytecode) {
+    pub fn set_bytecode(&mut self, bytecode: Vec<u8>) {
         self.bytecode = Some(bytecode);
     }
 
@@ -166,7 +166,7 @@ impl SmartContractEngine {
 
         let id = self.contracts.len() as u32 + 1;
         let mut contract = SmartContract::new(id, code);
-        contract.set_bytecode(Bytecode::new(bytecode.clone()));
+        contract.set_bytecode(bytecode.clone());
         self.contracts.insert(id, contract);
 
         // Execute the contract's bytecode in the VM with a gas limit
@@ -193,10 +193,10 @@ impl SmartContractEngine {
 
         let call_data = self.encode_function_call(function, args)?;
 
-        let bytecode = contract.bytecode.clone()
+        let bytecode = contract.bytecode.as_ref()
             .ok_or_else(|| SmartContractError::ExecutionError("Contract bytecode not available".to_string()))?;
         
-        let (result, gas_used) = self.vm.execute_with_state(bytecode, call_data, &mut contract.state, 1000000)
+        let (result, gas_used) = self.vm.execute_with_state(Bytecode::new(bytecode.clone()), call_data, &mut contract.state, 1000000)
             .map_err(|e| SmartContractError::ExecutionError(e.to_string()))?;
 
         println!("Gas used: {}", gas_used);
