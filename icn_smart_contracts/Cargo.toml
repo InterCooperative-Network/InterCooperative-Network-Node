@@ -7,5 +7,4 @@ edition = "2021"
 icn_shared = { path = "../icn_shared" }
 icn_virtual_machine = { path = "../icn_virtual_machine" }
 thiserror = "1.0"
-
-
+sha2 = "0.10"
