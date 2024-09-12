@@ -1,9 +1,6 @@
 // File: icn_blockchain/src/lib.rs
-// Description: This file defines the Blockchain structure and handles operations like adding blocks,
-// executing transactions, and interacting with the virtual machine.
 
 use std::sync::{Arc, RwLock};
-use std::collections::HashMap;
 use icn_shared::{Block, IcnError, IcnResult};
 use icn_consensus::Consensus;
 use icn_virtual_machine::VirtualMachine;
@@ -16,45 +13,24 @@ use crate::transaction::{Transaction, TransactionType};
 
 /// Represents the blockchain and its operations.
 pub struct Blockchain<C: Consensus> {
-    /// The chain of blocks.
     pub chain: Chain<C>,
-    /// The consensus mechanism used for validating and adding blocks.
     pub consensus: Arc<RwLock<C>>,
-    /// The virtual machine for executing smart contracts.
     pub vm: VirtualMachine,
-    /// The state of the blockchain (e.g., account balances)
-    state: RwLock<HashMap<String, i64>>,
+    state: RwLock<std::collections::HashMap<String, i64>>,
 }
 
 impl<C: Consensus> Blockchain<C> {
     /// Creates a new blockchain with the given consensus algorithm and initializes the VM.
-    ///
-    /// # Arguments
-    ///
-    /// * `consensus` - The consensus algorithm to use for validating and adding blocks.
-    ///
-    /// # Returns
-    ///
-    /// * `Blockchain` - A new instance of the blockchain.
     pub fn new(consensus: Arc<RwLock<C>>) -> Self {
         Blockchain {
             chain: Chain::new(consensus.clone()),
             consensus,
             vm: VirtualMachine::new(),
-            state: RwLock::new(HashMap::new()),
+            state: RwLock::new(std::collections::HashMap::new()),
         }
     }
 
     /// Adds a new block to the blockchain after validating it.
-    ///
-    /// # Arguments
-    ///
-    /// * `transactions` - A vector of serialized transaction strings to be included in the block.
-    /// * `proposer_id` - The ID of the node proposing the new block.
-    ///
-    /// # Returns
-    ///
-    /// * `IcnResult<()>` - Returns Ok if the block is successfully added, otherwise an error.
     pub fn add_block(&mut self, transactions: Vec<String>, proposer_id: String) -> IcnResult<()> {
         let previous_block = self.chain.latest_block()
             .ok_or_else(|| IcnError::Blockchain("Empty blockchain".to_string()))?;
@@ -94,14 +70,6 @@ impl<C: Consensus> Blockchain<C> {
     }
 
     /// Executes a transaction, updating the blockchain state accordingly.
-    ///
-    /// # Arguments
-    ///
-    /// * `transaction` - The transaction to be executed.
-    ///
-    /// # Returns
-    ///
-    /// * `IcnResult<()>` - Returns Ok if the transaction is successfully executed, otherwise an error.
     pub fn execute_transaction(&self, transaction: Transaction) -> IcnResult<()> {
         match &transaction.transaction_type {
             TransactionType::Transfer { from, to, amount } => {
@@ -126,19 +94,7 @@ impl<C: Consensus> Blockchain<C> {
     }
 
     /// Updates the balance of an account.
-    ///
-    /// # Arguments
-    ///
-    /// * `account` - The account ID to update.
-    /// * `change` - The amount to change the balance by (positive for increase, negative for decrease).
-    ///
-    /// # Returns
-    ///
-    /// * `IcnResult<()>` - Returns Ok if the balance is successfully updated, otherwise an error.
     fn update_balance(&self, account: &str, change: i64) -> IcnResult<()> {
-        if account.is_empty() {
-            return Err(IcnError::Blockchain("Account ID cannot be empty".to_string()));
-        }
         let mut state = self.state.write()
             .map_err(|_| IcnError::Blockchain("Failed to acquire write lock on state".to_string()))?;
         let balance = state.entry(account.to_string()).or_insert(0);
@@ -150,22 +106,9 @@ impl<C: Consensus> Blockchain<C> {
     }
 
     /// Validates a proof submitted to the blockchain.
-    ///
-    /// # Arguments
-    ///
-    /// * `proof_id` - The ID of the proof to validate.
-    /// * `data` - The data associated with the proof.
-    ///
-    /// # Returns
-    ///
-    /// * `IcnResult<()>` - Returns Ok if the proof is successfully validated, otherwise an error.
     fn validate_proof(&self, proof_id: &str, data: &[u8]) -> IcnResult<()> {
-        if proof_id.is_empty() || data.is_empty() {
-            return Err(IcnError::Blockchain("Invalid proof validation parameters".to_string()));
-        }
         // TODO: Implement actual proof validation logic
-        // For now, we'll just check if the data is not empty
-        if data.len() > 0 {
+        if !proof_id.is_empty() && !data.is_empty() {
             Ok(())
         } else {
             Err(IcnError::Blockchain("Invalid proof data".to_string()))
@@ -173,41 +116,21 @@ impl<C: Consensus> Blockchain<C> {
     }
 
     /// Validates the integrity of the blockchain.
-    ///
-    /// # Returns
-    ///
-    /// * `bool` - Returns true if the blockchain is valid, otherwise false.
     pub fn is_valid_chain(&self) -> bool {
         self.chain.is_valid()
     }
 
     /// Gets the current block count of the blockchain.
-    ///
-    /// # Returns
-    ///
-    /// * `usize` - The number of blocks in the chain.
     pub fn block_count(&self) -> usize {
         self.chain.block_count()
     }
 
     /// Gets the latest block in the blockchain.
-    ///
-    /// # Returns
-    ///
-    /// * `Option<&Block>` - The latest block if the chain is not empty, otherwise None.
     pub fn latest_block(&self) -> Option<&Block> {
         self.chain.latest_block()
     }
 
     /// Gets the balance of an account.
-    ///
-    /// # Arguments
-    ///
-    /// * `account` - The account ID to query.
-    ///
-    /// # Returns
-    ///
-    /// * `IcnResult<i64>` - The balance of the account, or an error if the account doesn't exist.
     pub fn get_balance(&self, account: &str) -> IcnResult<i64> {
         let state = self.state.read()
             .map_err(|_| IcnError::Blockchain("Failed to acquire read lock on state".to_string()))?;
@@ -278,6 +201,7 @@ mod tests {
         let invalid_transactions = vec![];
         let result = blockchain.add_block(invalid_transactions, "proposer1".to_string());
         assert!(result.is_err());
+        assert_eq!(blockchain.block_count(), 0);
     }
 
     #[test]
@@ -293,6 +217,8 @@ mod tests {
             None,
         );
         assert!(blockchain.execute_transaction(transaction).is_ok());
+        // In a real implementation, we would check if the contract was actually deployed
+        // For now, we just check that the operation doesn't fail
     }
 
     #[test]
@@ -309,6 +235,8 @@ mod tests {
             None,
         );
         assert!(blockchain.execute_transaction(transaction).is_ok());
+        // In a real implementation, we would check the effects of the contract execution
+        // For now, we just check that the operation doesn't fail
     }
 
     #[test]
@@ -324,6 +252,8 @@ mod tests {
             None,
         );
         assert!(blockchain.execute_transaction(transaction).is_ok());
+        // In a real implementation, we would check if the proof was actually validated
+        // For now, we just check that the operation doesn't fail
     }
 
     #[test]
@@ -339,6 +269,50 @@ mod tests {
             None,
             None,
         );
-        assert!(blockchain.execute_transaction(transaction).is_err());
+        let result = blockchain.execute_transaction(transaction);
+        assert!(result.is_err());
+        if let Err(IcnError::Blockchain(msg)) = result {
+            assert!(msg.contains("Insufficient balance"));
+        } else {
+            panic!("Expected IcnError::Blockchain");
+        }
+    }
+
+    #[test]
+    fn test_blockchain_validity() {
+        let mut blockchain = setup_blockchain();
+        
+        // Add a valid block
+        let transactions = vec![
+            serde_json::to_string(&Transaction::new(
+                "1".to_string(),
+                TransactionType::Transfer {
+                    from: "account1".to_string(),
+                    to: "account2".to_string(),
+                    amount: 50,
+                },
+                None,
+                None,
+            )).unwrap(),
+        ];
+        assert!(blockchain.add_block(transactions, "proposer1".to_string()).is_ok());
+        
+        assert!(blockchain.is_valid_chain());
+        
+        // Attempt to tamper with the blockchain
+        if let Some(block) = blockchain.chain.blocks.get_mut(0) {
+            block.transactions[0] = serde_json::to_string(&Transaction::new(
+                "1".to_string(),
+                TransactionType::Transfer {
+                    from: "account1".to_string(),
+                    to: "account2".to_string(),
+                    amount: 1000, // Changed amount
+                },
+                None,
+                None,
+            )).unwrap();
+        }
+        
+        assert!(!blockchain.is_valid_chain());
     }
 }
